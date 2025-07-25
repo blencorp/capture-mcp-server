@@ -171,6 +171,50 @@ npm run build
 npm start
 ```
 
+### Testing with MCP Inspector
+
+The [MCP Inspector](https://github.com/modelcontextprotocol/inspector) is a powerful debugging tool for MCP servers. It provides a web-based interface to test your tools without needing Claude Desktop.
+
+#### Running with Inspector
+
+1. **Install MCP Inspector globally**:
+```bash
+npm install -g @modelcontextprotocol/inspector
+```
+
+2. **Start the MCP server with Inspector**:
+```bash
+npx @modelcontextprotocol/inspector node dist/server.js
+```
+
+3. **Open the Inspector interface**:
+   - Navigate to http://localhost:5173 in your browser
+   - The Inspector will automatically connect to your MCP server
+
+4. **Configure environment variables**:
+   - Click on the "Environment" tab in the Inspector
+   - Add your `SAM_GOV_API_KEY` environment variable
+
+#### Using the Inspector
+
+The MCP Inspector allows you to:
+- **View available tools**: See all 10 tools with their descriptions and schemas
+- **Test tool calls**: Execute tools directly with a user-friendly form interface
+- **Inspect responses**: View formatted JSON responses and error messages
+- **Debug issues**: See detailed request/response logs for troubleshooting
+
+Example workflow:
+1. Select a tool like `search_sam_entities` from the tools list
+2. Fill in the required parameters (e.g., `api_key`, `query`)
+3. Click "Execute" to run the tool
+4. View the response in the output panel
+
+This is especially useful for:
+- Testing new tool implementations
+- Debugging API integration issues
+- Understanding tool schemas and responses
+- Demonstrating capabilities to stakeholders
+
 ## Error Handling
 
 The server implements comprehensive error handling:
