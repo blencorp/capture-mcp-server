@@ -18,7 +18,7 @@ class CaptureMCPServer {
   constructor() {
     this.server = new Server(
       {
-        name: "capture-mcp",
+        name: "Capture MCP Server",
         version: "1.0.0",
       },
       {

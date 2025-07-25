@@ -69,9 +69,9 @@ Server designed for Claude Desktop integration via MCP configuration:
 ```json
 {
   "mcpServers": {
-    "capture-mcp": {
+    "capture-mcp-server": {
       "command": "node",
-      "args": ["/path/to/capture-mcp/dist/server.js"],
+      "args": ["/path/to/capture-mcp-server/dist/server.js"],
       "env": {
         "SAM_GOV_API_KEY": "your-api-key"
       }

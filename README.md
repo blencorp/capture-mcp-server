@@ -1,4 +1,4 @@
-# Capture MCP
+# Capture MCP Server
 
 An AI-native Model Context Protocol (MCP) server that integrates SAM.gov and USASpending.gov APIs to capture and analyze federal procurement and spending data through natural language queries.
 
@@ -34,8 +34,8 @@ Capture MCP empowers non-technical users to capture and query federal entity, op
 
 1. Clone and install:
 ```bash
-git clone <repository-url>
-cd capture-mcp
+git clone https://github.com/blencorp/capture-mcp-server.git
+cd capture-mcp-server
 npm install
 ```
 
@@ -53,14 +53,15 @@ npm start
 
 ### Claude Desktop Integration
 
+#### Option 1: Standard MCP Server
 Add to your Claude Desktop MCP settings:
 
 ```json
 {
   "mcpServers": {
-    "capture-mcp": {
+    "capture-mcp-server": {
       "command": "node",
-      "args": ["/path/to/capture-mcp/dist/server.js"],
+      "args": ["/path/to/capture-mcp-server/dist/server.js"],
       "env": {
         "SAM_GOV_API_KEY": "your-api-key-here"
       }
@@ -69,14 +70,36 @@ Add to your Claude Desktop MCP settings:
 }
 ```
 
+#### Option 2: Desktop Extension (Recommended)
+For enhanced branding with custom logo and display name:
+
+1. **Create the extension package**:
+```bash
+npm run build
+zip -r capture-mcp-server.dxt dist/ manifest.json assets/
+```
+
+2. **Install the .dxt file** in Claude Desktop by dragging the `capture-mcp-server.dxt` file to the MCP connectors section
+
+The Desktop Extension format provides:
+- Custom display name: "Capture MCP Server"
+- Professional logo and branding
+- Rich metadata and descriptions
+- Enhanced user experience
+
 ## Example Queries
 
 Once integrated with Claude Desktop, you can ask natural language questions like:
 
-- *"Are there any new cybersecurity contracts set aside for women-owned small businesses in Virginia?"*
-- *"Find details on Boeing and its DOD contracts in FY2024"*
+- *"Show me all active federal contracts awarded to service-disabled veteran-owned businesses for 541511 or 541512 in the last week"*
+- *"Find janitorial service contracts in awarded in the past 6 months"*
+- *"What's the total federal spending on cybersecurity contracts in fiscal year 2023?"*
+- *"List all 8(a) set-aside opportunities from federal agencies posted in the last 30 days"*
 - *"What was the total obligated spending by HHS on cloud computing last fiscal year?"*
 - *"Show me recent contract awards for 'penetration testing' under $250,000"*
+- *"Find food service and catering contracts awarded to small businesses"*
+- *"What are the active landscaping maintenance contracts in Florida?"*
+- *"Show me building maintenance and repair contracts over $100,000 awarded this year"*
 
 ## API Documentation
 
@@ -178,8 +201,14 @@ MIT License - see LICENSE file for details.
 
 ## Support
 
-For issues, questions, or contributions, please visit our [GitHub repository](https://github.com/your-username/capture-mcp).
+For issues, questions, or contributions, please visit our [GitHub repository](https://github.com/blencorp/capture-mcp-server).
 
 ---
 
-**Capture MCP** - Capturing federal data through AI 🤖🏛️
+Built with ❤️ by [BLEN](https://www.blencorp.com).
+
+## About BLEN
+
+BLEN, Inc is a digital services company that provides Emerging Technology (ML/AI, RPA), Digital Modernization (Legacy to Cloud) and Human-Centered Web/Mobile Design and Development.
+
+*Happy hunting!* 🎯

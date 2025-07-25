@@ -1,7 +1,7 @@
 {
-  "name": "capture-mcp",
+  "name": "capture-mcp-server",
   "version": "1.0.0",
-  "description": "",
+  "description": "Capture MCP Server",
   "main": "index.js",
   "directories": {
     "doc": "docs"
@@ -10,11 +10,13 @@
     "build": "tsc",
     "start": "node dist/server.js",
     "dev": "ts-node src/server.ts",
-    "test": "echo \"Error: no test specified\" && exit 1"
+    "test": "echo \"Error: no test specified\" && exit 1",
+    "package": "npm run build && zip -r capture-mcp-server.dxt dist/ manifest.json assets/"
   },
   "keywords": [],
-  "author": "",
-  "license": "ISC",
+  "author": "Mike Endale from BLEN, Inc.",
+  "license": "SEE LICENSE IN LICENSE.md",
+  "homepage": "https://github.com/blencorp/capture-mcp-server#readme",
   "type": "module",
   "dependencies": {
     "@modelcontextprotocol/sdk": "^1.17.0",

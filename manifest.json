@@ -1,0 +1,28 @@
+{
+  "name": "capture-mcp-server",
+  "display_name": "Capture MCP Server",
+  "version": "1.0.0",
+  "description": "Federal procurement and spending data capture",
+  "long_description": "Capture MCP Server empowers users to capture and query federal entity, opportunity, and spending data through natural language queries. Integrates SAM.gov and USASpending.gov APIs with 10 specialized tools for comprehensive federal data analysis.",
+  "icon": "assets/icon.png",
+  "keywords": [
+    "federal",
+    "procurement", 
+    "government",
+    "sam.gov",
+    "usaspending",
+    "contracts",
+    "spending",
+    "data capture"
+  ],
+  "homepage": "https://github.com/blencorp/capture-mcp-server",
+  "documentation": "https://github.com/blencorp/capture-mcp-server#readme",
+  "support": "https://github.com/blencorp/capture-mcp-server/issues",
+  "server": {
+    "command": "node",
+    "args": ["dist/server.js"],
+    "env": {
+      "SAM_GOV_API_KEY": "${SAM_GOV_API_KEY}"
+    }
+  }
+}
