@@ -1,0 +1,25 @@
+# This file defines code ownership for automatic PR review requests
+# https://help.github.com/articles/about-codeowners/
+
+# Default owners for everything in the repo
+* @capture-mcp-server/maintainers
+
+# Documentation
+*.md @capture-mcp-server/docs-team
+/docs/ @capture-mcp-server/docs-team
+
+# Core server components
+/src/server.ts @capture-mcp-server/core-team
+/src/utils/ @capture-mcp-server/core-team
+
+# Tool implementations
+/src/tools/sam-tools.ts @capture-mcp-server/api-team
+/src/tools/usaspending-tools.ts @capture-mcp-server/api-team
+/src/tools/join-tools.ts @capture-mcp-server/api-team
+
+# GitHub configuration
+/.github/ @capture-mcp-server/admin
+
+# Dependencies and build configuration
+package*.json @capture-mcp-server/maintainers
+tsconfig.json @capture-mcp-server/maintainers
