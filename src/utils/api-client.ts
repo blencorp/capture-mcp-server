@@ -48,7 +48,7 @@ export class ApiClient {
           timeout: 30000,
           headers: {
             'Accept': 'application/json',
-            'User-Agent': 'Procure-MCP/1.0.0'
+            'User-Agent': 'Capture-MCP/1.0.0'
           }
         }
       );
@@ -77,7 +77,7 @@ export class ApiClient {
           headers: {
             'Content-Type': 'application/json',
             'Accept': 'application/json',
-            'User-Agent': 'Procure-MCP/1.0.0'
+            'User-Agent': 'Capture-MCP/1.0.0'
           }
         }
       );
@@ -105,7 +105,7 @@ export class ApiClient {
           timeout: 30000,
           headers: {
             'Accept': 'application/json',
-            'User-Agent': 'Procure-MCP/1.0.0'
+            'User-Agent': 'Capture-MCP/1.0.0'
           }
         }
       );

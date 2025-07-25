@@ -11,14 +11,14 @@ import {
 // Import tool implementations
 import { initializeTools, callTool } from './tools/index.js';
 
-class ProcureMCPServer {
+class CaptureMCPServer {
   private server: Server;
   private tools: Tool[] = [];
 
   constructor() {
     this.server = new Server(
       {
-        name: "procure-mcp",
+        name: "capture-mcp",
         version: "1.0.0",
       },
       {
@@ -65,13 +65,13 @@ class ProcureMCPServer {
     await this.server.connect(transport);
     // Only log to stderr in debug mode
     if (process.env.DEBUG) {
-      console.error("Procure MCP Server running on stdio");
+      console.error("Capture MCP Server running on stdio");
     }
   }
 }
 
 // Start the server
-const server = new ProcureMCPServer();
+const server = new CaptureMCPServer();
 server.run().catch((error) => {
   console.error("Failed to start server:", error);
   process.exit(1);

@@ -1,10 +1,10 @@
-# Procure MCP
+# Capture MCP
 
-An AI-native Model Context Protocol (MCP) server that integrates SAM.gov and USASpending.gov APIs to make federal procurement and spending data accessible via natural language queries.
+An AI-native Model Context Protocol (MCP) server that integrates SAM.gov and USASpending.gov APIs to capture and analyze federal procurement and spending data through natural language queries.
 
 ## Overview
 
-Procure MCP enables non-technical users to query federal entity, opportunity, and spending data through LLM applications like Claude Desktop. It provides 10 specialized tools that can search, analyze, and join data from both government APIs.
+Capture MCP empowers non-technical users to capture and query federal entity, opportunity, and spending data through LLM applications like Claude Desktop. It provides 10 specialized tools that can search, analyze, and join data from both government APIs.
 
 ## Features
 
@@ -35,7 +35,7 @@ Procure MCP enables non-technical users to query federal entity, opportunity, an
 1. Clone and install:
 ```bash
 git clone <repository-url>
-cd procure-mcp
+cd capture-mcp
 npm install
 ```
 
@@ -58,9 +58,9 @@ Add to your Claude Desktop MCP settings:
 ```json
 {
   "mcpServers": {
-    "procure-mcp": {
+    "capture-mcp": {
       "command": "node",
-      "args": ["/path/to/procure-mcp/dist/server.js"],
+      "args": ["/path/to/capture-mcp/dist/server.js"],
       "env": {
         "SAM_GOV_API_KEY": "your-api-key-here"
       }
@@ -178,8 +178,8 @@ MIT License - see LICENSE file for details.
 
 ## Support
 
-For issues, questions, or contributions, please visit our [GitHub repository](https://github.com/your-username/procure-mcp).
+For issues, questions, or contributions, please visit our [GitHub repository](https://github.com/your-username/capture-mcp).
 
 ---
 
-**Procure MCP** - Making federal data accessible through AI 🤖🏛️
+**Capture MCP** - Capturing federal data through AI 🤖🏛️

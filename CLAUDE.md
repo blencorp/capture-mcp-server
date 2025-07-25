@@ -17,7 +17,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Architecture Overview
 
-This is a Model Context Protocol (MCP) server that provides federal procurement and spending data through 10 specialized tools. The architecture follows a modular tool-based design:
+This is a Model Context Protocol (MCP) server that captures federal procurement and spending data through 10 specialized tools. The architecture follows a modular tool-based design:
 
 ### Core Components
 
@@ -69,9 +69,9 @@ Server designed for Claude Desktop integration via MCP configuration:
 ```json
 {
   "mcpServers": {
-    "procure-mcp": {
+    "capture-mcp": {
       "command": "node",
-      "args": ["/path/to/procure-mcp/dist/server.js"],
+      "args": ["/path/to/capture-mcp/dist/server.js"],
       "env": {
         "SAM_GOV_API_KEY": "your-api-key"
       }
