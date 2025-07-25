@@ -91,11 +91,10 @@ The Desktop Extension format provides:
 
 Once integrated with Claude Desktop, you can ask natural language questions like:
 
-- *"Show me all active federal contracts awarded to service-disabled veteran-owned businesses for 541511 or 541512 in the last week"*
-- *"Find janitorial service contracts in awarded in the past 6 months"*
+- *"Find janitorial service contracts awarded to service-disabled veteran-owned businesses in the past 6 months"*
 - *"What's the total federal spending on cybersecurity contracts in fiscal year 2023?"*
 - *"List all 8(a) set-aside opportunities from federal agencies posted in the last 30 days"*
-- *"What was the total obligated spending by HHS on cloud computing last fiscal year?"*
+- *"What was the total obligated spending by HHS on cloud computing last fiscal year?"* 
 - *"Show me recent contract awards for 'penetration testing' under $250,000"*
 - *"Find food service and catering contracts awarded to small businesses"*
 - *"What are the active landscaping maintenance contracts in Florida?"*
