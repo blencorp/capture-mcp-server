@@ -69,13 +69,23 @@ This is a Model Context Protocol (MCP) server that captures federal procurement 
 
 ### Environment Setup
 
-Required environment variables:
-- `SAM_GOV_API_KEY` - API key from sam.gov/data-services/API
-- `TANGO_API_KEY` - API key from tango.makegov.com (optional, for Tango tools)
+Optional environment variables (configure based on which tools you need):
+- `SAM_GOV_API_KEY` - API key from sam.gov/data-services/API (enables SAM.gov + Join tools)
+- `TANGO_API_KEY` - API key from tango.makegov.com (enables Tango tools)
+
+**Tool Availability Based on API Keys**:
+- **No keys**: 4 USASpending.gov tools (public API)
+- **SAM_GOV_API_KEY only**: 10 tools (4 SAM + 4 USASpending + 2 Join)
+- **TANGO_API_KEY only**: 9 tools (5 Tango + 4 USASpending)
+- **Both keys**: All 15 tools
+
+The server automatically registers only the tools for which API keys are available.
 
 ### MCP Integration
 
 Server designed for Claude Desktop integration via MCP configuration:
+
+**Example with all tools enabled**:
 ```json
 {
   "mcpServers": {
@@ -86,6 +96,18 @@ Server designed for Claude Desktop integration via MCP configuration:
         "SAM_GOV_API_KEY": "your-sam-api-key",
         "TANGO_API_KEY": "your-tango-api-key"
       }
+    }
+  }
+}
+```
+
+**Example with only USASpending.gov tools (no API keys needed)**:
+```json
+{
+  "mcpServers": {
+    "capture-mcp-server": {
+      "command": "node",
+      "args": ["/path/to/capture-mcp-server/dist/server.js"]
     }
   }
 }
