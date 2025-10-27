@@ -35,8 +35,12 @@ Capture MCP empowers non-technical users to capture and query federal entity, op
 
 ### Prerequisites
 - Node.js 18+
-- SAM.gov API key ([Get one here](https://sam.gov/data-services/API))
-- Tango API key (optional, for Tango tools - [Get one here](https://tango.makegov.com/docs/))
+- **API Keys (Optional - configure based on which tools you need)**:
+  - **SAM.gov API key** - Required for SAM.gov tools (4 tools) and Join tools (2 tools) ([Get one here](https://sam.gov/data-services/API))
+  - **Tango API key** - Required for Tango tools (5 tools) ([Get one here](https://tango.makegov.com/docs/))
+  - **USASpending.gov** - Always available (4 tools, no API key required - public API)
+
+**Note**: The server will automatically enable tools based on which API keys you provide. At minimum, USASpending.gov tools are always available without any API key.
 
 ### Installation
 
@@ -47,10 +51,13 @@ cd capture-mcp-server
 npm install
 ```
 
-2. Configure environment:
+2. Configure environment (optional):
 ```bash
 cp .env.example .env
-# Edit .env and add your SAM_GOV_API_KEY and TANGO_API_KEY (optional)
+# Edit .env and add your API keys (one, both, or neither)
+# - SAM_GOV_API_KEY: Enables SAM.gov and Join tools
+# - TANGO_API_KEY: Enables Tango API tools
+# - No keys: Only USASpending.gov tools available (4 tools)
 ```
 
 3. Build and start:
@@ -64,6 +71,7 @@ npm start
 #### Option 1: Standard MCP Server
 Add to your Claude Desktop MCP settings:
 
+**With all API keys (all 15 tools)**:
 ```json
 {
   "mcpServers": {
@@ -74,6 +82,48 @@ Add to your Claude Desktop MCP settings:
         "SAM_GOV_API_KEY": "your-sam-api-key-here",
         "TANGO_API_KEY": "your-tango-api-key-here"
       }
+    }
+  }
+}
+```
+
+**With only SAM.gov API key (10 tools: SAM + USASpending + Join)**:
+```json
+{
+  "mcpServers": {
+    "capture-mcp-server": {
+      "command": "node",
+      "args": ["/path/to/capture-mcp-server/dist/server.js"],
+      "env": {
+        "SAM_GOV_API_KEY": "your-sam-api-key-here"
+      }
+    }
+  }
+}
+```
+
+**With only Tango API key (9 tools: Tango + USASpending)**:
+```json
+{
+  "mcpServers": {
+    "capture-mcp-server": {
+      "command": "node",
+      "args": ["/path/to/capture-mcp-server/dist/server.js"],
+      "env": {
+        "TANGO_API_KEY": "your-tango-api-key-here"
+      }
+    }
+  }
+}
+```
+
+**Without API keys (4 tools: USASpending only)**:
+```json
+{
+  "mcpServers": {
+    "capture-mcp-server": {
+      "command": "node",
+      "args": ["/path/to/capture-mcp-server/dist/server.js"]
     }
   }
 }
@@ -227,14 +277,15 @@ npx @modelcontextprotocol/inspector node dist/server.js
    - Navigate to http://localhost:5173 in your browser
    - The Inspector will automatically connect to your MCP server
 
-4. **Configure environment variables**:
+4. **Configure environment variables** (optional):
    - Click on the "Environment" tab in the Inspector
-   - Add your `SAM_GOV_API_KEY` environment variable
+   - Add your `SAM_GOV_API_KEY` and/or `TANGO_API_KEY` environment variables as needed
+   - Without API keys, you'll have access to 4 USASpending.gov tools
 
 #### Using the Inspector
 
 The MCP Inspector allows you to:
-- **View available tools**: See all 10 tools with their descriptions and schemas
+- **View available tools**: See available tools (4-15 depending on API keys configured)
 - **Test tool calls**: Execute tools directly with a user-friendly form interface
 - **Inspect responses**: View formatted JSON responses and error messages
 - **Debug issues**: See detailed request/response logs for troubleshooting

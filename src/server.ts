@@ -9,7 +9,7 @@ import {
 } from "@modelcontextprotocol/sdk/types.js";
 
 // Import tool implementations
-import { initializeTools, callTool } from './tools/index.js';
+import { initializeTools, callTool, ApiKeyConfig } from './tools/index.js';
 
 class CaptureMCPServer {
   private server: Server;
@@ -32,8 +32,28 @@ class CaptureMCPServer {
   }
 
   private async setupHandlers() {
-    // Initialize tools once
-    this.tools = await initializeTools();
+    // Check which API keys are available
+    const config: ApiKeyConfig = {
+      hasSamApiKey: !!process.env.SAM_GOV_API_KEY,
+      hasTangoApiKey: !!process.env.TANGO_API_KEY
+    };
+
+    // Log startup info
+    if (process.env.DEBUG) {
+      console.error("Capture MCP Server initializing...");
+      console.error("API Key Status:");
+      console.error(`  SAM.gov API Key: ${config.hasSamApiKey ? "✓ Configured" : "✗ Not set"}`);
+      console.error(`  Tango API Key: ${config.hasTangoApiKey ? "✓ Configured" : "✗ Not set"}`);
+      console.error("  USASpending.gov: ✓ Always available (public API)");
+
+      if (!config.hasSamApiKey && !config.hasTangoApiKey) {
+        console.error("\nWARNING: No API keys configured. Only USASpending.gov tools will be available.");
+        console.error("Set SAM_GOV_API_KEY and/or TANGO_API_KEY environment variables to enable additional tools.");
+      }
+    }
+
+    // Initialize tools with configuration
+    this.tools = await initializeTools(config);
 
     // List available tools
     this.server.setRequestHandler(ListToolsRequestSchema, async () => {
