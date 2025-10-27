@@ -4,6 +4,7 @@ import { Tool } from "@modelcontextprotocol/sdk/types.js";
 import { samTools } from './sam-tools.js';
 import { usaspendingTools } from './usaspending-tools.js';
 import { joinTools } from './join-tools.js';
+import { tangoTools } from './tango-tools.js';
 
 // Tool registry
 const toolRegistry = new Map<string, (args: any) => Promise<any>>();
@@ -30,6 +31,13 @@ export async function initializeTools(): Promise<Tool[]> {
   joinToolList.forEach(tool => {
     allTools.push(tool);
     toolRegistry.set(tool.name, (args) => joinTools.callTool(tool.name, args));
+  });
+
+  // Register Tango tools
+  const tangoToolList = await tangoTools.getTools();
+  tangoToolList.forEach(tool => {
+    allTools.push(tool);
+    toolRegistry.set(tool.name, (args) => tangoTools.callTool(tool.name, args));
   });
 
   return allTools;
