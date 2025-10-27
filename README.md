@@ -1,10 +1,10 @@
 # Capture MCP Server
 
-An AI-native Model Context Protocol (MCP) server that integrates SAM.gov and USASpending.gov APIs to capture and analyze federal procurement and spending data through natural language queries.
+An AI-native Model Context Protocol (MCP) server that integrates SAM.gov, USASpending.gov, and Tango APIs to capture and analyze federal procurement and spending data through natural language queries.
 
 ## Overview
 
-Capture MCP empowers non-technical users to capture and query federal entity, opportunity, and spending data through LLM applications like Claude Desktop. It provides 10 specialized tools that can search, analyze, and join data from both government APIs.
+Capture MCP empowers non-technical users to capture and query federal entity, opportunity, and spending data through LLM applications like Claude Desktop. It provides 15 specialized tools that can search, analyze, and join data from multiple government APIs.
 
 ## Features
 
@@ -24,11 +24,19 @@ Capture MCP empowers non-technical users to capture and query federal entity, op
 - **get_entity_and_awards** - Combine SAM entity data with spending history
 - **get_opportunity_spending_context** - Link opportunities with market context
 
+### 🎯 Tango API Integration (5 tools)
+- **search_tango_contracts** - Search federal contracts through unified API
+- **search_tango_grants** - Search federal grants and financial assistance
+- **get_tango_vendor_profile** - Get comprehensive vendor profiles with history
+- **search_tango_opportunities** - Search contract opportunities with forecasts
+- **get_tango_spending_summary** - Get spending summaries and analytics
+
 ## Quick Start
 
 ### Prerequisites
 - Node.js 18+
 - SAM.gov API key ([Get one here](https://sam.gov/data-services/API))
+- Tango API key (optional, for Tango tools - [Get one here](https://tango.makegov.com/docs/))
 
 ### Installation
 
@@ -42,7 +50,7 @@ npm install
 2. Configure environment:
 ```bash
 cp .env.example .env
-# Edit .env and add your SAM_GOV_API_KEY
+# Edit .env and add your SAM_GOV_API_KEY and TANGO_API_KEY (optional)
 ```
 
 3. Build and start:
@@ -63,7 +71,8 @@ Add to your Claude Desktop MCP settings:
       "command": "node",
       "args": ["/path/to/capture-mcp-server/dist/server.js"],
       "env": {
-        "SAM_GOV_API_KEY": "your-api-key-here"
+        "SAM_GOV_API_KEY": "your-sam-api-key-here",
+        "TANGO_API_KEY": "your-tango-api-key-here"
       }
     }
   }
@@ -157,6 +166,33 @@ Link opportunities with historical spending context.
 - **Required**: `api_key`
 - **Required One Of**: `opportunity_id` OR `solicitation_number`
 - **Optional**: `fiscal_year`
+
+### Tango API Tools
+
+#### search_tango_contracts
+Search federal contracts through Tango's unified API.
+- **Required**: `api_key`
+- **Optional**: `query`, `vendor_name`, `vendor_uei`, `agency`, `naics_code`, `psc_code`, `award_amount_min`, `award_amount_max`, `date_from`, `date_to`, `set_aside`, `limit`
+
+#### search_tango_grants
+Search federal grants and financial assistance.
+- **Required**: `api_key`
+- **Optional**: `query`, `recipient_name`, `recipient_uei`, `agency`, `cfda_number`, `award_amount_min`, `award_amount_max`, `date_from`, `date_to`, `limit`
+
+#### get_tango_vendor_profile
+Get comprehensive vendor/entity profile with history.
+- **Required**: `api_key`, `uei`
+- **Optional**: `include_contracts`, `include_grants`
+
+#### search_tango_opportunities
+Search federal contract opportunities with forecasts.
+- **Required**: `api_key`
+- **Optional**: `query`, `agency`, `naics_code`, `set_aside`, `posted_from`, `posted_to`, `response_deadline_from`, `status`, `limit`
+
+#### get_tango_spending_summary
+Get spending summaries and analytics.
+- **Required**: `api_key`
+- **Optional**: `agency`, `vendor_uei`, `fiscal_year`, `group_by`, `award_type`
 
 ## Development
 
