@@ -3,9 +3,6 @@
   "version": "1.0.0",
   "description": "Capture MCP Server",
   "main": "index.js",
-  "directories": {
-    "doc": "docs"
-  },
   "scripts": {
     "build": "tsc",
     "start": "node dist/server.js",
@@ -15,18 +12,25 @@
   },
   "keywords": [],
   "author": "Mike Endale from BLEN, Inc.",
-  "license": "SEE LICENSE IN LICENSE.md",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/blencorp/capture-mcp-server.git"
+  },
+  "bugs": {
+    "url": "https://github.com/blencorp/capture-mcp-server/issues"
+  },
   "homepage": "https://github.com/blencorp/capture-mcp-server#readme",
   "type": "module",
   "dependencies": {
-    "@modelcontextprotocol/sdk": "^1.17.0",
-    "axios": "^1.11.0",
-    "dotenv": "^17.2.1"
+    "@modelcontextprotocol/sdk": "^1.20.2",
+    "axios": "^1.13.0",
+    "dotenv": "^17.2.3"
   },
   "devDependencies": {
-    "@types/node": "^24.1.0",
+    "@types/node": "^24.9.1",
     "nodemon": "^3.1.10",
     "ts-node": "^10.9.2",
-    "typescript": "^5.8.3"
+    "typescript": "^5.9.3"
   }
 }
