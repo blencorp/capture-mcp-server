@@ -1,20 +1,37 @@
 # Capture MCP Server
 
-An AI-native Model Context Protocol (MCP) server that integrates SAM.gov, USASpending.gov, and Tango APIs to capture and analyze federal procurement and spending data through natural language queries.
+An MIT-licensed, AI-native Model Context Protocol (MCP) server that integrates SAM.gov, USASpending.gov, and Tango APIs to capture and analyze federal procurement and spending data through natural language queries.
 
 ## Overview
 
 Capture MCP empowers non-technical users to capture and query federal entity, opportunity, and spending data through LLM applications like Claude Desktop. It provides 15 specialized tools that can search, analyze, and join data from multiple government APIs.
 
+## Table of Contents
+- [Overview](#overview)
+- [Features](#features)
+- [Tool Availability Matrix](#tool-availability-matrix)
+- [Quick Start](#quick-start)
+- [Claude Desktop Integration](#claude-desktop-integration)
+- [Example Queries](#example-queries)
+- [Architecture Overview](#architecture-overview)
+- [API Documentation](#api-documentation)
+- [Development](#development)
+- [Testing with MCP Inspector](#testing-with-mcp-inspector)
+- [Error Handling](#error-handling)
+- [Performance](#performance)
+- [Contributing](#contributing)
+- [License](#license)
+- [Support](#support)
+
 ## Features
 
 ### 🏢 SAM.gov Integration (4 tools)
 - **search_sam_entities** - Find federal contractors and businesses
-- **get_sam_opportunities** - Discover contract opportunities  
+- **get_sam_opportunities** - Discover contract opportunities
 - **get_sam_entity_details** - Get comprehensive company profiles
 - **check_sam_exclusions** - Verify contractor eligibility
 
-### 💰 USASpending.gov Integration (4 tools)  
+### 💰 USASpending.gov Integration (4 tools)
 - **get_usaspending_awards** - Agency award summaries
 - **get_usaspending_spending_by_category** - Spending breakdowns
 - **get_usaspending_budgetary_resources** - Budget information
@@ -30,6 +47,15 @@ Capture MCP empowers non-technical users to capture and query federal entity, op
 - **get_tango_vendor_profile** - Get comprehensive vendor profiles with history
 - **search_tango_opportunities** - Search contract opportunities with forecasts
 - **get_tango_spending_summary** - Get spending summaries and analytics
+
+## Tool Availability Matrix
+
+| API Keys Provided | Tool Sets Enabled | Total Tools |
+| --- | --- | --- |
+| None | USASpending.gov | 4 |
+| `SAM_GOV_API_KEY` | SAM.gov, USASpending.gov, Join tools | 10 |
+| `TANGO_API_KEY` | Tango API, USASpending.gov | 9 |
+| Both keys | SAM.gov, USASpending.gov, Join tools, Tango API | 15 |
 
 ## Quick Start
 
@@ -158,6 +184,16 @@ Once integrated with Claude Desktop, you can ask natural language questions like
 - *"Find food service and catering contracts awarded to small businesses"*
 - *"What are the active landscaping maintenance contracts in Florida?"*
 - *"Show me building maintenance and repair contracts over $100,000 awarded this year"*
+
+## Architecture Overview
+
+Capture MCP Server follows a modular tool architecture designed for clarity and extensibility:
+
+- **Server core (`src/server.ts`)** handles MCP transport, tool registration, and request routing.
+- **Tool registry (`src/tools/index.ts`)** dynamically enables tool sets based on available API keys.
+- **Tool modules (`src/tools/*.ts`)** encapsulate domain-specific logic for SAM.gov, USASpending.gov, Tango, and cross-API joins.
+- **Shared utilities (`src/utils/api-client.ts`)** provide rate-limited HTTP access with consistent error handling.
+- **Desktop extension assets (`manifest.json`, `assets/`)** deliver a polished Claude Desktop experience with branding and metadata.
 
 ## API Documentation
 
@@ -327,7 +363,7 @@ The server implements comprehensive error handling:
 
 ## License
 
-MIT License - see LICENSE file for details.
+This project is open source under the MIT License. See `LICENSE` for the full text.
 
 ## Support
 

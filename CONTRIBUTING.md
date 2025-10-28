@@ -1,6 +1,6 @@
 # Contributing to Capture MCP Server
 
-First off, thank you for considering contributing to Capture MCP Server! It's people like you that make this tool better for everyone.
+First off, thank you for considering contributing to Capture MCP Server! It's people like you that make this MIT-licensed tool better for everyone.
 
 ## Code of Conduct
 
@@ -29,7 +29,7 @@ Enhancement suggestions are tracked as GitHub issues. Before creating enhancemen
 
 1. Clone your fork:
    ```bash
-   git clone https://github.com/your-username/capture-mcp-server.git
+   git clone https://github.com/blencorp/capture-mcp-server.git
    cd capture-mcp-server
    ```
 
@@ -40,7 +40,8 @@ Enhancement suggestions are tracked as GitHub issues. Before creating enhancemen
 
 3. Set up environment variables:
    ```bash
-   export SAM_GOV_API_KEY=your-api-key
+   export SAM_GOV_API_KEY=your-sam-api-key   # Enables SAM.gov + join tools
+   export TANGO_API_KEY=your-tango-api-key   # Enables Tango tools
    ```
 
 4. Build the project:
@@ -89,15 +90,18 @@ Enhancement suggestions are tracked as GitHub issues. Before creating enhancemen
 ```
 capture-mcp-server/
 ├── src/
-│   ├── server.ts           # Main MCP server
-│   ├── tools/              # Tool implementations
-│   │   ├── sam-tools.ts    # SAM.gov API tools
-│   │   ├── usaspending-tools.ts  # USASpending API tools
-│   │   └── join-tools.ts   # Cross-API tools
-│   └── utils/              # Utility functions
-│       └── api-client.ts   # API client with rate limiting
-├── dist/                   # Compiled output
-└── tests/                  # Test files
+│   ├── server.ts            # Main MCP server bootstrap
+│   ├── tools/               # Tool implementations (SAM, USASpending, Tango, join)
+│   │   ├── index.ts         # Tool registry
+│   │   ├── sam-tools.ts     # SAM.gov API tools (4)
+│   │   ├── usaspending-tools.ts # USASpending API tools (4)
+│   │   ├── join-tools.ts    # Cross-API tools (2)
+│   │   └── tango-tools.ts   # Tango API tools (5)
+│   └── utils/
+│       └── api-client.ts    # Shared HTTP client with rate limiting
+├── dist/                    # Compiled TypeScript output
+├── assets/                  # Extension assets (icons, etc.)
+└── README.md, manifest.json # Public documentation and MCP manifest
 ```
 
 ## Adding New Tools
