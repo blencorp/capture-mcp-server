@@ -6,7 +6,7 @@
   "scripts": {
     "build": "tsc",
     "start": "node dist/server.js",
-    "dev": "ts-node src/server.ts",
+    "dev": "node --import ./ts-node.register.mjs src/server.ts",
     "test": "echo \"Error: no test specified\" && exit 1",
     "package": "npm run build && zip -r capture-mcp-server.dxt dist/ manifest.json assets/"
   },
