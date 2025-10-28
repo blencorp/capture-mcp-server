@@ -16,7 +16,7 @@ export class ApiClient {
   private static lastUsaspendingCall = 0;
   private static lastTangoCall = 0;
   private static readonly SAM_DELAY_MS = 100; // Conservative delay for SAM.gov
-  private static readonly USASPENDING_DELAY_MS = 3600; // ~1 call per second for USASpending
+  private static readonly USASPENDING_DELAY_MS = 3600; // ~3.6 seconds between calls (~1000/hour) for USASpending
   private static readonly TANGO_DELAY_MS = 100; // Conservative delay for Tango API
 
   private static async enforceRateLimit(apiType: 'sam' | 'usaspending' | 'tango'): Promise<void> {
