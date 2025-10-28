@@ -9,7 +9,7 @@ export interface ApiResponse<T = any> {
 export class ApiClient {
   private static readonly SAM_BASE_URL = 'https://api.sam.gov';
   private static readonly USASPENDING_BASE_URL = 'https://api.usaspending.gov/api/v2';
-  private static readonly TANGO_BASE_URL = 'https://api.tango.makegov.com/v1';
+  private static readonly TANGO_BASE_URL = 'https://tango.makegov.com/api';
 
   // Rate limiting - simple delay mechanism
   private static lastSamCall = 0;
