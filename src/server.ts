@@ -65,8 +65,20 @@ class CaptureMCPServer {
       const { name, arguments: args } = request.params;
       
       try {
-        const result = await callTool(name, args || {});
-        return { content: [{ type: "text", text: JSON.stringify(result, null, 2) }] };
+        const result = await callTool(name, args ?? {});
+        const structured =
+          result !== null && typeof result === 'object' && !Array.isArray(result) ? result : undefined;
+        const textPayload =
+          structured !== undefined
+            ? JSON.stringify(structured, null, 2)
+            : result === undefined
+              ? 'undefined'
+              : String(result);
+
+        return {
+          content: [{ type: "text", text: textPayload }],
+          ...(structured ? { structuredContent: structured } : {}),
+        };
       } catch (error) {
         const errorMessage = error instanceof Error ? error.message : 'Unknown error';
         return { 
@@ -74,6 +86,7 @@ class CaptureMCPServer {
             type: "text", 
             text: JSON.stringify({ error: errorMessage }, null, 2) 
           }],
+          structuredContent: { error: errorMessage },
           isError: true 
         };
       }
