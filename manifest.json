@@ -1,13 +1,19 @@
 {
+  "manifest_version": "0.2",
   "name": "capture-mcp-server",
   "display_name": "Capture MCP Server",
   "version": "1.0.0",
   "description": "Federal procurement and spending data capture",
-  "long_description": "Capture MCP Server empowers users to capture and query federal entity, opportunity, and spending data through natural language queries. Integrates SAM.gov and USASpending.gov APIs with 10 specialized tools for comprehensive federal data analysis.",
-  "icon": "assets/icon.png",
+  "long_description": "Capture MCP Server empowers users to capture and query federal entity, opportunity, and spending data through natural language queries. Works out-of-the-box with 4 USASpending.gov tools (no API keys needed). Optional SAM.gov API key adds 6 more tools. Optional Tango API key adds 5 additional tools. Full suite of 15 tools available with both keys.",
+  "author": {
+    "name": "Mike Endale from BLEN, Inc.",
+    "url": "https://www.blencorp.com"
+  },
+  "license": "MIT",
+  "icon": "icon.png",
   "keywords": [
     "federal",
-    "procurement", 
+    "procurement",
     "government",
     "sam.gov",
     "usaspending",
@@ -15,14 +21,65 @@
     "spending",
     "data capture"
   ],
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/blencorp/capture-mcp-server.git"
+  },
   "homepage": "https://github.com/blencorp/capture-mcp-server",
   "documentation": "https://github.com/blencorp/capture-mcp-server#readme",
   "support": "https://github.com/blencorp/capture-mcp-server/issues",
+  "compatibility": {
+    "claude_desktop": ">=0.10.0",
+    "platforms": ["darwin", "win32", "linux"],
+    "runtimes": {
+      "node": ">=18.0.0"
+    }
+  },
+  "tools": [
+    {"name": "search_sam_entities", "description": "Search for federal entities/businesses registered in SAM.gov"},
+    {"name": "get_sam_opportunities", "description": "Fetch federal contract opportunities from SAM.gov"},
+    {"name": "get_sam_entity_details", "description": "Get comprehensive details for a specific entity by UEI"},
+    {"name": "check_sam_exclusions", "description": "Check if an entity is excluded from federal contracting"},
+    {"name": "get_usaspending_awards", "description": "Get federal awards data for a specific agency"},
+    {"name": "get_usaspending_spending_by_category", "description": "Get spending breakdown by award category"},
+    {"name": "get_usaspending_budgetary_resources", "description": "Get budgetary resources and obligations for an agency"},
+    {"name": "search_usaspending_awards_by_recipient", "description": "Search for federal awards by recipient name"},
+    {"name": "get_entity_and_awards", "description": "Combine SAM entity data with USASpending award history"},
+    {"name": "get_opportunity_spending_context", "description": "Link opportunities with historical spending context"},
+    {"name": "search_tango_contracts", "description": "Search federal contracts through Tango's unified API"},
+    {"name": "search_tango_grants", "description": "Search federal grants and financial assistance"},
+    {"name": "get_tango_vendor_profile", "description": "Get comprehensive vendor profiles with history"},
+    {"name": "search_tango_opportunities", "description": "Search federal contract opportunities with forecasts"},
+    {"name": "get_tango_spending_summary", "description": "Get spending summaries and analytics"}
+  ],
   "server": {
-    "command": "node",
-    "args": ["dist/server.js"],
-    "env": {
-      "SAM_GOV_API_KEY": "${SAM_GOV_API_KEY}"
+    "type": "node",
+    "entry_point": "dist/server.js",
+    "mcp_config": {
+      "command": "node",
+      "args": ["${__dirname}/dist/server.js"],
+      "env": {
+        "SAM_GOV_API_KEY": "${user_config.SAM_GOV_API_KEY}",
+        "TANGO_API_KEY": "${user_config.TANGO_API_KEY}"
+      }
+    }
+  },
+  "user_config": {
+    "SAM_GOV_API_KEY": {
+      "type": "string",
+      "title": "SAM.gov API Key",
+      "description": "Optional API key from sam.gov/data-services/API. Enables 6 additional tools: 4 SAM.gov tools (entities, opportunities, details, exclusions) + 2 Join tools (entity+awards, opportunity+context).",
+      "required": false,
+      "sensitive": true,
+      "default": ""
+    },
+    "TANGO_API_KEY": {
+      "type": "string",
+      "title": "Tango API Key",
+      "description": "Optional API key from tango.makegov.com. Enables 5 Tango tools: contracts, grants, vendor profiles, opportunities, and spending summaries.",
+      "required": false,
+      "sensitive": true,
+      "default": ""
     }
   }
 }
