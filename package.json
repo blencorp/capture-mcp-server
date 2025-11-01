@@ -8,8 +8,8 @@
     "start": "node dist/server.js",
     "dev": "node --import ./ts-node.register.mjs src/server.ts",
     "test": "echo \"Error: no test specified\" && exit 1",
-    "package": "npm run build && zip -r capture-mcp-server.dxt dist/ manifest.json assets/",
-    "package:mcpb": "npm run build && npm ci --omit=dev && zip -r capture-mcp-server.mcpb dist/ node_modules/ manifest.json assets/ && npm install"
+    "package": "npm run build && npm ci --omit=dev && zip -r capture-mcp-server.mcpb dist/ node_modules/ manifest.json icon.png && npm install",
+    "package:dxt": "npm run build && zip -r capture-mcp-server.dxt dist/ manifest.json icon.png"
   },
   "keywords": [],
   "author": "Mike Endale from BLEN, Inc.",
@@ -25,8 +25,7 @@
   "type": "module",
   "dependencies": {
     "@modelcontextprotocol/sdk": "^1.20.2",
-    "axios": "^1.13.0",
-    "dotenv": "^17.2.3"
+    "axios": "^1.13.0"
   },
   "devDependencies": {
     "@types/node": "^24.9.1",
