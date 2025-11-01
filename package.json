@@ -8,7 +8,8 @@
     "start": "node dist/server.js",
     "dev": "node --import ./ts-node.register.mjs src/server.ts",
     "test": "echo \"Error: no test specified\" && exit 1",
-    "package": "npm run build && zip -r capture-mcp-server.dxt dist/ manifest.json assets/"
+    "package": "npm run build && zip -r capture-mcp-server.dxt dist/ manifest.json assets/",
+    "package:mcpb": "npm run build && npm ci --omit=dev && zip -r capture-mcp-server.mcpb dist/ node_modules/ manifest.json assets/ && npm install"
   },
   "keywords": [],
   "author": "Mike Endale from BLEN, Inc.",
