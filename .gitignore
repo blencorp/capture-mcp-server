@@ -8,6 +8,10 @@ yarn-error.log*
 dist/
 build/
 
+# Packaged extensions
+*.dxt
+*.mcpb
+
 # Environment variables
 .env
 .env.local

@@ -180,7 +180,7 @@ export const joinTools = {
           sam_gov: "Entity registration and business details",
           usaspending_gov: "Federal award and spending history"
         },
-        joined_on: "Entity name matching (UEI-based joining attempted first)"
+        joined_on: "Entity legal business name (UEI used for SAM lookup)"
       };
 
     } catch (error) {
@@ -276,7 +276,7 @@ export const joinTools = {
         // Search for awards with similar NAICS codes in USASpending
         const usaspendingRequest = {
           filters: {
-            naics_code: opportunity.naicsCode,
+            naics_codes: [opportunity.naicsCode],
             time_period: [{
               start_date: `${fiscal_year - 1}-10-01`,
               end_date: `${fiscal_year}-09-30`
