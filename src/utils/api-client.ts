@@ -6,41 +6,49 @@ export interface ApiResponse<T = any> {
   error?: string;
 }
 
+type ApiFamily = 'sam' | 'usaspending' | 'tango';
+
 export class ApiClient {
   private static readonly SAM_BASE_URL = 'https://api.sam.gov';
   private static readonly USASPENDING_BASE_URL = 'https://api.usaspending.gov/api/v2';
   private static readonly TANGO_BASE_URL = 'https://tango.makegov.com/api';
 
-  // Rate limiting - simple delay mechanism
-  private static lastSamCall = 0;
-  private static lastUsaspendingCall = 0;
-  private static lastTangoCall = 0;
-  private static readonly SAM_DELAY_MS = 100; // Conservative delay for SAM.gov
-  private static readonly USASPENDING_DELAY_MS = 3600; // ~3.6 seconds between calls (~1000/hour) for USASpending
-  private static readonly TANGO_DELAY_MS = 100; // Conservative delay for Tango API
+  // Rate limiting: queue-based guard so concurrent requests respect per-API pacing
+  private static readonly RATE_LIMIT_MS: Record<ApiFamily, number> = {
+    sam: 100, // Conservative delay for SAM.gov
+    usaspending: 3600, // ~3.6 seconds between calls (~1000/hour) for USASpending
+    tango: 100, // Conservative delay for Tango API
+  };
 
-  private static async enforceRateLimit(apiType: 'sam' | 'usaspending' | 'tango'): Promise<void> {
-    const now = Date.now();
+  private static readonly rateLimitQueues: Record<ApiFamily, Promise<void>> = {
+    sam: Promise.resolve(),
+    usaspending: Promise.resolve(),
+    tango: Promise.resolve(),
+  };
 
-    if (apiType === 'sam') {
-      const timeSinceLastCall = now - this.lastSamCall;
-      if (timeSinceLastCall < this.SAM_DELAY_MS) {
-        await new Promise(resolve => setTimeout(resolve, this.SAM_DELAY_MS - timeSinceLastCall));
+  private static readonly lastCallTimestamp: Record<ApiFamily, number> = {
+    sam: 0,
+    usaspending: 0,
+    tango: 0,
+  };
+
+  private static async enforceRateLimit(apiType: ApiFamily): Promise<void> {
+    const run = async () => {
+      const now = Date.now();
+      const elapsed = now - this.lastCallTimestamp[apiType];
+      const delayMs = this.RATE_LIMIT_MS[apiType];
+      const waitTime = elapsed >= delayMs ? 0 : delayMs - elapsed;
+
+      if (waitTime > 0) {
+        await this.sleep(waitTime);
       }
-      this.lastSamCall = Date.now();
-    } else if (apiType === 'usaspending') {
-      const timeSinceLastCall = now - this.lastUsaspendingCall;
-      if (timeSinceLastCall < this.USASPENDING_DELAY_MS) {
-        await new Promise(resolve => setTimeout(resolve, this.USASPENDING_DELAY_MS - timeSinceLastCall));
-      }
-      this.lastUsaspendingCall = Date.now();
-    } else if (apiType === 'tango') {
-      const timeSinceLastCall = now - this.lastTangoCall;
-      if (timeSinceLastCall < this.TANGO_DELAY_MS) {
-        await new Promise(resolve => setTimeout(resolve, this.TANGO_DELAY_MS - timeSinceLastCall));
-      }
-      this.lastTangoCall = Date.now();
-    }
+
+      this.lastCallTimestamp[apiType] = Date.now();
+    };
+
+    // Chain executions to preserve ordering across concurrent invocations
+    this.rateLimitQueues[apiType] = this.rateLimitQueues[apiType].then(run, run);
+    await this.rateLimitQueues[apiType];
   }
 
   static async samGet<T = any>(
@@ -220,8 +228,8 @@ export class ApiClient {
   // Utility method to validate and sanitize inputs
   static sanitizeInput(input: any): any {
     if (typeof input === 'string') {
-      // Remove potentially dangerous characters
-      return input.replace(/[<>\"'&]/g, '').trim();
+      // Strip control characters while preserving meaningful punctuation
+      return input.replace(/[\u0000-\u001F\u007F]/g, '').trim();
     }
     
     if (Array.isArray(input)) {
@@ -237,5 +245,9 @@ export class ApiClient {
     }
     
     return input;
+  }
+
+  private static sleep(ms: number): Promise<void> {
+    return new Promise(resolve => setTimeout(resolve, ms));
   }
 }
