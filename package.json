@@ -1,8 +1,8 @@
 {
   "name": "capture-mcp-server",
   "version": "1.0.0",
-  "description": "Capture MCP Server",
-  "main": "index.js",
+  "description": "AI-native Model Context Protocol server for SAM.gov, USASpending.gov, and Tango federal procurement data.",
+  "main": "dist/server.js",
   "scripts": {
     "build": "tsc",
     "start": "node dist/server.js",
@@ -11,7 +11,14 @@
     "package": "npm run build && npm ci --omit=dev && zip -r capture-mcp-server.mcpb dist/ node_modules/ manifest.json icon.png && npm install",
     "package:dxt": "npm run build && zip -r capture-mcp-server.dxt dist/ manifest.json icon.png"
   },
-  "keywords": [],
+  "keywords": [
+    "mcp",
+    "federal",
+    "procurement",
+    "sam.gov",
+    "usaspending",
+    "tango"
+  ],
   "author": "Mike Endale from BLEN, Inc.",
   "license": "MIT",
   "repository": {
