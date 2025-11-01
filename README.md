@@ -40,7 +40,7 @@ Capture MCP empowers users to capture and query federal entity, opportunity, and
 ### SAM.gov Integration (4 tools - Requires SAM.gov API key)
 - `search_sam_entities` - Find federal contractors and businesses
 - `get_sam_opportunities` - Discover contract opportunities
-- **`get_sam_entity_details`** - Get comprehensive company profiles
+- `get_sam_entity_details` - Get comprehensive company profiles
 - `check_sam_exclusions` - Verify contractor eligibility
 
 ### Data Joining (2 tools - Requires SAM.gov API key)
