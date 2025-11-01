@@ -31,28 +31,28 @@ Capture MCP empowers users to capture and query federal entity, opportunity, and
 - **Safe rate limiting** – Queue-based throttling prevents accidental quota overruns on SAM.gov, USASpending.gov, and Tango APIs.
 - **Input hygiene** – Argument sanitization strips control characters while keeping meaningful punctuation intact.
 
-### 💰 USASpending.gov Integration (4 tools - No API key required)
-- **get_usaspending_awards** - Agency award summaries
-- **get_usaspending_spending_by_category** - Spending breakdowns
-- **get_usaspending_budgetary_resources** - Budget information
-- **search_usaspending_awards_by_recipient** - Find awards by company
+### USASpending.gov Integration (4 tools - No API key required)
+- `get_usaspending_awards` - Agency award summaries
+- `get_usaspending_spending_by_category` - Spending breakdowns
+- `get_usaspending_budgetary_resources` - Budget information
+- `search_usaspending_awards_by_recipient` - Find awards by company
 
-### 🏢 SAM.gov Integration (4 tools - Requires SAM.gov API key)
-- **search_sam_entities** - Find federal contractors and businesses
-- **get_sam_opportunities** - Discover contract opportunities
-- **get_sam_entity_details** - Get comprehensive company profiles
-- **check_sam_exclusions** - Verify contractor eligibility
+### SAM.gov Integration (4 tools - Requires SAM.gov API key)
+- `search_sam_entities` - Find federal contractors and businesses
+- `get_sam_opportunities` - Discover contract opportunities
+- **`get_sam_entity_details`** - Get comprehensive company profiles
+- `check_sam_exclusions` - Verify contractor eligibility
 
-### 🔗 Data Joining (2 tools - Requires SAM.gov API key)
-- **get_entity_and_awards** - Combine SAM entity data with spending history
-- **get_opportunity_spending_context** - Link opportunities with market context
+### Data Joining (2 tools - Requires SAM.gov API key)
+- `get_entity_and_awards` - Combine SAM entity data with spending history
+- `get_opportunity_spending_context` - Link opportunities with market context
 
-### 🎯 Tango API Integration (5 tools - Requires Tango API key)
-- **search_tango_contracts** - Search federal contracts through unified API
-- **search_tango_grants** - Search federal grants and financial assistance
-- **get_tango_vendor_profile** - Get comprehensive vendor profiles with history
-- **search_tango_opportunities** - Search contract opportunities with forecasts
-- **get_tango_spending_summary** - Get spending summaries and analytics
+### Tango API Integration (5 tools - Requires Tango API key)
+- `search_tango_contracts` - Search federal contracts through unified API
+- `search_tango_grants` - Search federal grants and financial assistance
+- `get_tango_vendor_profile` - Get comprehensive vendor profiles with history
+- `search_tango_opportunities` - Search contract opportunities with forecasts
+- `get_tango_spending_summary` - Get spending summaries and analytics
 
 ## Tool Availability Matrix
 
