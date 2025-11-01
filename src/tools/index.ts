@@ -18,6 +18,8 @@ export async function initializeTools(config: ApiKeyConfig): Promise<Tool[]> {
   const allTools: Tool[] = [];
   const enabledToolSets: string[] = [];
 
+  toolRegistry.clear();
+
   // Always register USASpending.gov tools (no API key required - public API)
   const usaspendingToolList = await usaspendingTools.getTools();
   usaspendingToolList.forEach(tool => {
