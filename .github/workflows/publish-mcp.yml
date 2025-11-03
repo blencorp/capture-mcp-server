@@ -1,0 +1,47 @@
+name: Publish to MCP Registry
+
+# This workflow publishes to the MCP Registry when a version tag is pushed.
+# NPM publishing is handled automatically by semantic-release in release.yml.
+# This workflow is triggered by tags created by semantic-release.
+
+on:
+  push:
+    tags:
+      - 'v*'
+
+jobs:
+  publish-mcp:
+    runs-on: ubuntu-latest
+
+    permissions:
+      id-token: write  # Required for GitHub OIDC authentication to MCP Registry
+      contents: read
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.ref }}  # Checkout the tag that triggered this workflow
+
+      - name: Install MCP Publisher CLI
+        run: |
+          # Install via Homebrew (Linux)
+          /bin/bash -c "$(curl -fsSL https://raw.githubusercontent.com/Homebrew/install/HEAD/install.sh)" || true
+          eval "$(/home/linuxbrew/.linuxbrew/bin/brew shellenv)" || true
+          brew tap modelcontextprotocol/tap || true
+          brew install mcp-publisher || true
+
+          # Fallback: Download pre-built binary if Homebrew fails
+          if ! command -v mcp-publisher &> /dev/null; then
+            curl -L https://github.com/modelcontextprotocol/publisher/releases/latest/download/mcp-publisher-linux-amd64 -o mcp-publisher
+            chmod +x mcp-publisher
+            sudo mv mcp-publisher /usr/local/bin/
+          fi
+
+      - name: Authenticate with GitHub OIDC
+        run: mcp-publisher login github-oidc
+
+      - name: Publish to MCP Registry
+        run: mcp-publisher publish
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
