@@ -156,7 +156,17 @@ You can add or update API keys later via **Settings** → **Extensions** → **C
 
 Standard MCP configuration is the most reliable method and works universally across all MCP clients including Claude Desktop, ChatGPT Desktop, and custom implementations.
 
-#### Step 1: Clone and Build
+#### Step 1: Install the Server
+
+**Option A: Install from NPM (Easiest)**
+
+```bash
+npm install -g @blen/capture-mcp-server
+```
+
+This installs the server globally, making it available from anywhere on your system.
+
+**Option B: Clone and Build (For Development)**
 
 ```bash
 # Clone the repository
@@ -198,7 +208,75 @@ This creates compiled JavaScript files in the `dist/` directory.
 
 #### Step 3: Add Server Configuration
 
-Open your MCP configuration file and add the Capture MCP Server configuration. Choose the appropriate configuration based on which API keys you have:
+Open your MCP configuration file and add the Capture MCP Server configuration. Choose the appropriate configuration based on which API keys you have and how you installed the server.
+
+**For NPM Installation** (Option A from Step 1):
+
+**Configuration A: No API Keys (4 USASpending.gov tools)**
+
+```json
+{
+  "mcpServers": {
+    "capture-mcp-server": {
+      "command": "npx",
+      "args": ["@blen/capture-mcp-server"]
+    }
+  }
+}
+```
+
+**Configuration B: SAM.gov API Key Only (10 tools)**
+
+```json
+{
+  "mcpServers": {
+    "capture-mcp-server": {
+      "command": "npx",
+      "args": ["@blen/capture-mcp-server"],
+      "env": {
+        "SAM_GOV_API_KEY": "your-sam-api-key-here"
+      }
+    }
+  }
+}
+```
+
+**Configuration C: Tango API Key Only (9 tools)**
+
+```json
+{
+  "mcpServers": {
+    "capture-mcp-server": {
+      "command": "npx",
+      "args": ["@blen/capture-mcp-server"],
+      "env": {
+        "TANGO_API_KEY": "your-tango-api-key-here"
+      }
+    }
+  }
+}
+```
+
+**Configuration D: Both API Keys (All 15 tools)**
+
+```json
+{
+  "mcpServers": {
+    "capture-mcp-server": {
+      "command": "npx",
+      "args": ["@blen/capture-mcp-server"],
+      "env": {
+        "SAM_GOV_API_KEY": "your-sam-api-key-here",
+        "TANGO_API_KEY": "your-tango-api-key-here"
+      }
+    }
+  }
+}
+```
+
+---
+
+**For Local Build Installation** (Option B from Step 1):
 
 **Configuration A: No API Keys (4 USASpending.gov tools)**
 
