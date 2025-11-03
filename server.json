@@ -1,0 +1,113 @@
+{
+  "$schema": "https://static.modelcontextprotocol.io/schemas/2025-10-17/server.schema.json",
+  "name": "io.github.blencorp/capture-mcp-server",
+  "description": "Federal procurement and spending data capture through SAM.gov, USASpending.gov, and Tango APIs",
+  "version": "1.0.0",
+  "icon": "icon.png",
+  "homepage": "https://github.com/blencorp/capture-mcp-server",
+  "repository": {
+    "url": "https://github.com/blencorp/capture-mcp-server",
+    "source": "github"
+  },
+  "license": "MIT",
+  "author": {
+    "name": "Mike Endale from BLEN, Inc.",
+    "url": "https://www.blencorp.com"
+  },
+  "keywords": [
+    "federal",
+    "procurement",
+    "government",
+    "sam.gov",
+    "usaspending",
+    "contracts",
+    "spending",
+    "data-capture"
+  ],
+  "packages": [
+    {
+      "registryType": "npm",
+      "identifier": "@blen/capture-mcp-server",
+      "version": "1.0.0",
+      "transport": {
+        "type": "stdio"
+      },
+      "environmentVariables": [
+        {
+          "name": "SAM_GOV_API_KEY",
+          "description": "Optional API key from sam.gov/data-services/API. Enables 6 additional tools: 4 SAM.gov tools (entities, opportunities, details, exclusions) + 2 Join tools (entity+awards, opportunity+context).",
+          "isRequired": false,
+          "isSecret": true
+        },
+        {
+          "name": "TANGO_API_KEY",
+          "description": "Optional API key from tango.makegov.com. Enables 5 Tango tools: contracts, grants, vendor profiles, opportunities, and spending summaries.",
+          "isRequired": false,
+          "isSecret": true
+        }
+      ]
+    }
+  ],
+  "tools": [
+    {
+      "name": "search_sam_entities",
+      "description": "Search for federal entities/businesses registered in SAM.gov. Requires SAM_GOV_API_KEY."
+    },
+    {
+      "name": "get_sam_opportunities",
+      "description": "Fetch federal contract opportunities from SAM.gov. Requires SAM_GOV_API_KEY."
+    },
+    {
+      "name": "get_sam_entity_details",
+      "description": "Get comprehensive details for a specific entity by UEI from SAM.gov. Requires SAM_GOV_API_KEY."
+    },
+    {
+      "name": "check_sam_exclusions",
+      "description": "Check if an entity is excluded from federal contracting in SAM.gov. Requires SAM_GOV_API_KEY."
+    },
+    {
+      "name": "get_usaspending_awards",
+      "description": "Get federal awards data for a specific agency from USASpending.gov. No API key required."
+    },
+    {
+      "name": "get_usaspending_spending_by_category",
+      "description": "Get spending breakdown by award category from USASpending.gov. No API key required."
+    },
+    {
+      "name": "get_usaspending_budgetary_resources",
+      "description": "Get budgetary resources and obligations for an agency from USASpending.gov. No API key required."
+    },
+    {
+      "name": "search_usaspending_awards_by_recipient",
+      "description": "Search for federal awards by recipient name in USASpending.gov. No API key required."
+    },
+    {
+      "name": "get_entity_and_awards",
+      "description": "Combine SAM entity data with USASpending award history in a single query. Requires SAM_GOV_API_KEY."
+    },
+    {
+      "name": "get_opportunity_spending_context",
+      "description": "Link SAM.gov opportunities with historical spending context from USASpending.gov. Requires SAM_GOV_API_KEY."
+    },
+    {
+      "name": "search_tango_contracts",
+      "description": "Search federal contracts through Tango's unified API. Requires TANGO_API_KEY."
+    },
+    {
+      "name": "search_tango_grants",
+      "description": "Search federal grants and financial assistance through Tango API. Requires TANGO_API_KEY."
+    },
+    {
+      "name": "get_tango_vendor_profile",
+      "description": "Get comprehensive vendor profiles with history from Tango API. Requires TANGO_API_KEY."
+    },
+    {
+      "name": "search_tango_opportunities",
+      "description": "Search federal contract opportunities with forecasts from Tango API. Requires TANGO_API_KEY."
+    },
+    {
+      "name": "get_tango_spending_summary",
+      "description": "Get spending summaries and analytics from Tango API. Requires TANGO_API_KEY."
+    }
+  ]
+}
