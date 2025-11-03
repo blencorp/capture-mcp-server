@@ -1,8 +1,9 @@
 {
-  "name": "capture-mcp-server",
+  "name": "@blen/capture-mcp-server",
   "version": "1.0.0",
   "description": "AI-native Model Context Protocol server for SAM.gov, USASpending.gov, and Tango federal procurement data.",
   "main": "dist/server.js",
+  "mcpName": "io.github.blencorp/capture-mcp-server",
   "scripts": {
     "build": "tsc",
     "start": "node dist/server.js",
@@ -30,13 +31,24 @@
   },
   "homepage": "https://github.com/blencorp/capture-mcp-server#readme",
   "type": "module",
+  "publishConfig": {
+    "access": "public"
+  },
   "dependencies": {
     "@modelcontextprotocol/sdk": "^1.20.2",
     "axios": "^1.13.0"
   },
   "devDependencies": {
+    "@semantic-release/changelog": "^6.0.3",
+    "@semantic-release/exec": "^7.1.0",
+    "@semantic-release/git": "^10.0.1",
+    "@semantic-release/github": "^11.0.6",
+    "@semantic-release/npm": "^12.0.2",
     "@types/node": "^24.9.1",
+    "ajv-cli": "^5.0.0",
+    "ajv-formats": "^3.0.1",
     "nodemon": "^3.1.10",
+    "semantic-release": "^24.2.9",
     "ts-node": "^10.9.2",
     "typescript": "^5.9.3"
   }
