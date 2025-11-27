@@ -83,7 +83,7 @@ The server automatically enables tools based on which API keys you provide:
 
 **For ChatGPT Desktop or other MCP clients**: Use [Method 2: Standard MCP Configuration](#method-2-standard-mcp-configuration-recommended) which works universally across all MCP-compatible applications.
 
-**For hosting your own server**: Use [Method 3: Hosted Version (AWS Serverless)](#method-3-hosted-version-aws-serverless) to deploy a shared server for your organization on AWS.
+**For hosting your own service**: Use [Method 3: Hosted Version (AWS Serverless)](#method-3-hosted-version-aws-serverless) to deploy a shared Capture MCP service for your organization on AWS.
 
 ## Installation Methods
 
@@ -293,14 +293,14 @@ You should see 4-15 tools listed depending on your API key configuration.
 
 ### Method 3: Hosted Version (AWS Serverless)
 
-Deploy a shared Capture MCP Server on AWS for your organization. You deploy once, then create API keys (`cap_xxx...`) to distribute to your users. The serverless architecture costs ~$1-11/month and scales automatically.
+Deploy a shared Capture MCP service on AWS for your organization. You deploy once, then create API keys (`cap_xxx...`) to distribute to your users. The serverless architecture costs ~$1-11/month and scales automatically.
 
 ### Architecture
 
 ```
 ┌──────────────┐     ┌─────────────────┐     ┌──────────────┐
 │  MCP Client  │────▶│  API Gateway    │────▶│    Lambda    │
-│              │     │  (HTTP API)     │     │  (MCP Server)│
+│              │     │  (HTTP API)     │     │ (MCP Handler)│
 └──────────────┘     └─────────────────┘     └──────┬───────┘
                                                     │
                      ┌─────────────────┐            │
@@ -399,14 +399,14 @@ npm run manage-keys -- revoke <key>      # Revoke a key (by key or hash prefix)
 
 #### Step 4: Build the Hosted Extension Package
 
-Create a `.mcpb` file pre-configured with your server URL that users can install with one click:
+Create a `.mcpb` file pre-configured with your endpoint URL that users can install with one click:
 
 ```bash
 npm run package:hosted
 ```
 
 This creates `capture-mcp-server-hosted.mcpb` containing:
-- Your server's MCP endpoint URL (from sync-config)
+- Your MCP endpoint URL (from sync-config)
 - Prompts for API keys during installation
 - All metadata and branding
 
