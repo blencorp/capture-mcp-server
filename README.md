@@ -15,6 +15,7 @@ Capture MCP empowers users to capture and query federal entity, opportunity, and
 - [Installation Methods](#installation-methods)
   - [Method 1: One-Click Installation (Claude Desktop)](#method-1-one-click-installation-claude-desktop)
   - [Method 2: Standard MCP Configuration](#method-2-standard-mcp-configuration-recommended)
+  - [Method 3: Hosted Version (AWS Serverless)](#method-3-hosted-version-aws-serverless)
 - [API Keys](#api-keys)
 - [Testing & Verification](#testing--verification)
 - [Troubleshooting](#troubleshooting)
@@ -81,6 +82,8 @@ The server automatically enables tools based on which API keys you provide:
 **For Claude Desktop users**: Use [Method 1: One-Click Installation](#method-1-one-click-installation-claude-desktop) for the easiest setup with a graphical API key configuration interface.
 
 **For ChatGPT Desktop or other MCP clients**: Use [Method 2: Standard MCP Configuration](#method-2-standard-mcp-configuration-recommended) which works universally across all MCP-compatible applications.
+
+**For hosting your own server**: Use [Method 3: Hosted Version (AWS Serverless)](#method-3-hosted-version-aws-serverless) to deploy a shared server for your organization on AWS.
 
 ## Installation Methods
 
@@ -287,6 +290,256 @@ Examples:
 Ask in a new conversation: *"List all available tools from the Capture MCP Server"*
 
 You should see 4-15 tools listed depending on your API key configuration.
+
+### Method 3: Hosted Version (AWS Serverless)
+
+Deploy a shared Capture MCP Server on AWS for your organization. You deploy once, then create API keys (`cap_xxx...`) to distribute to your users. The serverless architecture costs ~$1-11/month and scales automatically.
+
+### Architecture
+
+```
+┌──────────────┐     ┌─────────────────┐     ┌──────────────┐
+│  MCP Client  │────▶│  API Gateway    │────▶│    Lambda    │
+│              │     │  (HTTP API)     │     │  (MCP Server)│
+└──────────────┘     └─────────────────┘     └──────┬───────┘
+                                                    │
+                     ┌─────────────────┐            │
+                     │   S3 Bucket     │◀───────────┘
+                     │  (API Keys)     │   (HeadObject for auth)
+                     └─────────────────┘
+```
+
+### Prerequisites
+
+- **AWS Account** with permissions for Lambda, API Gateway, S3, CloudFormation, and IAM
+- **AWS CLI** installed and configured ([installation guide](https://docs.aws.amazon.com/cli/latest/userguide/getting-started-install.html))
+- **Node.js 20.x** or later
+- **AWS CDK CLI**: `npm install -g aws-cdk`
+
+### AWS Credentials Setup
+
+Before deploying, ensure your AWS credentials are configured. The CDK uses the same credential resolution as the AWS CLI.
+
+**Option 1: Default Profile**
+```bash
+aws configure
+# Enter your Access Key ID, Secret Access Key, and default region (e.g., us-east-1)
+```
+
+**Option 2: Named Profile**
+```bash
+aws configure --profile my-profile
+export AWS_PROFILE=my-profile
+```
+
+**Option 3: Environment Variables**
+```bash
+export AWS_ACCESS_KEY_ID=your-access-key
+export AWS_SECRET_ACCESS_KEY=your-secret-key
+export AWS_REGION=us-east-1
+```
+
+Verify your credentials are working:
+```bash
+aws sts get-caller-identity
+```
+
+#### Step 1: Deploy to AWS
+
+```bash
+# Install CDK dependencies
+cd infrastructure
+npm install
+cd ..
+
+# Bootstrap CDK (first time only per account/region)
+npm run cdk:bootstrap
+
+# Build and deploy (builds Lambda bundle automatically)
+npm run cdk:deploy
+```
+
+> **What is CDK Bootstrap?** The first time you deploy a CDK app to an AWS account/region, you need to provision initial resources that CDK uses (S3 bucket for assets, IAM roles, etc.). This is a one-time setup. Learn more: [CDK Bootstrapping](https://docs.aws.amazon.com/cdk/v2/guide/bootstrapping.html)
+
+```bash
+# Verify deployment succeeded - check the health endpoint
+curl https://<your-api-url>/health
+```
+
+#### Step 2: Sync Configuration
+
+After deployment, run `sync-config` to read the CloudFormation stack outputs and save them locally:
+
+```bash
+npm run sync-config
+```
+
+This creates `.capture-mcp.json` (gitignored) containing your deployment's bucket name, endpoint URL, and region. **This is required** before you can manage API keys or build the hosted extension package.
+
+#### Step 3: Create API Keys for Users
+
+Now create API keys for each user who needs access:
+
+```bash
+# Create a key that never expires
+npm run manage-keys -- create --owner "John Doe"
+
+# Create a key with an expiration date
+npm run manage-keys -- create --owner "Jane Smith" --expires "2025-12-31"
+```
+
+**Important**: Save the generated key immediately! It's displayed only once and cannot be retrieved later. Keys are stored as SHA-256 hashes in S3 for security.
+
+**Key Management Commands**:
+```bash
+npm run manage-keys -- list              # List all keys with owner and status
+npm run manage-keys -- verify <key>      # Check if a specific key is valid
+npm run manage-keys -- revoke <key>      # Revoke a key (by key or hash prefix)
+```
+
+#### Step 4: Build the Hosted Extension Package
+
+Create a `.mcpb` file pre-configured with your server URL that users can install with one click:
+
+```bash
+npm run package:hosted
+```
+
+This creates `capture-mcp-server-hosted.mcpb` containing:
+- Your server's MCP endpoint URL (from sync-config)
+- Prompts for API keys during installation
+- All metadata and branding
+
+#### Step 5: Distribute to Users
+
+**Option A: Provide the `.mcpb` File (Recommended)**
+
+Send users the `capture-mcp-server-hosted.mcpb` file along with their API key. They install by:
+1. Double-clicking the `.mcpb` file to open in Claude Desktop
+2. Entering their API key (`cap_xxx...`) when prompted
+3. Optionally entering their own SAM.gov or Tango API keys for additional tools
+4. Clicking Install
+
+**Option B: Manual Configuration**
+
+For users who prefer manual setup, provide them:
+1. Your MCP endpoint URL (from deployment output)
+2. Their personal API key (`cap_xxx...`)
+
+They add this to their Claude Desktop config (`~/Library/Application Support/Claude/claude_desktop_config.json` on macOS):
+
+```json
+{
+  "mcpServers": {
+    "capture-hosted": {
+      "command": "npx",
+      "args": [
+        "-y",
+        "mcp-remote",
+        "https://YOUR-MCP-ENDPOINT/mcp",
+        "--header",
+        "X-Api-Key:cap_xxx..."
+      ]
+    }
+  }
+}
+```
+
+Users can add their own SAM.gov/Tango keys with additional `--header` arguments.
+
+### Cost Estimation
+
+| Usage Level | Requests/Month | Estimated Cost |
+|-------------|----------------|----------------|
+| Low         | 100k           | ~$1.11/month   |
+| Moderate    | 1M             | ~$11/month     |
+
+### Test Your Deployment
+
+```bash
+# List available tools via curl
+curl -X POST https://<your-mcp-endpoint>/mcp \
+  -H "Content-Type: application/json" \
+  -H "Accept: application/json, text/event-stream" \
+  -H "X-Api-Key: cap_your_api_key_here" \
+  -d '{"jsonrpc":"2.0","id":1,"method":"tools/list"}'
+```
+
+### Custom Domain (Optional)
+
+If your domain is managed as a **Route53 Hosted Zone**, the CDK will automatically:
+- Create an ACM certificate
+- Validate it via DNS (Route53)
+- Create a custom domain in API Gateway
+- Create an A record pointing to the API Gateway custom domain
+
+**Setup:**
+
+1. Create a `.env` file in the project root (copy from `.env.example`):
+   ```bash
+   # .env
+   AWS_REGION=us-east-1
+   AWS_ACCOUNT=123456789012
+   DOMAIN_NAME=mcp.example.com
+   ```
+
+2. Deploy with the custom domain:
+   ```bash
+   npm run cdk:deploy
+   ```
+
+> **Requirement**: The domain must exist as a hosted zone in Route53. For `mcp.example.com`, Route53 must have a hosted zone for `mcp.example.com`.
+
+### Updating the Deployment
+
+To update after code changes:
+
+```bash
+npm run cdk:deploy  # Rebuilds and deploys automatically
+```
+
+### Testing Infrastructure
+
+The CDK stack includes comprehensive tests to verify resource configuration:
+
+```bash
+npm run cdk:test
+```
+
+Tests cover S3 bucket security settings, Lambda configuration, API Gateway routes and CORS, IAM permissions, CloudWatch log retention, stack outputs, and environment-specific behavior (dev vs prod).
+
+### Destroying the Stack
+
+To remove all AWS resources:
+
+```bash
+npm run cdk:destroy
+```
+
+> **Note**: The S3 bucket is retained by default to preserve API keys. Delete it manually if needed.
+
+### Monitoring
+
+- **CloudWatch Logs**: `/aws/lambda/capture-mcp-server` (1 month retention)
+- **Key Metrics**: `AWS/Lambda/Invocations`, `AWS/Lambda/Duration`, `AWS/Lambda/Errors`
+- **Custom Metrics**: `CaptureMCP/MCPRequestLatency`
+
+### Security Notes
+
+- **API Keys**: Stored as SHA-256 hashes—raw keys never persisted
+- **S3 Bucket**: All public access blocked, SSL enforced
+- **Lambda IAM**: Least privilege (S3 read only)
+- **HTTPS Only**: All traffic encrypted via API Gateway
+
+### Troubleshooting
+
+| Problem | Solution |
+|---------|----------|
+| CDK deploy fails with bootstrap error | Run `npm run cdk:bootstrap` |
+| "API key required" (401) | Include `X-Api-Key` header |
+| "Invalid API key" (401) | Verify key with `npm run manage-keys -- verify <key>` |
+| AWS credential errors | Run `aws sts get-caller-identity` to verify credentials |
+| Lambda timeout | Check CloudWatch logs; some external APIs may be slow |
 
 ## API Keys
 
