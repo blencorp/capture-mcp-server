@@ -402,7 +402,7 @@ async function revokeKey(keyOrHash: string): Promise<void> {
 
   try {
     // Get key metadata before deleting (for confirmation)
-    let owner = 'Unknown';
+    let owner: string;
     try {
       const headResponse = await s3Client.send(new HeadObjectCommand({
         Bucket: BUCKET,
