@@ -355,9 +355,16 @@ cd ..
 # Bootstrap CDK (first time only per account/region)
 npm run cdk:bootstrap
 
-# Build and deploy (builds Lambda bundle automatically)
+# Build and deploy (requires manual approval for security-sensitive changes)
 npm run cdk:deploy
+
+# Or skip approval prompts entirely (use with caution)
+npm run cdk:deploy:yolo
 ```
+
+**Deploy Options**:
+- `npm run cdk:deploy` — Prompts for manual approval before creating/updating IAM roles, security groups, or other sensitive resources. Recommended for production.
+- `npm run cdk:deploy:yolo` — Skips all approval prompts (`--require-approval never`). Faster for development/testing, but use with caution in production.
 
 > **What is CDK Bootstrap?** The first time you deploy a CDK app to an AWS account/region, you need to provision initial resources that CDK uses (S3 bucket for assets, IAM roles, etc.). This is a one-time setup. Learn more: [CDK Bootstrapping](https://docs.aws.amazon.com/cdk/v2/guide/bootstrapping.html)
 
@@ -513,8 +520,16 @@ Tests cover S3 bucket security settings, Lambda configuration, API Gateway route
 To remove all AWS resources:
 
 ```bash
+# Prompts for confirmation before destroying
 npm run cdk:destroy
+
+# Or skip confirmation prompt entirely
+npm run cdk:destroy:yolo
 ```
+
+**Destroy Options**:
+- `npm run cdk:destroy` — Prompts for confirmation before deleting resources. Recommended to prevent accidental deletion.
+- `npm run cdk:destroy:yolo` — Skips confirmation (`--force`). Useful for automated teardown or when you're certain.
 
 > **Note**: The S3 bucket is retained by default to preserve API keys. Delete it manually if needed.
 

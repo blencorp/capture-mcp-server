@@ -2,7 +2,7 @@ import { Code, Function, LayerVersion, Runtime } from 'aws-cdk-lib/aws-lambda';
 import { HttpLambdaIntegration } from 'aws-cdk-lib/aws-apigatewayv2-integrations';
 import { Construct } from 'constructs';
 import * as path from 'path';
-import { CfnOutput, Duration, PhysicalName, RemovalPolicy, Stack, StackProps } from 'aws-cdk-lib';
+import { CfnOutput, Duration, RemovalPolicy, Stack, StackProps } from 'aws-cdk-lib';
 import { BlockPublicAccess, Bucket, BucketEncryption } from 'aws-cdk-lib/aws-s3';
 import { LogGroup, RetentionDays } from 'aws-cdk-lib/aws-logs';
 import { Effect, PolicyStatement } from 'aws-cdk-lib/aws-iam';

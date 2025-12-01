@@ -152,8 +152,6 @@ function generateHostedManifest(mcpEndpoint: string): void {
 
   const manifestPath = join(process.cwd(), HOSTED_MANIFEST_FILE);
   writeFileSync(manifestPath, JSON.stringify(hostedManifest, null, 2) + '\n');
-  
-  return;
 }
 
 // ============================================================================
