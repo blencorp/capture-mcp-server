@@ -102,12 +102,12 @@ function generateHostedManifest(mcpEndpoint: string): void {
     ],
     server: {
       type: "node",
-      entry_point: "mcp-remote",
+      entry_point: "mcp-remote@0.1.31",
       mcp_config: {
         command: "npx",
         args: [
           "-y",
-          "mcp-remote",
+          "mcp-remote@0.1.31",
           mcpEndpoint,
           "--header",
           "X-Api-Key:${API_KEY}",
