@@ -442,7 +442,7 @@ They add this to their Claude Desktop config (`~/Library/Application Support/Cla
       "command": "npx",
       "args": [
         "-y",
-        "mcp-remote",
+        "mcp-remote@0.1.31",
         "https://YOUR-MCP-ENDPOINT/mcp",
         "--header",
         "X-Api-Key:cap_xxx..."
