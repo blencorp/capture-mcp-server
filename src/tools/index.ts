@@ -12,6 +12,9 @@ const toolRegistry = new Map<string, (args: any) => Promise<any>>();
 export interface ApiKeyConfig {
   hasSamApiKey: boolean;
   hasTangoApiKey: boolean;
+  // Actual key values (from headers or env vars) for injection into tool calls
+  samApiKey?: string;
+  tangoApiKey?: string;
 }
 
 export async function initializeTools(config: ApiKeyConfig): Promise<Tool[]> {
@@ -65,12 +68,50 @@ export async function initializeTools(config: ApiKeyConfig): Promise<Tool[]> {
   return allTools;
 }
 
-export async function callTool(name: string, args: any): Promise<any> {
+/**
+ * Determines which API key to use for a given tool
+ */
+function getApiKeyForTool(toolName: string, keys: { samKey?: string, tangoKey?: string }): string | undefined {
+  // SAM tools and join tools need SAM API key
+  if (toolName.includes('sam') || toolName === 'get_entity_and_awards' || toolName === 'get_opportunity_spending_context') {
+    return keys.samKey;
+  }
+  // Tango tools need Tango API key
+  if (toolName.includes('tango')) {
+    return keys.tangoKey;
+  }
+  // USASpending tools don't need an API key
+  return undefined;
+}
+
+/**
+ * Call a tool by name with arguments
+ * @param name Tool name
+ * @param args Tool arguments
+ * @param apiKeyOverrides Optional API keys from HTTP headers to inject into args
+ */
+export async function callTool(
+  name: string, 
+  args: any, 
+  apiKeyOverrides?: { samKey?: string, tangoKey?: string }
+): Promise<any> {
   const toolFunction = toolRegistry.get(name);
   
   if (!toolFunction) {
     throw new Error(`Tool "${name}" not found`);
   }
 
-  return await toolFunction(args);
+  // Inject API key from headers if not already provided in args
+  let argsWithKey = args;
+  if (apiKeyOverrides) {
+    const keyForTool = getApiKeyForTool(name, apiKeyOverrides);
+    if (keyForTool && !args?.api_key) {
+      argsWithKey = { ...args, api_key: keyForTool };
+      if (process.env.DEBUG) {
+        console.error(`[${name}] Injecting API key from header`);
+      }
+    }
+  }
+
+  return await toolFunction(argsWithKey);
 }
