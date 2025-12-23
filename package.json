@@ -4,11 +4,23 @@
   "description": "AI-native Model Context Protocol server for SAM.gov, USASpending.gov, and Tango federal procurement data.",
   "main": "dist/server.js",
   "scripts": {
-    "build": "tsc",
+    "build": "tsc && cp package.json dist/",
+    "build:lambda": "npm run build && cp package-lock.json dist/ && cd dist && npm ci --omit=dev && cd ..",
     "start": "node dist/server.js",
     "dev": "node --import ./ts-node.register.mjs src/server.ts",
+    "manage-keys": "node --import ./ts-node.register.mjs scripts/manage-keys.ts",
+    "sync-config": "node --import ./ts-node.register.mjs scripts/sync-config.ts",
+    "cdk:bootstrap": "cd infrastructure && npx cdk bootstrap",
+    "cdk:deploy:yolo": "npm run build:lambda && cd infrastructure && npx cdk deploy CaptureServerless --require-approval never",
+    "cdk:deploy": "npm run build:lambda && cd infrastructure && npx cdk deploy CaptureServerless",
+    "cdk:destroy:yolo": "cd infrastructure && npx cdk destroy CaptureServerless --force",
+    "cdk:destroy": "cd infrastructure && npx cdk destroy CaptureServerless",
+    "cdk:synth": "npm run build:lambda && cd infrastructure && npx cdk synth CaptureServerless",
+    "cdk:ls": "cd infrastructure && npx cdk ls",
+    "cdk:test": "cd infrastructure && npm test",
     "test": "echo \"Error: no test specified\" && exit 1",
     "package": "npm run build && npm ci --omit=dev && zip -r capture-mcp-server.mcpb dist/ node_modules/ manifest.json icon.png && npm install",
+    "package:hosted": "mkdir -p .tmp-hosted && cp manifest-hosted.json .tmp-hosted/manifest.json && cp icon.png .tmp-hosted/ && cd .tmp-hosted && zip -r ../capture-mcp-server-hosted.mcpb manifest.json icon.png && cd .. && rm -rf .tmp-hosted",
     "package:dxt": "npm run build && zip -r capture-mcp-server.dxt dist/ manifest.json icon.png"
   },
   "keywords": [
@@ -31,10 +43,18 @@
   "homepage": "https://github.com/blencorp/capture-mcp-server#readme",
   "type": "module",
   "dependencies": {
+    "@aws-lambda-powertools/logger": "^2.12.0",
+    "@aws-lambda-powertools/metrics": "^2.12.0",
+    "@aws-sdk/client-cloudformation": "^3.939.0",
+    "@aws-sdk/client-s3": "^3.939.0",
+    "@codegenie/serverless-express": "^4.17.0",
     "@modelcontextprotocol/sdk": "^1.20.2",
-    "axios": "^1.13.0"
+    "axios": "^1.13.0",
+    "express": "^5.1.0"
   },
   "devDependencies": {
+    "@types/aws-lambda": "^8.10.147",
+    "@types/express": "^5.0.0",
     "@types/node": "^24.9.1",
     "nodemon": "^3.1.10",
     "ts-node": "^10.9.2",
