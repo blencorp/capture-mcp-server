@@ -49,6 +49,7 @@ const metrics = new Metrics({
 interface ApiKeyOverrides {
   samKey?: string;
   tangoKey?: string;
+  higherGovKey?: string;
 }
 
 /**
@@ -176,26 +177,32 @@ function createApp(): express.Application {
       // Extract API keys from headers
       const headerSamKey = req.get('X-Sam-Api-Key') || req.get('x-sam-api-key');
       const headerTangoKey = req.get('X-Tango-Api-Key') || req.get('x-tango-api-key');
-      
+      const headerHigherGovKey = req.get('X-Highergov-Api-Key') || req.get('x-highergov-api-key');
+
       const samApiKey = headerSamKey || process.env.SAM_GOV_API_KEY;
       const tangoApiKey = headerTangoKey || process.env.TANGO_API_KEY;
-      
+      const higherGovApiKey = headerHigherGovKey || process.env.HIGHERGOV_API_KEY;
+
       const config: ApiKeyConfig = {
         hasSamApiKey: !!samApiKey,
         hasTangoApiKey: !!tangoApiKey,
+        hasHigherGovApiKey: !!higherGovApiKey,
         samApiKey,
-        tangoApiKey
+        tangoApiKey,
+        higherGovApiKey
       };
 
       const apiKeyOverrides: ApiKeyOverrides = {
         samKey: samApiKey,
-        tangoKey: tangoApiKey
+        tangoKey: tangoApiKey,
+        higherGovKey: higherGovApiKey
       };
 
       // Log API key sources
       logger.debug('API Key Sources', {
         samSource: headerSamKey ? 'header' : samApiKey ? 'env' : 'none',
         tangoSource: headerTangoKey ? 'header' : tangoApiKey ? 'env' : 'none',
+        higherGovSource: headerHigherGovKey ? 'header' : higherGovApiKey ? 'env' : 'none',
       });
 
       await setupHandlers(server, config, apiKeyOverrides);

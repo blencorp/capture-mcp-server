@@ -5,6 +5,7 @@ import { samTools } from './sam-tools.js';
 import { usaspendingTools } from './usaspending-tools.js';
 import { joinTools } from './join-tools.js';
 import { tangoTools } from './tango-tools.js';
+import { highergovTools } from './highergov-tools.js';
 
 // Tool registry
 const toolRegistry = new Map<string, (args: any) => Promise<any>>();
@@ -12,9 +13,11 @@ const toolRegistry = new Map<string, (args: any) => Promise<any>>();
 export interface ApiKeyConfig {
   hasSamApiKey: boolean;
   hasTangoApiKey: boolean;
+  hasHigherGovApiKey: boolean;
   // Actual key values (from headers or env vars) for injection into tool calls
   samApiKey?: string;
   tangoApiKey?: string;
+  higherGovApiKey?: string;
 }
 
 export async function initializeTools(config: ApiKeyConfig): Promise<Tool[]> {
@@ -59,6 +62,16 @@ export async function initializeTools(config: ApiKeyConfig): Promise<Tool[]> {
     enabledToolSets.push("Tango API (5 tools)");
   }
 
+  // Conditionally register HigherGov tools
+  if (config.hasHigherGovApiKey) {
+    const highergovToolList = await highergovTools.getTools();
+    highergovToolList.forEach(tool => {
+      allTools.push(tool);
+      toolRegistry.set(tool.name, (args) => highergovTools.callTool(tool.name, args));
+    });
+    enabledToolSets.push("HigherGov (6 tools)");
+  }
+
   // Log enabled tool sets in debug mode
   if (process.env.DEBUG) {
     console.error(`Enabled tool sets: ${enabledToolSets.join(", ")}`);
@@ -71,7 +84,7 @@ export async function initializeTools(config: ApiKeyConfig): Promise<Tool[]> {
 /**
  * Determines which API key to use for a given tool
  */
-function getApiKeyForTool(toolName: string, keys: { samKey?: string, tangoKey?: string }): string | undefined {
+function getApiKeyForTool(toolName: string, keys: { samKey?: string, tangoKey?: string, higherGovKey?: string }): string | undefined {
   // SAM tools and join tools need SAM API key
   if (toolName.includes('sam') || toolName === 'get_entity_and_awards' || toolName === 'get_opportunity_spending_context') {
     return keys.samKey;
@@ -79,6 +92,10 @@ function getApiKeyForTool(toolName: string, keys: { samKey?: string, tangoKey?: 
   // Tango tools need Tango API key
   if (toolName.includes('tango')) {
     return keys.tangoKey;
+  }
+  // HigherGov tools need HigherGov API key
+  if (toolName.includes('highergov')) {
+    return keys.higherGovKey;
   }
   // USASpending tools don't need an API key
   return undefined;
@@ -93,7 +110,7 @@ function getApiKeyForTool(toolName: string, keys: { samKey?: string, tangoKey?: 
 export async function callTool(
   name: string, 
   args: any, 
-  apiKeyOverrides?: { samKey?: string, tangoKey?: string }
+  apiKeyOverrides?: { samKey?: string, tangoKey?: string, higherGovKey?: string }
 ): Promise<any> {
   const toolFunction = toolRegistry.get(name);
   
