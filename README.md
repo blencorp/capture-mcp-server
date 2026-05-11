@@ -1036,6 +1036,38 @@ Common error types:
 - **Not found errors**: Resource doesn't exist
 - **Server errors**: API temporarily unavailable
 
+## Deploying to Railway
+
+The server runs in HTTP mode (StreamableHTTP transport) when `MCP_TRANSPORT=http`. Railway is the simplest host.
+
+1. Create a new Railway service from this repo (Nixpacks auto-detects Node).
+2. Set environment variables in the Railway dashboard:
+   - `MCP_TRANSPORT=http` (required — switches from stdio)
+   - `NODE_ENV=production`
+   - `HIGHERGOV_API_KEY` (and/or `SAM_GOV_API_KEY`, `TANGO_API_KEY`) — only set what you want enabled
+   - **Do not set `PORT`** — Railway injects it.
+3. Deploy. `railway.toml` runs `npm ci && npm run build` and starts via `npm start`, with healthcheck on `GET /health`.
+4. Add a custom domain in Settings → Domains (e.g. `capture.mcp.blencorp.com`) and point a CNAME at the value Railway shows.
+
+### Auth posture
+
+`POST /mcp` has **no server-side auth** in HTTP mode (only the AWS Lambda path uses the S3 API-key middleware). Before exposing publicly, pick one:
+
+- **Private networking (recommended for BLEN-only callers):** keep the service private and reach it from other Railway services via `<service>.railway.internal`. No public domain.
+- **Bearer token:** add an Express middleware that checks a static `Authorization: Bearer <token>` against an env var (e.g. `MCP_AUTH_TOKEN`) before forwarding to `/mcp`.
+
+### Smoke test after deploy
+
+```bash
+curl -sf https://<your-domain>/health
+curl -sf https://<your-domain>/mcp \
+  -H 'Content-Type: application/json' \
+  -H 'Accept: application/json, text/event-stream' \
+  -d '{"jsonrpc":"2.0","id":1,"method":"tools/list"}'
+```
+
+The second call returns the available tools — the set depends on which API-key env vars you set.
+
 ## Development
 
 ### Development Setup
