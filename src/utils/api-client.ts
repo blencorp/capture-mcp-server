@@ -6,30 +6,34 @@ export interface ApiResponse<T = any> {
   error?: string;
 }
 
-type ApiFamily = 'sam' | 'usaspending' | 'tango';
+type ApiFamily = 'sam' | 'usaspending' | 'tango' | 'highergov';
 
 export class ApiClient {
   private static readonly SAM_BASE_URL = 'https://api.sam.gov';
   private static readonly USASPENDING_BASE_URL = 'https://api.usaspending.gov/api/v2';
   private static readonly TANGO_BASE_URL = 'https://tango.makegov.com/api';
+  private static readonly HIGHERGOV_BASE_URL = 'https://www.highergov.com/api-external';
 
   // Rate limiting: queue-based guard so concurrent requests respect per-API pacing
   private static readonly RATE_LIMIT_MS: Record<ApiFamily, number> = {
     sam: 100, // Conservative delay for SAM.gov
     usaspending: 3600, // ~3.6 seconds between calls (~1000/hour) for USASpending
     tango: 100, // Conservative delay for Tango API
+    highergov: 200, // Conservative pacing for HigherGov; tune against documented plan ceiling
   };
 
   private static readonly rateLimitQueues: Record<ApiFamily, Promise<void>> = {
     sam: Promise.resolve(),
     usaspending: Promise.resolve(),
     tango: Promise.resolve(),
+    highergov: Promise.resolve(),
   };
 
   private static readonly lastCallTimestamp: Record<ApiFamily, number> = {
     sam: 0,
     usaspending: 0,
     tango: 0,
+    highergov: 0,
   };
 
   private static async enforceRateLimit(apiType: ApiFamily): Promise<void> {
@@ -192,6 +196,32 @@ export class ApiClient {
         data: response.data,
         success: true
       };
+    } catch (error) {
+      return this.handleError(error as AxiosError);
+    }
+  }
+
+  static async highergovGet<T = any>(
+    endpoint: string,
+    params: Record<string, any> = {},
+    apiKey: string
+  ): Promise<ApiResponse<T>> {
+    await this.enforceRateLimit('highergov');
+
+    try {
+      const response: AxiosResponse<T> = await axios.get(
+        `${this.HIGHERGOV_BASE_URL}${endpoint}`,
+        {
+          params: { ...params, api_key: apiKey },
+          timeout: 30000,
+          headers: {
+            'Accept': 'application/json',
+            'User-Agent': 'Capture-MCP/1.0.0'
+          }
+        }
+      );
+
+      return { data: response.data, success: true };
     } catch (error) {
       return this.handleError(error as AxiosError);
     }
