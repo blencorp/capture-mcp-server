@@ -17,7 +17,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Architecture Overview
 
-This is a Model Context Protocol (MCP) server that captures federal procurement and spending data through 15 specialized tools. The architecture follows a modular tool-based design:
+This is a Model Context Protocol (MCP) server that captures federal procurement and spending data through 21 specialized tools. The architecture follows a modular tool-based design:
 
 ### Core Components
 
@@ -27,10 +27,11 @@ This is a Model Context Protocol (MCP) server that captures federal procurement 
 - Handles tool registration and execution through centralized registry
 
 **Tool Architecture (`src/tools/`)**
-- Modular tool system with four categories:
+- Modular tool system with five categories:
   - `sam-tools.ts` - 4 SAM.gov API tools (entities, opportunities, details, exclusions)
   - `usaspending-tools.ts` - 4 USASpending.gov API tools (awards, spending, budgets, recipient search)
   - `tango-tools.ts` - 5 Tango API tools (contracts, grants, vendor profiles, opportunities, spending summaries)
+  - `highergov-tools.ts` - 6 HigherGov tools (forecast search, opportunity/contract/person lookups, contract/people search). Responses are normalized to lowercase agency/vehicle/set-aside slugs via `utils/highergov-slugs.ts`. `get_*` tools cache for 15 min in an in-process LRU.
   - `join-tools.ts` - 2 cross-API tools (entity+awards, opportunity+context)
 - Each tool module exports `getTools()` and `callTool()` methods
 - Central registry in `tools/index.ts` manages all tool registration
@@ -40,6 +41,7 @@ This is a Model Context Protocol (MCP) server that captures federal procurement 
 - SAM.gov: 100ms delay between calls
 - USASpending.gov: 3.6s delay (respects ~1000/hour limit)
 - Tango API: 100ms delay between calls
+- HigherGov: 200ms delay between calls
 - Built-in error handling and input sanitization
 - Supports both GET and POST requests with timeouts
 
@@ -72,12 +74,16 @@ This is a Model Context Protocol (MCP) server that captures federal procurement 
 Optional environment variables (configure based on which tools you need):
 - `SAM_GOV_API_KEY` - API key from sam.gov/data-services/API (enables SAM.gov + Join tools)
 - `TANGO_API_KEY` - API key from tango.makegov.com (enables Tango tools)
+- `HIGHERGOV_API_KEY` - API key from highergov.com (enables HigherGov tools)
 
-**Tool Availability Based on API Keys**:
-- **No keys**: 4 USASpending.gov tools (public API)
-- **SAM_GOV_API_KEY only**: 10 tools (4 SAM + 4 USASpending + 2 Join)
-- **TANGO_API_KEY only**: 9 tools (5 Tango + 4 USASpending)
-- **Both keys**: All 15 tools
+**Tool Availability Based on API Keys** (USASpending is always available):
+- 4 SAM + 2 Join when `SAM_GOV_API_KEY` is set
+- 5 Tango when `TANGO_API_KEY` is set
+- 6 HigherGov when `HIGHERGOV_API_KEY` is set
+- All 21 tools when all three keys are set
+
+HTTP header overrides (precedence over env vars) — used by remote MCP clients:
+`X-Sam-Api-Key`, `X-Tango-Api-Key`, `X-Highergov-Api-Key`.
 
 The server automatically registers only the tools for which API keys are available.
 
