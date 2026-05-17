@@ -212,6 +212,7 @@ export class ApiClient {
       const response: AxiosResponse<T> = await axios.get(
         `${this.HIGHERGOV_BASE_URL}${endpoint}`,
         {
+          // HigherGov's current public OAS requires api_key as a query parameter.
           params: { ...params, api_key: apiKey },
           timeout: 30000,
           headers: {
