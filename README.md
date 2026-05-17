@@ -1060,6 +1060,9 @@ The server runs in HTTP mode (StreamableHTTP transport) when `MCP_TRANSPORT=http
 
 ```bash
 curl -sf https://<your-domain>/health
+
+# This server uses stateless StreamableHTTP in HTTP mode, so no session
+# initialization or Mcp-Session-Id header is required for this smoke test.
 curl -sf https://<your-domain>/mcp \
   -H 'Content-Type: application/json' \
   -H 'Accept: application/json, text/event-stream' \
