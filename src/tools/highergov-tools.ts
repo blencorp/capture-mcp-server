@@ -1,4 +1,5 @@
 import { Tool } from "@modelcontextprotocol/sdk/types.js";
+import { createHash } from 'node:crypto';
 import { ApiClient, ApiResponse } from '../utils/api-client.js';
 import {
   normalizeAgency,
@@ -19,6 +20,19 @@ const CACHE_MAX_ENTRIES = 500;
 type CacheEntry = { value: any; expiresAt: number };
 const cache = new Map<string, CacheEntry>();
 
+function cloneCacheValue<T>(value: T): T {
+  if (value === null || value === undefined) return value;
+  return JSON.parse(JSON.stringify(value)) as T;
+}
+
+function apiKeyScope(apiKey: string): string {
+  return createHash('sha256').update(apiKey).digest('hex').slice(0, 16);
+}
+
+function buildCacheKey(kind: string, id: string, apiKey: string): string {
+  return `${kind}:${apiKeyScope(apiKey)}:${id}`;
+}
+
 function cacheGet(key: string): any | undefined {
   const hit = cache.get(key);
   if (!hit) return undefined;
@@ -29,7 +43,7 @@ function cacheGet(key: string): any | undefined {
   // LRU touch
   cache.delete(key);
   cache.set(key, hit);
-  return hit.value;
+  return cloneCacheValue(hit.value);
 }
 
 function cacheSet(key: string, value: any): void {
@@ -37,11 +51,18 @@ function cacheSet(key: string, value: any): void {
     const oldest = cache.keys().next().value;
     if (oldest) cache.delete(oldest);
   }
-  cache.set(key, { value, expiresAt: Date.now() + CACHE_TTL_MS });
+  cache.set(key, { value: cloneCacheValue(value), expiresAt: Date.now() + CACHE_TTL_MS });
 }
 
 // ---- Standard error shape (spec §3.4) ----
 type ErrorCode = 'not_found' | 'bad_request' | 'upstream_error' | 'rate_limited' | 'auth_failed';
+
+class MissingHigherGovApiKeyError extends Error {
+  constructor() {
+    super('HigherGov API key required. Provide via HIGHERGOV_API_KEY env var or X-Highergov-Api-Key header.');
+    this.name = 'MissingHigherGovApiKeyError';
+  }
+}
 
 function errorResponse(code: ErrorCode, message: string, retryAfterSeconds: number | null = null) {
   return {
@@ -53,10 +74,15 @@ function errorResponse(code: ErrorCode, message: string, retryAfterSeconds: numb
   };
 }
 
+function upstreamStatus(err: string | undefined): number {
+  const text = err || '';
+  const statusMatch = text.match(/API Error (\d+)/);
+  return statusMatch ? Number(statusMatch[1]) : 0;
+}
+
 function classifyUpstreamError(err: string | undefined): ReturnType<typeof errorResponse> {
   const text = err || 'Unknown upstream error';
-  const statusMatch = text.match(/API Error (\d+)/);
-  const status = statusMatch ? Number(statusMatch[1]) : 0;
+  const status = upstreamStatus(err);
 
   if (status === 401 || status === 403) {
     // Don't leak that the server-side HigherGov key is the problem.
@@ -68,10 +94,15 @@ function classifyUpstreamError(err: string | undefined): ReturnType<typeof error
   return errorResponse('upstream_error', text);
 }
 
+function shouldTryLookupFallback(err: string | undefined): boolean {
+  const status = upstreamStatus(err);
+  return status === 400 || status === 404;
+}
+
 function getApiKey(args: any): string {
   const key = args?.api_key || process.env.HIGHERGOV_API_KEY;
   if (!key) {
-    throw new Error('HigherGov API key required. Provide via HIGHERGOV_API_KEY env var or X-Highergov-Api-Key header.');
+    throw new MissingHigherGovApiKeyError();
   }
   return key;
 }
@@ -211,24 +242,32 @@ function normalizePersonFull(raw: any) {
   };
 }
 
-// HigherGov endpoints typically return a `next` URL; surface as cursor pass-through.
-function nextCursor(raw: any): string | null {
-  return raw?.next ?? raw?.next_cursor ?? null;
+function resultArray(raw: any): any[] {
+  const list = raw?.results ?? raw?.data ?? [];
+  return Array.isArray(list) ? list : [];
 }
 
-function isPocTitle(title?: string): boolean {
-  if (!title) return true;
-  const t = title.toLowerCase();
-  return [
-    'contracting officer',
-    'contract specialist',
-    'program manager',
-    'technical lead',
-    'innovation',
-    'cor',
-    'cotr',
-    'procurement',
-  ].some(k => t.includes(k));
+function pageNumberFromCursor(cursor: unknown): string | null {
+  if (cursor === null || cursor === undefined) return null;
+  const text = String(cursor).trim();
+  if (!text) return null;
+
+  try {
+    const url = new URL(text, 'https://www.highergov.com');
+    return url.searchParams.get('page_number') ?? url.searchParams.get('page') ?? text;
+  } catch {
+    return text;
+  }
+}
+
+function applyPageCursor(params: Record<string, any>, cursor: unknown): void {
+  const pageNumber = pageNumberFromCursor(cursor);
+  if (pageNumber) params.page_number = pageNumber;
+}
+
+// HigherGov endpoints return a `next` URL with page_number. Surface only that token.
+function nextCursor(raw: any): string | null {
+  return pageNumberFromCursor(raw?.next ?? raw?.next_cursor ?? null);
 }
 
 // ---- Tool surface ----
@@ -247,7 +286,7 @@ export const highergovTools = {
             saved_search_id: { type: 'string', description: 'HigherGov saved-search ID (required)' },
             since: { type: 'string', description: 'ISO-8601 datetime; defaults to last 24h' },
             limit: { type: 'number', description: 'Number of results (default 50, max 200)' },
-            cursor: { type: 'string', description: 'Pagination token from prior next_cursor' },
+            cursor: { type: 'string', description: 'Page number from prior next_cursor' },
           },
           required: ['saved_search_id'],
         },
@@ -281,7 +320,7 @@ export const highergovTools = {
             min_value: { type: 'number', description: 'USD' },
             max_value: { type: 'number', description: 'USD' },
             limit: { type: 'number', description: 'Default 50, max 200' },
-            cursor: { type: 'string' },
+            cursor: { type: 'string', description: 'Page number from prior next_cursor' },
           },
           required: [],
         },
@@ -311,7 +350,7 @@ export const highergovTools = {
             sub_agency: { type: 'string' },
             role_keywords: { type: 'array', items: { type: 'string' } },
             limit: { type: 'number', description: 'Default 20, max 100' },
-            cursor: { type: 'string' },
+            cursor: { type: 'string', description: 'Page number from prior next_cursor' },
           },
           required: ['agency'],
         },
@@ -352,6 +391,9 @@ export const highergovTools = {
           throw new Error(`Unknown HigherGov tool: ${name}`);
       }
     } catch (err) {
+      if (err instanceof MissingHigherGovApiKeyError) {
+        return errorResponse('auth_failed', err.message);
+      }
       const message = err instanceof Error ? err.message : String(err);
       return errorResponse('bad_request', message);
     }
@@ -369,12 +411,12 @@ export const highergovTools = {
       modified_since: since,
       page_size: limit,
     };
-    if (args.cursor) params.cursor = args.cursor;
+    applyPageCursor(params, args.cursor);
 
     const res: ApiResponse = await ApiClient.highergovGet('/opportunity/', params, apiKey);
     if (!res.success) return classifyUpstreamError(res.error);
 
-    const list = res.data?.results ?? res.data?.data ?? [];
+    const list = resultArray(res.data);
     return {
       results: list.map(normalizeForecast),
       next_cursor: nextCursor(res.data),
@@ -386,20 +428,28 @@ export const highergovTools = {
     if (!args.id) return errorResponse('bad_request', 'id is required');
 
     const id = extractId(String(args.id));
-    const cacheKey = `opportunity:${id}`;
+    const cacheKey = buildCacheKey('opportunity', id, apiKey);
     const cached = cacheGet(cacheKey);
     if (cached) return cached;
 
-    // Try as HigherGov opportunity_key first; if that fails, try as SAM notice id.
+    // Try as HigherGov opportunity_key first; if that fails, try as source/SAM notice id.
     let res = await ApiClient.highergovGet(`/opportunity/${encodeURIComponent(id)}/`, {}, apiKey);
     if (!res.success) {
-      const fallback = await ApiClient.highergovGet('/opportunity/', { sam_notice_id: id, page_size: 1 }, apiKey);
-      if (fallback.success && (fallback.data?.results?.length ?? 0) > 0) {
-        const result = normalizeOpportunity(fallback.data.results[0]);
+      if (!shouldTryLookupFallback(res.error)) {
+        return classifyUpstreamError(res.error);
+      }
+
+      const fallback = await ApiClient.highergovGet('/opportunity/', { source_id: id, page_size: 1 }, apiKey);
+      if (!fallback.success) return classifyUpstreamError(fallback.error);
+
+      const fallbackList = resultArray(fallback.data);
+      if (fallbackList.length > 0) {
+        const result = normalizeOpportunity(fallbackList[0]);
         cacheSet(cacheKey, result);
         return result;
       }
-      return classifyUpstreamError(res.error);
+
+      return errorResponse('not_found', 'Resource not found');
     }
 
     const result = normalizeOpportunity(res.data?.result ?? res.data);
@@ -425,12 +475,12 @@ export const highergovTools = {
     if (args.pop_end_before) params.pop_end_before = args.pop_end_before;
     if (args.min_value !== undefined) params.min_value = args.min_value;
     if (args.max_value !== undefined) params.max_value = args.max_value;
-    if (args.cursor) params.cursor = args.cursor;
+    applyPageCursor(params, args.cursor);
 
     const res = await ApiClient.highergovGet('/contract/', params, apiKey);
     if (!res.success) return classifyUpstreamError(res.error);
 
-    const list = res.data?.results ?? res.data?.data ?? [];
+    const list = resultArray(res.data);
     return {
       results: list.map(normalizeContractSummary),
       next_cursor: nextCursor(res.data),
@@ -442,19 +492,27 @@ export const highergovTools = {
     if (!args.id) return errorResponse('bad_request', 'id is required');
 
     const id = extractId(String(args.id));
-    const cacheKey = `contract:${id}`;
+    const cacheKey = buildCacheKey('contract', id, apiKey);
     const cached = cacheGet(cacheKey);
     if (cached) return cached;
 
     let res = await ApiClient.highergovGet(`/contract/${encodeURIComponent(id)}/`, {}, apiKey);
     if (!res.success) {
-      const fallback = await ApiClient.highergovGet('/contract/', { piid: id, page_size: 1 }, apiKey);
-      if (fallback.success && (fallback.data?.results?.length ?? 0) > 0) {
-        const result = normalizeContractFull(fallback.data.results[0]);
+      if (!shouldTryLookupFallback(res.error)) {
+        return classifyUpstreamError(res.error);
+      }
+
+      const fallback = await ApiClient.highergovGet('/contract/', { award_id: id, page_size: 1 }, apiKey);
+      if (!fallback.success) return classifyUpstreamError(fallback.error);
+
+      const fallbackList = resultArray(fallback.data);
+      if (fallbackList.length > 0) {
+        const result = normalizeContractFull(fallbackList[0]);
         cacheSet(cacheKey, result);
         return result;
       }
-      return classifyUpstreamError(res.error);
+
+      return errorResponse('not_found', 'Resource not found');
     }
 
     const result = normalizeContractFull(res.data?.result ?? res.data);
@@ -471,18 +529,14 @@ export const highergovTools = {
     if (args.sub_agency) params.sub_agency_name = args.sub_agency;
     const roleKeywords = asStringArray(args.role_keywords);
     if (roleKeywords.length) params.search = roleKeywords.join(' ');
-    if (args.cursor) params.cursor = args.cursor;
+    applyPageCursor(params, args.cursor);
 
     const res = await ApiClient.highergovGet('/people/', params, apiKey);
     if (!res.success) return classifyUpstreamError(res.error);
 
-    const list = res.data?.results ?? res.data?.data ?? [];
-    const filtered = list
-      .filter((p: any) => isPocTitle(p.title ?? p.position))
-      .map(normalizePersonSummary);
-
+    const list = resultArray(res.data);
     return {
-      results: filtered,
+      results: list.map(normalizePersonSummary),
       next_cursor: nextCursor(res.data),
     };
   },
@@ -492,7 +546,7 @@ export const highergovTools = {
     if (!args.id) return errorResponse('bad_request', 'id is required');
 
     const id = extractId(String(args.id));
-    const cacheKey = `person:${id}`;
+    const cacheKey = buildCacheKey('person', id, apiKey);
     const cached = cacheGet(cacheKey);
     if (cached) return cached;
 

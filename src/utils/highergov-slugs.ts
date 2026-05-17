@@ -49,7 +49,9 @@ const SET_ASIDE_MAP: Record<string, string> = {
   'sdvosbc': 'sdvosb',
   '8(a)': '8a',
   '8a': '8a',
+  '8(a) competitive': '8a',
   '8a competitive': '8a',
+  '8(a) sole source': '8a',
   '8a sole source': '8a',
   'hubzone': 'hubzone',
   'historically underutilized business zone': 'hubzone',
@@ -78,6 +80,10 @@ function fallbackSlug(value: string): string {
     .replace(/^-+|-+$/g, '');
 }
 
+// Null means the source field was absent. Non-empty unknown values intentionally
+// return a fallback slug so consumers keep a stable, display-safe value.
+export function normalizeAgency(raw: string): string;
+export function normalizeAgency(raw?: string | null): string | null;
 export function normalizeAgency(raw?: string | null): string | null {
   if (!raw) return null;
   const key = raw.trim().toLowerCase();
@@ -86,6 +92,8 @@ export function normalizeAgency(raw?: string | null): string | null {
   return fallbackSlug(raw);
 }
 
+export function normalizeVehicle(raw: string): string;
+export function normalizeVehicle(raw?: string | null): string | null;
 export function normalizeVehicle(raw?: string | null): string | null {
   if (!raw) return null;
   const key = raw.trim().toLowerCase();
@@ -94,6 +102,8 @@ export function normalizeVehicle(raw?: string | null): string | null {
   return fallbackSlug(raw);
 }
 
+export function normalizeSetAside(raw: string): string;
+export function normalizeSetAside(raw?: string | null): string | null;
 export function normalizeSetAside(raw?: string | null): string | null {
   if (!raw) return null;
   const key = raw.trim().toLowerCase();
