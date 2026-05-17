@@ -42,6 +42,7 @@ function createServer(): Server {
 interface ApiKeyOverrides {
   samKey?: string;
   tangoKey?: string;
+  higherGovKey?: string;
 }
 
 /**
@@ -109,12 +110,13 @@ function logStartupInfo(config: ApiKeyConfig, toolCount: number): void {
     console.error("API Key Status:");
     console.error(`  SAM.gov API Key: ${config.hasSamApiKey ? "✓ Configured" : "✗ Not set"}`);
     console.error(`  Tango API Key: ${config.hasTangoApiKey ? "✓ Configured" : "✗ Not set"}`);
+    console.error(`  HigherGov API Key: ${config.hasHigherGovApiKey ? "✓ Configured" : "✗ Not set"}`);
     console.error("  USASpending.gov: ✓ Always available (public API)");
     console.error(`Total tools available: ${toolCount}`);
 
-    if (!config.hasSamApiKey && !config.hasTangoApiKey) {
+    if (!config.hasSamApiKey && !config.hasTangoApiKey && !config.hasHigherGovApiKey) {
       console.error("\nWARNING: No API keys configured. Only USASpending.gov tools will be available.");
-      console.error("Set SAM_GOV_API_KEY and/or TANGO_API_KEY environment variables to enable additional tools.");
+      console.error("Set SAM_GOV_API_KEY, TANGO_API_KEY, and/or HIGHERGOV_API_KEY environment variables to enable additional tools.");
     }
   }
 }
@@ -128,7 +130,8 @@ async function runStdioMode(): Promise<void> {
   // Check which API keys are available
   const config: ApiKeyConfig = {
     hasSamApiKey: !!process.env.SAM_GOV_API_KEY,
-    hasTangoApiKey: !!process.env.TANGO_API_KEY
+    hasTangoApiKey: !!process.env.TANGO_API_KEY,
+    hasHigherGovApiKey: !!process.env.HIGHERGOV_API_KEY
   };
 
   const tools = await setupHandlers(server, config);
@@ -164,29 +167,35 @@ async function runHttpMode(): Promise<void> {
       // Extract API keys from headers (case-insensitive)
       const headerSamKey = req.get('X-Sam-Api-Key') || req.get('x-sam-api-key');
       const headerTangoKey = req.get('X-Tango-Api-Key') || req.get('x-tango-api-key');
-      
+      const headerHigherGovKey = req.get('X-Highergov-Api-Key') || req.get('x-highergov-api-key');
+
       // API keys: headers take precedence over env vars
       const samApiKey = headerSamKey || process.env.SAM_GOV_API_KEY;
       const tangoApiKey = headerTangoKey || process.env.TANGO_API_KEY;
-      
+      const higherGovApiKey = headerHigherGovKey || process.env.HIGHERGOV_API_KEY;
+
       // Build config - tools enabled if key available from any source
       const config: ApiKeyConfig = {
         hasSamApiKey: !!samApiKey,
         hasTangoApiKey: !!tangoApiKey,
+        hasHigherGovApiKey: !!higherGovApiKey,
         samApiKey,
-        tangoApiKey
+        tangoApiKey,
+        higherGovApiKey
       };
 
       // Build API key overrides for injection into tool calls
       const apiKeyOverrides: ApiKeyOverrides = {
         samKey: samApiKey,
-        tangoKey: tangoApiKey
+        tangoKey: tangoApiKey,
+        higherGovKey: higherGovApiKey
       };
 
       if (process.env.DEBUG) {
         console.error('API Key Sources:');
         console.error(`  SAM.gov: ${headerSamKey ? 'header' : samApiKey ? 'env' : 'none'}`);
         console.error(`  Tango: ${headerTangoKey ? 'header' : tangoApiKey ? 'env' : 'none'}`);
+        console.error(`  HigherGov: ${headerHigherGovKey ? 'header' : higherGovApiKey ? 'env' : 'none'}`);
       }
 
       await setupHandlers(server, config, apiKeyOverrides);
@@ -241,11 +250,13 @@ async function runHttpMode(): Promise<void> {
     if (process.env.DEBUG) {
       const config: ApiKeyConfig = {
         hasSamApiKey: !!process.env.SAM_GOV_API_KEY,
-        hasTangoApiKey: !!process.env.TANGO_API_KEY
+        hasTangoApiKey: !!process.env.TANGO_API_KEY,
+        hasHigherGovApiKey: !!process.env.HIGHERGOV_API_KEY
       };
       console.error("API Key Status:");
       console.error(`  SAM.gov API Key: ${config.hasSamApiKey ? "✓ Configured" : "✗ Not set"}`);
       console.error(`  Tango API Key: ${config.hasTangoApiKey ? "✓ Configured" : "✗ Not set"}`);
+      console.error(`  HigherGov API Key: ${config.hasHigherGovApiKey ? "✓ Configured" : "✗ Not set"}`);
       console.error("  USASpending.gov: ✓ Always available (public API)");
     }
   }).on('error', (error) => {
