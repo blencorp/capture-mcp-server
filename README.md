@@ -1044,32 +1044,35 @@ The server runs in HTTP mode (StreamableHTTP transport) when `MCP_TRANSPORT=http
 2. Set environment variables in the Railway dashboard:
    - `MCP_TRANSPORT=http` (required — switches from stdio)
    - `NODE_ENV=production`
-   - `HIGHERGOV_API_KEY` (and/or `SAM_GOV_API_KEY`, `TANGO_API_KEY`) — only set what you want enabled
+   - `MCP_REQUIRE_OAUTH=true` (required for Claude remote-connector users to enter their own HigherGov key)
+   - `MCP_PUBLIC_BASE_URL=https://<your-domain>` (for example, `https://capture.mcp.blencorp.com`)
+   - `OAUTH_TOKEN_SECRET=<random secret>` (protects encrypted per-user HigherGov credentials)
+   - `SAM_GOV_API_KEY` and/or `TANGO_API_KEY` only if you want server-wide access to those tools
+   - `HIGHERGOV_API_KEY` is optional and should usually stay unset for Claude remote connectors; each user supplies their own key during OAuth authorization.
    - **Do not set `PORT`** — Railway injects it.
 3. Deploy. Nixpacks installs dependencies, `railway.toml` runs `npm run build`, and the service starts via `npm start`, with healthcheck on `GET /health`.
 4. Add a custom domain in Settings → Domains (e.g. `capture.mcp.blencorp.com`) and point a CNAME at the value Railway shows.
 
 ### Auth posture
 
-`POST /mcp` has **no server-side auth** in HTTP mode (only the AWS Lambda path uses the S3 API-key middleware). Before exposing publicly, pick one:
+With `MCP_REQUIRE_OAUTH=true`, `POST /mcp` requires OAuth bearer auth and advertises protected-resource metadata for MCP clients. Claude will redirect users through the built-in authorization flow, where they enter their own HigherGov API key. The server encrypts that key into the OAuth token and injects it into HigherGov tool calls; the key is not exposed as a tool argument.
 
-- **Private networking (recommended for BLEN-only callers):** keep the service private and reach it from other Railway services via `<service>.railway.internal`. No public domain.
-- **Bearer token:** add an Express middleware that checks a static `Authorization: Bearer <token>` against an env var (e.g. `MCP_AUTH_TOKEN`) before forwarding to `/mcp`.
+If `MCP_REQUIRE_OAUTH` is not enabled, HTTP mode keeps the legacy behavior: public USASpending tools are visible without auth, and keyed tools are enabled by server env vars or request headers.
 
 ### Smoke test after deploy
 
 ```bash
 curl -sf https://<your-domain>/health
 
-# This server uses stateless StreamableHTTP in HTTP mode, so no session
-# initialization or Mcp-Session-Id header is required for this smoke test.
-curl -sf https://<your-domain>/mcp \
+# With OAuth enabled, unauthenticated MCP requests should return 401 with
+# a WWW-Authenticate header pointing to OAuth protected-resource metadata.
+curl -i https://<your-domain>/mcp \
   -H 'Content-Type: application/json' \
   -H 'Accept: application/json, text/event-stream' \
   -d '{"jsonrpc":"2.0","id":1,"method":"tools/list"}'
 ```
 
-The second call returns the available tools — the set depends on which API-key env vars you set.
+After a Claude user completes OAuth authorization, `tools/list` returns the USASpending tools plus the HigherGov tools enabled by that user's key.
 
 ## Development
 
