@@ -18,10 +18,20 @@ import {
 } from '@modelcontextprotocol/sdk/server/auth/errors.js';
 
 const TOKEN_PREFIX = 'capmcp.v1';
-const TOKEN_AAD = Buffer.from('capture-mcp-highergov-oauth-v1');
+const TOKEN_AAD = Buffer.from('capture-mcp-oauth-v1');
 const DEFAULT_ACCESS_TOKEN_TTL_SECONDS = 60 * 60 * 24 * 30;
 const DEFAULT_REFRESH_TOKEN_TTL_SECONDS = 60 * 60 * 24 * 90;
 const DEFAULT_AUTHORIZATION_TTL_MS = 10 * 60 * 1000;
+
+export const PROVIDER_IDS = ['sam', 'tango', 'highergov'] as const;
+export type ProviderId = typeof PROVIDER_IDS[number];
+export type ProviderKeys = Partial<Record<ProviderId, string>>;
+
+export const PROVIDER_LABELS: Record<ProviderId, string> = {
+  sam: 'SAM.gov',
+  tango: 'Tango',
+  highergov: 'HigherGov',
+};
 
 type TokenKind = 'access' | 'refresh';
 
@@ -38,7 +48,7 @@ type AuthorizationCodeRecord = {
   scopes: string[];
   resource?: string;
   state?: string;
-  higherGovApiKey: string;
+  keys: ProviderKeys;
   expiresAtMs: number;
 };
 
@@ -48,7 +58,7 @@ type SealedTokenPayload = {
   jti: string;
   clientId: string;
   scopes: string[];
-  higherGovApiKey: string;
+  keys: ProviderKeys;
   resource?: string;
   iat: number;
   exp: number;
@@ -84,7 +94,7 @@ export class InMemoryOAuthClientsStore implements OAuthRegisteredClientsStore {
   }
 }
 
-export type HigherGovOAuthProviderOptions = {
+export type McpOAuthProviderOptions = {
   baseUrl: URL;
   tokenSecret: string;
   accessTokenTtlSeconds?: number;
@@ -93,7 +103,7 @@ export type HigherGovOAuthProviderOptions = {
   now?: () => number;
 };
 
-export class HigherGovOAuthProvider implements OAuthServerProvider {
+export class McpOAuthProvider implements OAuthServerProvider {
   readonly clientsStore: OAuthRegisteredClientsStore;
 
   private readonly baseUrl: URL;
@@ -106,7 +116,7 @@ export class HigherGovOAuthProvider implements OAuthServerProvider {
   private readonly authorizationCodes = new Map<string, AuthorizationCodeRecord>();
   private readonly revokedTokenIds = new Set<string>();
 
-  constructor(options: HigherGovOAuthProviderOptions) {
+  constructor(options: McpOAuthProviderOptions) {
     if (!options.tokenSecret.trim()) {
       throw new Error('OAUTH_TOKEN_SECRET is required when MCP_REQUIRE_OAUTH=true');
     }
@@ -133,21 +143,21 @@ export class HigherGovOAuthProvider implements OAuthServerProvider {
       expiresAtMs: this.now() + this.authorizationTtlMs,
     });
 
-    const credentialUrl = new URL('/oauth/highergov/authorize', this.baseUrl);
+    const credentialUrl = new URL('/oauth/authorize', this.baseUrl);
     credentialUrl.searchParams.set('request_id', requestId);
     res.redirect(302, credentialUrl.href);
   }
 
-  async completeAuthorization(requestId: string, higherGovApiKey: string): Promise<string> {
+  async completeAuthorization(requestId: string, rawKeys: ProviderKeys): Promise<string> {
     this.cleanupExpired();
     const pending = this.pendingAuthorizations.get(requestId);
     if (!pending) {
       throw new InvalidRequestError('Authorization request expired or was not found');
     }
 
-    const trimmedKey = higherGovApiKey.trim();
-    if (!trimmedKey) {
-      throw new InvalidRequestError('HigherGov API key is required');
+    const keys = normalizeProviderKeys(rawKeys);
+    if (Object.keys(keys).length === 0) {
+      throw new InvalidRequestError('Provide at least one provider API key');
     }
 
     this.pendingAuthorizations.delete(requestId);
@@ -159,7 +169,7 @@ export class HigherGovOAuthProvider implements OAuthServerProvider {
       scopes: pending.params.scopes ?? [],
       resource: pending.params.resource?.href,
       state: pending.params.state,
-      higherGovApiKey: trimmedKey,
+      keys,
       expiresAtMs: this.now() + this.authorizationTtlMs,
     });
 
@@ -247,7 +257,7 @@ export class HigherGovOAuthProvider implements OAuthServerProvider {
       codeChallenge: '',
       scopes: requestedScopes,
       resource: payload.resource,
-      higherGovApiKey: payload.higherGovApiKey,
+      keys: payload.keys,
       expiresAtMs: this.now() + this.authorizationTtlMs,
     };
 
@@ -269,7 +279,7 @@ export class HigherGovOAuthProvider implements OAuthServerProvider {
       expiresAt: payload.exp,
       resource: payload.resource ? new URL(payload.resource) : undefined,
       extra: {
-        higherGovApiKey: payload.higherGovApiKey,
+        providerKeys: payload.keys,
       },
     };
   }
@@ -283,7 +293,10 @@ export class HigherGovOAuthProvider implements OAuthServerProvider {
     }
   }
 
-  private issueToken(kind: TokenKind, codeRecord: Pick<AuthorizationCodeRecord, 'clientId' | 'scopes' | 'resource' | 'higherGovApiKey'>): string {
+  private issueToken(
+    kind: TokenKind,
+    codeRecord: Pick<AuthorizationCodeRecord, 'clientId' | 'scopes' | 'resource' | 'keys'>
+  ): string {
     const issuedAt = Math.floor(this.now() / 1000);
     const ttl = kind === 'access' ? this.accessTokenTtlSeconds : this.refreshTokenTtlSeconds;
     return this.sealToken({
@@ -292,7 +305,7 @@ export class HigherGovOAuthProvider implements OAuthServerProvider {
       jti: randomUUID(),
       clientId: codeRecord.clientId,
       scopes: codeRecord.scopes,
-      higherGovApiKey: codeRecord.higherGovApiKey,
+      keys: codeRecord.keys,
       resource: codeRecord.resource,
       iat: issuedAt,
       exp: issuedAt + ttl,
@@ -379,9 +392,34 @@ export class HigherGovOAuthProvider implements OAuthServerProvider {
   }
 }
 
-export function getHigherGovApiKeyFromAuth(authInfo: AuthInfo | undefined): string | undefined {
-  const key = authInfo?.extra?.higherGovApiKey;
-  return typeof key === 'string' && key.trim() ? key : undefined;
+function normalizeProviderKeys(rawKeys: ProviderKeys): ProviderKeys {
+  const normalized: ProviderKeys = {};
+  for (const id of PROVIDER_IDS) {
+    const value = rawKeys[id];
+    if (typeof value === 'string') {
+      const trimmed = value.trim();
+      if (trimmed) {
+        normalized[id] = trimmed;
+      }
+    }
+  }
+  return normalized;
+}
+
+export function getProviderKeysFromAuth(authInfo: AuthInfo | undefined): ProviderKeys {
+  const candidate = authInfo?.extra?.providerKeys;
+  if (!candidate || typeof candidate !== 'object') {
+    return {};
+  }
+  const source = candidate as Record<string, unknown>;
+  const out: ProviderKeys = {};
+  for (const id of PROVIDER_IDS) {
+    const value = source[id];
+    if (typeof value === 'string' && value.trim()) {
+      out[id] = value;
+    }
+  }
+  return out;
 }
 
 export function getOAuthPublicBaseUrl(port: number): URL {
@@ -402,11 +440,36 @@ export function getOAuthPublicBaseUrl(port: number): URL {
   return new URL(`http://localhost:${port}`);
 }
 
-export function renderHigherGovAuthorizationPage(requestId: string, error?: string): string {
+export type FormFieldErrors = Partial<Record<ProviderId, string>>;
+
+export function renderAuthorizationPage(
+  requestId: string,
+  options: { error?: string; fieldErrors?: FormFieldErrors; checked?: Partial<Record<ProviderId, boolean>> } = {}
+): string {
+  const { error, fieldErrors = {}, checked = {} } = options;
   const escapedRequestId = escapeHtml(requestId);
   const errorMarkup = error
     ? `<div class="error" role="alert">${escapeHtml(error)}</div>`
     : '';
+
+  const providerRows = PROVIDER_IDS.map(id => {
+    const label = PROVIDER_LABELS[id];
+    const isChecked = checked[id] ?? false;
+    const fieldError = fieldErrors[id];
+    return `
+      <div class="provider${isChecked ? ' provider--active' : ''}" data-provider="${id}">
+        <label class="provider__toggle">
+          <input type="checkbox" name="enabled[]" value="${id}" data-toggle="${id}"${isChecked ? ' checked' : ''}>
+          <span>${label}</span>
+        </label>
+        <div class="provider__field" data-field="${id}"${isChecked ? '' : ' hidden'}>
+          <label for="${id}_api_key">${label} API key</label>
+          <input id="${id}_api_key" name="${id}_api_key" type="password" spellcheck="false" autocomplete="off">
+          ${fieldError ? `<div class="field-error">${escapeHtml(fieldError)}</div>` : ''}
+        </div>
+      </div>
+    `;
+  }).join('\n');
 
   return `<!doctype html>
 <html lang="en">
@@ -426,35 +489,35 @@ export function renderHigherGovAuthorizationPage(requestId: string, error?: stri
       color: #111827;
     }
     main {
-      width: min(92vw, 440px);
+      width: min(92vw, 480px);
       background: #ffffff;
       border: 1px solid #d7dce3;
       border-radius: 8px;
       padding: 28px;
       box-shadow: 0 18px 40px rgba(17, 24, 39, 0.08);
     }
-    h1 {
-      margin: 0 0 8px;
-      font-size: 22px;
-      line-height: 1.2;
+    h1 { margin: 0 0 8px; font-size: 22px; line-height: 1.2; }
+    p { margin: 0 0 20px; color: #4b5563; line-height: 1.5; }
+    .provider {
+      border: 1px solid #e2e6ec;
+      border-radius: 6px;
+      padding: 12px 14px;
+      margin-bottom: 12px;
+      transition: border-color 120ms ease, background-color 120ms ease;
     }
-    p {
-      margin: 0 0 20px;
-      color: #4b5563;
-      line-height: 1.5;
-    }
-    label {
-      display: block;
-      margin-bottom: 8px;
-      font-weight: 650;
-    }
-    input {
+    .provider--active { border-color: #0f766e; background: #f0fdfa; }
+    .provider__toggle { display: flex; align-items: center; gap: 10px; font-weight: 650; cursor: pointer; }
+    .provider__toggle input { width: 18px; height: 18px; }
+    .provider__field { margin-top: 12px; }
+    .provider__field[hidden] { display: none; }
+    .provider__field label { display: block; margin-bottom: 6px; font-size: 14px; color: #4b5563; }
+    .provider__field input {
       box-sizing: border-box;
       width: 100%;
-      min-height: 44px;
+      min-height: 40px;
       border: 1px solid #b7c0ce;
       border-radius: 6px;
-      padding: 10px 12px;
+      padding: 8px 12px;
       font: inherit;
       background: #ffffff;
       color: #111827;
@@ -462,7 +525,7 @@ export function renderHigherGovAuthorizationPage(requestId: string, error?: stri
     button {
       width: 100%;
       min-height: 44px;
-      margin-top: 16px;
+      margin-top: 8px;
       border: 0;
       border-radius: 6px;
       background: #0f766e;
@@ -471,33 +534,73 @@ export function renderHigherGovAuthorizationPage(requestId: string, error?: stri
       font-weight: 700;
       cursor: pointer;
     }
-    .error {
-      margin-bottom: 16px;
+    button:disabled { background: #94a3b8; cursor: not-allowed; }
+    .error, .field-error {
       padding: 10px 12px;
       border-radius: 6px;
       background: #fef2f2;
       color: #991b1b;
       border: 1px solid #fecaca;
+      font-size: 14px;
     }
+    .error { margin-bottom: 16px; }
+    .field-error { margin-top: 8px; }
     @media (prefers-color-scheme: dark) {
       body { background: #111827; color: #f9fafb; }
       main { background: #1f2937; border-color: #374151; }
       p { color: #cbd5e1; }
-      input { background: #111827; color: #f9fafb; border-color: #4b5563; }
+      .provider { border-color: #374151; }
+      .provider--active { background: #022c22; border-color: #0f766e; }
+      .provider__field label { color: #cbd5e1; }
+      .provider__field input { background: #111827; color: #f9fafb; border-color: #4b5563; }
     }
   </style>
 </head>
 <body>
   <main>
     <h1>Authorize GovCon Capture</h1>
-    <p>Enter your HigherGov API key to enable the HigherGov tools in Claude.</p>
+    <p>Select the providers you have API keys for. Each enabled provider unlocks its tools in Claude.</p>
     ${errorMarkup}
-    <form method="post" action="/oauth/highergov/authorize" autocomplete="off">
+    <form method="post" action="/oauth/authorize" autocomplete="off" id="auth-form">
       <input type="hidden" name="request_id" value="${escapedRequestId}">
-      <label for="highergov_api_key">HigherGov API key</label>
-      <input id="highergov_api_key" name="highergov_api_key" type="password" required autofocus spellcheck="false" autocomplete="off">
-      <button type="submit">Authorize</button>
+      ${providerRows}
+      <button type="submit" id="submit-btn">Authorize</button>
     </form>
+    <script>
+      (function () {
+        var form = document.getElementById('auth-form');
+        var submitBtn = document.getElementById('submit-btn');
+
+        function update(provider) {
+          var checkbox = form.querySelector('input[data-toggle="' + provider + '"]');
+          var fieldWrap = form.querySelector('[data-field="' + provider + '"]');
+          var input = fieldWrap.querySelector('input[type="password"]');
+          var card = form.querySelector('.provider[data-provider="' + provider + '"]');
+          if (checkbox.checked) {
+            fieldWrap.hidden = false;
+            card.classList.add('provider--active');
+            input.required = true;
+          } else {
+            fieldWrap.hidden = true;
+            card.classList.remove('provider--active');
+            input.required = false;
+            input.value = '';
+          }
+          refreshSubmit();
+        }
+
+        function refreshSubmit() {
+          var anyChecked = !!form.querySelector('input[name="enabled[]"]:checked');
+          submitBtn.disabled = !anyChecked;
+        }
+
+        ${JSON.stringify(PROVIDER_IDS)}.forEach(function (id) {
+          var checkbox = form.querySelector('input[data-toggle="' + id + '"]');
+          checkbox.addEventListener('change', function () { update(id); });
+          update(id);
+        });
+      })();
+    </script>
   </main>
 </body>
 </html>`;
@@ -508,18 +611,29 @@ function isSealedTokenPayload(value: unknown): value is SealedTokenPayload {
     return false;
   }
   const payload = value as Partial<SealedTokenPayload>;
-  return (
-    payload.version === 1 &&
-    (payload.kind === 'access' || payload.kind === 'refresh') &&
-    typeof payload.jti === 'string' &&
-    typeof payload.clientId === 'string' &&
-    Array.isArray(payload.scopes) &&
-    payload.scopes.every(scope => typeof scope === 'string') &&
-    typeof payload.higherGovApiKey === 'string' &&
-    typeof payload.iat === 'number' &&
-    typeof payload.exp === 'number' &&
-    (payload.resource === undefined || typeof payload.resource === 'string')
-  );
+  if (
+    payload.version !== 1 ||
+    (payload.kind !== 'access' && payload.kind !== 'refresh') ||
+    typeof payload.jti !== 'string' ||
+    typeof payload.clientId !== 'string' ||
+    !Array.isArray(payload.scopes) ||
+    !payload.scopes.every(scope => typeof scope === 'string') ||
+    typeof payload.iat !== 'number' ||
+    typeof payload.exp !== 'number' ||
+    (payload.resource !== undefined && typeof payload.resource !== 'string')
+  ) {
+    return false;
+  }
+  if (!payload.keys || typeof payload.keys !== 'object') {
+    return false;
+  }
+  for (const id of PROVIDER_IDS) {
+    const value = (payload.keys as Record<string, unknown>)[id];
+    if (value !== undefined && typeof value !== 'string') {
+      return false;
+    }
+  }
+  return true;
 }
 
 function escapeHtml(value: string): string {
