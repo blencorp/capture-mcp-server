@@ -1,14 +1,13 @@
 # Railway deployment config for capture-mcp-server.
 # Runs the server in HTTP mode (StreamableHTTP transport) on Railway-injected $PORT.
-# Auth note: /mcp has no server-side auth in HTTP mode (only Lambda has S3 middleware).
-# Use Railway private networking, or add a bearer-token middleware, before public exposure.
+# Auth note: set MCP_REQUIRE_OAUTH=true for remote MCP connector auth.
 
 [build]
 builder = "NIXPACKS"
 buildCommand = "npm run build"
 
 [deploy]
-startCommand = "npm start"
+startCommand = "node dist/server.js"
 healthcheckPath = "/health"
 healthcheckTimeout = 30
 restartPolicyType = "ON_FAILURE"

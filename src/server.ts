@@ -317,9 +317,9 @@ async function runHttpMode(): Promise<void> {
 
   // Start the HTTP server
   app.listen(HTTP_PORT, () => {
-    console.error(`Capture MCP Server running in HTTP mode on port ${HTTP_PORT}`);
-    console.error(`MCP endpoint: http://localhost:${HTTP_PORT}/mcp`);
-    console.error(`Health check: http://localhost:${HTTP_PORT}/health`);
+    console.log(`Capture MCP Server running in HTTP mode on port ${HTTP_PORT}`);
+    console.log(`MCP endpoint: http://localhost:${HTTP_PORT}/mcp`);
+    console.log(`Health check: http://localhost:${HTTP_PORT}/health`);
     
     if (process.env.DEBUG) {
       const config: ApiKeyConfig = {
