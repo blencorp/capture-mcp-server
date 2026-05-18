@@ -3,6 +3,8 @@
 import { Server } from "@modelcontextprotocol/sdk/server/index.js";
 import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
 import { StreamableHTTPServerTransport } from "@modelcontextprotocol/sdk/server/streamableHttp.js";
+import { mcpAuthRouter, getOAuthProtectedResourceMetadataUrl } from "@modelcontextprotocol/sdk/server/auth/router.js";
+import { requireBearerAuth } from "@modelcontextprotocol/sdk/server/auth/middleware/bearerAuth.js";
 import {
   CallToolRequestSchema,
   ListToolsRequestSchema,
@@ -12,10 +14,17 @@ import express, { Request, Response } from 'express';
 
 // Import tool implementations
 import { initializeTools, callTool, ApiKeyConfig } from './tools/index.js';
+import {
+  getHigherGovApiKeyFromAuth,
+  getOAuthPublicBaseUrl,
+  HigherGovOAuthProvider,
+  renderHigherGovAuthorizationPage,
+} from './auth/highergov-oauth.js';
 
 // Transport mode: 'stdio' (default) or 'http'
 const TRANSPORT_MODE = process.env.MCP_TRANSPORT || 'stdio';
 const HTTP_PORT = parseInt(process.env.PORT || '3000', 10);
+const REQUIRE_OAUTH = process.env.MCP_REQUIRE_OAUTH === 'true';
 
 /**
  * Creates and configures the MCP server with all handlers
@@ -151,15 +160,79 @@ async function runStdioMode(): Promise<void> {
  */
 async function runHttpMode(): Promise<void> {
   const app = express();
+  app.set('trust proxy', 1);
   app.use(express.json());
+  app.use(express.urlencoded({ extended: false }));
 
   // Health check endpoint
   app.get('/health', (_req: Request, res: Response) => {
-    res.json({ status: 'healthy', transport: 'http', version: '1.0.0' });
+    res.json({
+      status: 'healthy',
+      transport: 'http',
+      version: '1.0.0',
+      authMode: REQUIRE_OAUTH ? 'oauth' : 'none'
+    });
   });
 
+  let higherGovOAuthProvider: HigherGovOAuthProvider | undefined;
+  let higherGovAuthSourceLabel = 'disabled';
+
+  if (REQUIRE_OAUTH) {
+    const publicBaseUrl = getOAuthPublicBaseUrl(HTTP_PORT);
+    const mcpResourceUrl = new URL('/mcp', publicBaseUrl);
+    higherGovOAuthProvider = new HigherGovOAuthProvider({
+      baseUrl: publicBaseUrl,
+      tokenSecret: process.env.OAUTH_TOKEN_SECRET || '',
+      accessTokenTtlSeconds: parsePositiveInt(process.env.OAUTH_ACCESS_TOKEN_TTL_SECONDS),
+      refreshTokenTtlSeconds: parsePositiveInt(process.env.OAUTH_REFRESH_TOKEN_TTL_SECONDS),
+    });
+    higherGovAuthSourceLabel = 'oauth';
+
+    app.get('/oauth/highergov/authorize', (req: Request, res: Response) => {
+      const requestId = typeof req.query.request_id === 'string' ? req.query.request_id : '';
+      res
+        .status(requestId ? 200 : 400)
+        .type('html')
+        .send(renderHigherGovAuthorizationPage(requestId, requestId ? undefined : 'Authorization request is missing.'));
+    });
+
+    app.post('/oauth/highergov/authorize', async (req: Request, res: Response) => {
+      const requestId = typeof req.body.request_id === 'string' ? req.body.request_id : '';
+      const higherGovApiKey = typeof req.body.highergov_api_key === 'string' ? req.body.highergov_api_key : '';
+
+      try {
+        const redirectUrl = await higherGovOAuthProvider!.completeAuthorization(requestId, higherGovApiKey);
+        res.redirect(302, redirectUrl);
+      } catch (error) {
+        const message = error instanceof Error ? error.message : 'Authorization failed';
+        res
+          .status(400)
+          .type('html')
+          .send(renderHigherGovAuthorizationPage(requestId, message));
+      }
+    });
+
+    app.use(mcpAuthRouter({
+      provider: higherGovOAuthProvider,
+      issuerUrl: publicBaseUrl,
+      baseUrl: publicBaseUrl,
+      resourceServerUrl: mcpResourceUrl,
+      scopesSupported: ['mcp:tools'],
+      resourceName: 'GovCon Capture',
+    }));
+  }
+
   // MCP endpoint - stateless mode for Lambda compatibility
-  app.post('/mcp', async (req: Request, res: Response) => {
+  app.post(
+    '/mcp',
+    ...(higherGovOAuthProvider
+      ? [requireBearerAuth({
+          verifier: higherGovOAuthProvider,
+          requiredScopes: [],
+          resourceMetadataUrl: getOAuthProtectedResourceMetadataUrl(new URL('/mcp', getOAuthPublicBaseUrl(HTTP_PORT))),
+        })]
+      : []),
+    async (req: Request, res: Response) => {
     try {
       // Create a fresh server instance for each request (stateless)
       const server = createServer();
@@ -168,11 +241,12 @@ async function runHttpMode(): Promise<void> {
       const headerSamKey = req.get('X-Sam-Api-Key') || req.get('x-sam-api-key');
       const headerTangoKey = req.get('X-Tango-Api-Key') || req.get('x-tango-api-key');
       const headerHigherGovKey = req.get('X-Highergov-Api-Key') || req.get('x-highergov-api-key');
+      const oauthHigherGovKey = getHigherGovApiKeyFromAuth(req.auth);
 
       // API keys: headers take precedence over env vars
       const samApiKey = headerSamKey || process.env.SAM_GOV_API_KEY;
       const tangoApiKey = headerTangoKey || process.env.TANGO_API_KEY;
-      const higherGovApiKey = headerHigherGovKey || process.env.HIGHERGOV_API_KEY;
+      const higherGovApiKey = oauthHigherGovKey || headerHigherGovKey || process.env.HIGHERGOV_API_KEY;
 
       // Build config - tools enabled if key available from any source
       const config: ApiKeyConfig = {
@@ -195,7 +269,7 @@ async function runHttpMode(): Promise<void> {
         console.error('API Key Sources:');
         console.error(`  SAM.gov: ${headerSamKey ? 'header' : samApiKey ? 'env' : 'none'}`);
         console.error(`  Tango: ${headerTangoKey ? 'header' : tangoApiKey ? 'env' : 'none'}`);
-        console.error(`  HigherGov: ${headerHigherGovKey ? 'header' : higherGovApiKey ? 'env' : 'none'}`);
+        console.error(`  HigherGov: ${oauthHigherGovKey ? higherGovAuthSourceLabel : headerHigherGovKey ? 'header' : higherGovApiKey ? 'env' : 'none'}`);
       }
 
       await setupHandlers(server, config, apiKeyOverrides);
@@ -263,6 +337,15 @@ async function runHttpMode(): Promise<void> {
     console.error('Server error:', error);
     process.exit(1);
   });
+}
+
+function parsePositiveInt(value: string | undefined): number | undefined {
+  if (value === undefined) {
+    return undefined;
+  }
+
+  const parsed = parseInt(value, 10);
+  return Number.isFinite(parsed) && parsed > 0 ? parsed : undefined;
 }
 
 /**

@@ -59,7 +59,7 @@ type ErrorCode = 'not_found' | 'bad_request' | 'upstream_error' | 'rate_limited'
 
 class MissingHigherGovApiKeyError extends Error {
   constructor() {
-    super('HigherGov API key required. Provide via HIGHERGOV_API_KEY env var or X-Highergov-Api-Key header.');
+    super('HigherGov API key required. Authorize the remote MCP connector or configure HIGHERGOV_API_KEY.');
     this.name = 'MissingHigherGovApiKeyError';
   }
 }
@@ -282,7 +282,6 @@ export const highergovTools = {
         inputSchema: {
           type: 'object',
           properties: {
-            api_key: { type: 'string', description: 'HigherGov API key (optional if HIGHERGOV_API_KEY env var is set)' },
             saved_search_id: { type: 'string', description: 'HigherGov saved-search ID (required)' },
             since: { type: 'string', description: 'ISO-8601 datetime; defaults to last 24h' },
             limit: { type: 'number', description: 'Number of results (default 50, max 200)' },
@@ -298,7 +297,6 @@ export const highergovTools = {
         inputSchema: {
           type: 'object',
           properties: {
-            api_key: { type: 'string' },
             id: { type: 'string', description: 'HigherGov opportunity ID, SAM notice ID, or HigherGov URL' },
           },
           required: ['id'],
@@ -311,7 +309,6 @@ export const highergovTools = {
         inputSchema: {
           type: 'object',
           properties: {
-            api_key: { type: 'string' },
             agency: { type: 'string', description: 'Agency slug or name' },
             naics: { type: 'array', items: { type: 'string' } },
             psc: { type: 'array', items: { type: 'string' } },
@@ -332,7 +329,6 @@ export const highergovTools = {
         inputSchema: {
           type: 'object',
           properties: {
-            api_key: { type: 'string' },
             id: { type: 'string', description: 'HigherGov contract ID or PIID' },
           },
           required: ['id'],
@@ -345,7 +341,6 @@ export const highergovTools = {
         inputSchema: {
           type: 'object',
           properties: {
-            api_key: { type: 'string' },
             agency: { type: 'string', description: 'Agency slug or name (required)' },
             sub_agency: { type: 'string' },
             role_keywords: { type: 'array', items: { type: 'string' } },
@@ -362,7 +357,6 @@ export const highergovTools = {
         inputSchema: {
           type: 'object',
           properties: {
-            api_key: { type: 'string' },
             id: { type: 'string', description: 'HigherGov person ID' },
           },
           required: ['id'],
