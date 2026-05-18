@@ -1046,7 +1046,7 @@ The server runs in HTTP mode (StreamableHTTP transport) when `MCP_TRANSPORT=http
    - `NODE_ENV=production`
    - `HIGHERGOV_API_KEY` (and/or `SAM_GOV_API_KEY`, `TANGO_API_KEY`) — only set what you want enabled
    - **Do not set `PORT`** — Railway injects it.
-3. Deploy. `railway.toml` runs `npm ci && npm run build` and starts via `npm start`, with healthcheck on `GET /health`.
+3. Deploy. Nixpacks installs dependencies, `railway.toml` runs `npm run build`, and the service starts via `npm start`, with healthcheck on `GET /health`.
 4. Add a custom domain in Settings → Domains (e.g. `capture.mcp.blencorp.com`) and point a CNAME at the value Railway shows.
 
 ### Auth posture
