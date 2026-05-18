@@ -15,11 +15,15 @@ import express, { Request, Response } from 'express';
 // Import tool implementations
 import { initializeTools, callTool, ApiKeyConfig } from './tools/index.js';
 import {
-  getHigherGovApiKeyFromAuth,
+  getProviderKeysFromAuth,
   getOAuthPublicBaseUrl,
-  HigherGovOAuthProvider,
-  renderHigherGovAuthorizationPage,
-} from './auth/highergov-oauth.js';
+  McpOAuthProvider,
+  PROVIDER_IDS,
+  renderAuthorizationPage,
+  type ProviderId,
+  type ProviderKeys,
+  type FormFieldErrors,
+} from './auth/mcp-oauth.js';
 
 // Transport mode: 'stdio' (default) or 'http'
 const TRANSPORT_MODE = process.env.MCP_TRANSPORT || 'stdio';
@@ -174,46 +178,46 @@ async function runHttpMode(): Promise<void> {
     });
   });
 
-  let higherGovOAuthProvider: HigherGovOAuthProvider | undefined;
-  let higherGovAuthSourceLabel = 'disabled';
+  let oauthProvider: McpOAuthProvider | undefined;
 
   if (REQUIRE_OAUTH) {
     const publicBaseUrl = getOAuthPublicBaseUrl(HTTP_PORT);
     const mcpResourceUrl = new URL('/mcp', publicBaseUrl);
-    higherGovOAuthProvider = new HigherGovOAuthProvider({
+    oauthProvider = new McpOAuthProvider({
       baseUrl: publicBaseUrl,
       tokenSecret: process.env.OAUTH_TOKEN_SECRET || '',
       accessTokenTtlSeconds: parsePositiveInt(process.env.OAUTH_ACCESS_TOKEN_TTL_SECONDS),
       refreshTokenTtlSeconds: parsePositiveInt(process.env.OAUTH_REFRESH_TOKEN_TTL_SECONDS),
     });
-    higherGovAuthSourceLabel = 'oauth';
 
-    app.get('/oauth/highergov/authorize', (req: Request, res: Response) => {
+    app.get('/oauth/authorize', (req: Request, res: Response) => {
       const requestId = typeof req.query.request_id === 'string' ? req.query.request_id : '';
       res
         .status(requestId ? 200 : 400)
         .type('html')
-        .send(renderHigherGovAuthorizationPage(requestId, requestId ? undefined : 'Authorization request is missing.'));
+        .send(renderAuthorizationPage(requestId, {
+          error: requestId ? undefined : 'Authorization request is missing.',
+        }));
     });
 
-    app.post('/oauth/highergov/authorize', async (req: Request, res: Response) => {
+    app.post('/oauth/authorize', async (req: Request, res: Response) => {
       const requestId = typeof req.body.request_id === 'string' ? req.body.request_id : '';
-      const higherGovApiKey = typeof req.body.highergov_api_key === 'string' ? req.body.highergov_api_key : '';
+      const { keys, checked, fieldErrors } = parseAuthorizeForm(req.body);
 
       try {
-        const redirectUrl = await higherGovOAuthProvider!.completeAuthorization(requestId, higherGovApiKey);
+        const redirectUrl = await oauthProvider!.completeAuthorization(requestId, keys);
         res.redirect(302, redirectUrl);
       } catch (error) {
         const message = error instanceof Error ? error.message : 'Authorization failed';
         res
           .status(400)
           .type('html')
-          .send(renderHigherGovAuthorizationPage(requestId, message));
+          .send(renderAuthorizationPage(requestId, { error: message, checked, fieldErrors }));
       }
     });
 
     app.use(mcpAuthRouter({
-      provider: higherGovOAuthProvider,
+      provider: oauthProvider,
       issuerUrl: publicBaseUrl,
       baseUrl: publicBaseUrl,
       resourceServerUrl: mcpResourceUrl,
@@ -225,9 +229,9 @@ async function runHttpMode(): Promise<void> {
   // MCP endpoint - stateless mode for Lambda compatibility
   app.post(
     '/mcp',
-    ...(higherGovOAuthProvider
+    ...(oauthProvider
       ? [requireBearerAuth({
-          verifier: higherGovOAuthProvider,
+          verifier: oauthProvider,
           requiredScopes: [],
           resourceMetadataUrl: getOAuthProtectedResourceMetadataUrl(new URL('/mcp', getOAuthPublicBaseUrl(HTTP_PORT))),
         })]
@@ -236,17 +240,17 @@ async function runHttpMode(): Promise<void> {
     try {
       // Create a fresh server instance for each request (stateless)
       const server = createServer();
-      
+
       // Extract API keys from headers (case-insensitive)
       const headerSamKey = req.get('X-Sam-Api-Key') || req.get('x-sam-api-key');
       const headerTangoKey = req.get('X-Tango-Api-Key') || req.get('x-tango-api-key');
       const headerHigherGovKey = req.get('X-Highergov-Api-Key') || req.get('x-highergov-api-key');
-      const oauthHigherGovKey = getHigherGovApiKeyFromAuth(req.auth);
+      const oauthKeys = getProviderKeysFromAuth(req.auth);
 
-      // API keys: headers take precedence over env vars
-      const samApiKey = headerSamKey || process.env.SAM_GOV_API_KEY;
-      const tangoApiKey = headerTangoKey || process.env.TANGO_API_KEY;
-      const higherGovApiKey = oauthHigherGovKey || headerHigherGovKey || process.env.HIGHERGOV_API_KEY;
+      // Precedence: OAuth-sealed key → header → env var
+      const samApiKey = oauthKeys.sam || headerSamKey || process.env.SAM_GOV_API_KEY;
+      const tangoApiKey = oauthKeys.tango || headerTangoKey || process.env.TANGO_API_KEY;
+      const higherGovApiKey = oauthKeys.highergov || headerHigherGovKey || process.env.HIGHERGOV_API_KEY;
 
       // Build config - tools enabled if key available from any source
       const config: ApiKeyConfig = {
@@ -267,9 +271,9 @@ async function runHttpMode(): Promise<void> {
 
       if (process.env.DEBUG) {
         console.error('API Key Sources:');
-        console.error(`  SAM.gov: ${headerSamKey ? 'header' : samApiKey ? 'env' : 'none'}`);
-        console.error(`  Tango: ${headerTangoKey ? 'header' : tangoApiKey ? 'env' : 'none'}`);
-        console.error(`  HigherGov: ${oauthHigherGovKey ? higherGovAuthSourceLabel : headerHigherGovKey ? 'header' : higherGovApiKey ? 'env' : 'none'}`);
+        console.error(`  SAM.gov: ${oauthKeys.sam ? 'oauth' : headerSamKey ? 'header' : samApiKey ? 'env' : 'none'}`);
+        console.error(`  Tango: ${oauthKeys.tango ? 'oauth' : headerTangoKey ? 'header' : tangoApiKey ? 'env' : 'none'}`);
+        console.error(`  HigherGov: ${oauthKeys.highergov ? 'oauth' : headerHigherGovKey ? 'header' : higherGovApiKey ? 'env' : 'none'}`);
       }
 
       await setupHandlers(server, config, apiKeyOverrides);
@@ -337,6 +341,37 @@ async function runHttpMode(): Promise<void> {
     console.error('Server error:', error);
     process.exit(1);
   });
+}
+
+function parseAuthorizeForm(body: any): {
+  keys: ProviderKeys;
+  checked: Partial<Record<ProviderId, boolean>>;
+  fieldErrors: FormFieldErrors;
+} {
+  const rawEnabled = body?.['enabled[]'] ?? body?.enabled;
+  const enabledList: string[] = Array.isArray(rawEnabled)
+    ? rawEnabled.filter((v): v is string => typeof v === 'string')
+    : typeof rawEnabled === 'string' ? [rawEnabled] : [];
+
+  const checked: Partial<Record<ProviderId, boolean>> = {};
+  const keys: ProviderKeys = {};
+  const fieldErrors: FormFieldErrors = {};
+
+  for (const id of PROVIDER_IDS) {
+    const isChecked = enabledList.includes(id);
+    checked[id] = isChecked;
+    if (!isChecked) continue;
+
+    const raw = body?.[`${id}_api_key`];
+    const value = typeof raw === 'string' ? raw.trim() : '';
+    if (!value) {
+      fieldErrors[id] = 'API key is required when this provider is selected.';
+      continue;
+    }
+    keys[id] = value;
+  }
+
+  return { keys, checked, fieldErrors };
 }
 
 function parsePositiveInt(value: string | undefined): number | undefined {
