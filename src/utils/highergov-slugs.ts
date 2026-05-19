@@ -159,8 +159,22 @@ export function truncate(text: string | null | undefined, max: number): string {
   return text.length > max ? text.slice(0, max - 1) + '…' : text;
 }
 
+// HigherGov returns codes as either bare strings, comma-separated strings,
+// arrays of either, or objects like {naics_code: '238220'} / {psc_code: 'X'}.
+// Coalesce all those shapes into a clean string[].
 export function asStringArray(raw: unknown): string[] {
-  if (!raw) return [];
-  if (Array.isArray(raw)) return raw.map(v => String(v)).filter(Boolean);
+  if (raw === null || raw === undefined || raw === '') return [];
+  if (Array.isArray(raw)) {
+    return raw.flatMap(v => asStringArray(v));
+  }
+  if (typeof raw === 'object') {
+    const obj = raw as Record<string, unknown>;
+    for (const key of ['naics_code', 'psc_code', 'code', 'value', 'name']) {
+      const v = obj[key];
+      if (typeof v === 'string' && v.trim()) return [v.trim()];
+      if (typeof v === 'number') return [String(v)];
+    }
+    return [];
+  }
   return String(raw).split(/[,;\s]+/).map(s => s.trim()).filter(Boolean);
 }

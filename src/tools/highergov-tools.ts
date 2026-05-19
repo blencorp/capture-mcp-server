@@ -94,11 +94,6 @@ function classifyUpstreamError(err: string | undefined): ReturnType<typeof error
   return errorResponse('upstream_error', text);
 }
 
-function shouldTryLookupFallback(err: string | undefined): boolean {
-  const status = upstreamStatus(err);
-  return status === 400 || status === 404;
-}
-
 function getApiKey(args: any): string {
   const key = args?.api_key || process.env.HIGHERGOV_API_KEY;
   if (!key) {
@@ -122,42 +117,60 @@ function extractId(idOrUrl: string): string {
 
 // ---- Normalizers (response shaping) ----
 
+// HigherGov returns nested {agency_name: ...} objects for agency fields; the
+// slug normalizers handle that via coerceToString. Use opp_key as the canonical
+// HigherGov opportunity ID (hex slug), since it's what /opportunity/?opp_key=
+// lookups require — and the agent calls get_highergov_opportunity with this value.
 function normalizeForecast(raw: any) {
+  const setAside = raw.set_aside ?? raw.type_of_set_aside ?? null;
   return {
-    forecast_id: String(raw.forecast_id ?? raw.id ?? raw.opportunity_key ?? ''),
+    forecast_id: String(raw.opp_key ?? raw.forecast_id ?? raw.id ?? ''),
     title: String(raw.title ?? raw.name ?? ''),
-    agency: normalizeAgency(raw.agency_name ?? raw.agency ?? raw.awarding_agency_name),
-    sub_agency: normalizeAgency(raw.sub_agency_name ?? raw.sub_agency ?? null),
+    agency: normalizeAgency(raw.agency ?? raw.agency_name ?? raw.awarding_agency),
+    sub_agency: normalizeAgency(raw.sub_agency ?? raw.sub_agency_name ?? null),
     naics: asStringArray(raw.naics_code ?? raw.naics),
     psc: asStringArray(raw.psc_code ?? raw.psc),
-    set_aside: normalizeSetAside(raw.set_aside ?? raw.type_of_set_aside ?? null),
-    vehicle: normalizeVehicle(raw.contract_vehicle ?? raw.vehicle ?? null),
-    estimated_value: toUsdInteger(raw.estimated_value ?? raw.estimated_contract_value),
-    estimated_solicitation_date: toIsoOrNull(raw.estimated_solicitation_date ?? raw.solicitation_date),
-    estimated_award_date: toIsoOrNull(raw.estimated_award_date ?? raw.award_date),
-    description: truncate(String(raw.description ?? raw.summary ?? ''), 2000),
-    source_url: String(raw.source_url ?? raw.path ?? raw.url ?? ''),
+    set_aside: normalizeSetAside(setAside),
+    vehicle: normalizeVehicle(raw.vehicle ?? raw.contract_vehicle ?? null),
+    estimated_value: toUsdInteger(
+      raw.estimated_value ?? raw.estimated_contract_value ?? raw.val_est_high ?? raw.val_est_low
+    ),
+    estimated_solicitation_date: toIsoOrNull(
+      raw.estimated_solicitation_date ?? raw.solicitation_date ?? raw.posted_date
+    ),
+    estimated_award_date: toIsoOrNull(raw.estimated_award_date ?? raw.award_date ?? raw.due_date),
+    description: truncate(
+      String(raw.description_text ?? raw.description ?? raw.ai_summary ?? raw.summary ?? ''),
+      2000
+    ),
+    source_url: String(raw.path ?? raw.source_url ?? raw.source_path ?? raw.url ?? ''),
   };
 }
 
 function normalizeOpportunity(raw: any) {
+  const oppType = raw.opp_type;
+  const typeStr = typeof oppType === 'object' && oppType
+    ? String(oppType.description ?? oppType.name ?? '')
+    : String(raw.opportunity_type ?? raw.notice_type ?? raw.type ?? '');
   return {
-    opportunity_id: String(raw.opportunity_key ?? raw.opportunity_id ?? raw.id ?? ''),
-    sam_notice_id: raw.sam_notice_id ?? raw.notice_id ?? null,
-    type: String(raw.opportunity_type ?? raw.notice_type ?? raw.type ?? '').toLowerCase() || 'solicitation',
+    opportunity_id: String(raw.opp_key ?? raw.opportunity_key ?? raw.opportunity_id ?? raw.id ?? ''),
+    sam_notice_id: raw.source_id || raw.sam_notice_id || raw.notice_id || null,
+    type: typeStr.toLowerCase() || 'solicitation',
     title: String(raw.title ?? ''),
-    agency: normalizeAgency(raw.agency_name ?? raw.agency),
-    sub_agency: normalizeAgency(raw.sub_agency_name ?? raw.sub_agency ?? null),
+    agency: normalizeAgency(raw.agency ?? raw.agency_name ?? raw.awarding_agency),
+    sub_agency: normalizeAgency(raw.sub_agency ?? raw.sub_agency_name ?? null),
     office: raw.office_name ?? raw.office ?? null,
     naics: asStringArray(raw.naics_code ?? raw.naics),
     psc: asStringArray(raw.psc_code ?? raw.psc),
     set_aside: normalizeSetAside(raw.set_aside ?? null),
-    vehicle: normalizeVehicle(raw.contract_vehicle ?? raw.vehicle ?? null),
-    estimated_value: toUsdInteger(raw.estimated_value ?? raw.award_amount),
+    vehicle: normalizeVehicle(raw.vehicle ?? raw.contract_vehicle ?? null),
+    estimated_value: toUsdInteger(
+      raw.estimated_value ?? raw.award_amount ?? raw.val_est_high ?? raw.val_est_low
+    ),
     posted_date: toIsoOrNull(raw.posted_date ?? raw.published_date),
-    response_deadline: toIsoOrNull(raw.response_date ?? raw.response_deadline),
+    response_deadline: toIsoOrNull(raw.due_date ?? raw.response_date ?? raw.response_deadline),
     estimated_award_date: toIsoOrNull(raw.estimated_award_date ?? raw.award_date),
-    description: String(raw.description ?? raw.summary ?? ''),
+    description: String(raw.description_text ?? raw.description ?? raw.ai_summary ?? raw.summary ?? ''),
     attachments: Array.isArray(raw.attachments)
       ? raw.attachments.map((a: any) => ({
           name: String(a.name ?? a.filename ?? ''),
@@ -167,7 +180,7 @@ function normalizeOpportunity(raw: any) {
         }))
       : [],
     incumbent_contract_id: raw.incumbent_contract_id ?? raw.related_contract_key ?? null,
-    source_url: String(raw.source_url ?? raw.path ?? raw.url ?? ''),
+    source_url: String(raw.path ?? raw.source_url ?? raw.source_path ?? raw.url ?? ''),
   };
 }
 
@@ -426,29 +439,22 @@ export const highergovTools = {
     const cached = cacheGet(cacheKey);
     if (cached) return cached;
 
-    // Try as HigherGov opportunity_key first; if that fails, try as source/SAM notice id.
-    let res = await ApiClient.highergovGet(`/opportunity/${encodeURIComponent(id)}/`, {}, apiKey);
-    if (!res.success) {
-      if (!shouldTryLookupFallback(res.error)) {
-        return classifyUpstreamError(res.error);
-      }
-
-      const fallback = await ApiClient.highergovGet('/opportunity/', { source_id: id, page_size: 1 }, apiKey);
-      if (!fallback.success) return classifyUpstreamError(fallback.error);
-
-      const fallbackList = resultArray(fallback.data);
-      if (fallbackList.length > 0) {
-        const result = normalizeOpportunity(fallbackList[0]);
+    // HigherGov's /opportunity/ endpoint requires a query param — path-based
+    // lookups return 400. Try opp_key (HigherGov's hex slug) first, then
+    // source_id (SAM notice id) as a fallback.
+    const tried: string[] = [];
+    for (const param of ['opp_key', 'source_id'] as const) {
+      tried.push(param);
+      const res = await ApiClient.highergovGet('/opportunity/', { [param]: id, page_size: 1 }, apiKey);
+      if (!res.success) return classifyUpstreamError(res.error);
+      const list = resultArray(res.data);
+      if (list.length > 0) {
+        const result = normalizeOpportunity(list[0]);
         cacheSet(cacheKey, result);
         return result;
       }
-
-      return errorResponse('not_found', 'Resource not found');
     }
-
-    const result = normalizeOpportunity(res.data?.result ?? res.data);
-    cacheSet(cacheKey, result);
-    return result;
+    return errorResponse('not_found', `No opportunity found for id "${id}". Tried lookups: ${tried.join(', ')}.`);
   },
 
   async searchContracts(args: any) {
@@ -490,28 +496,21 @@ export const highergovTools = {
     const cached = cacheGet(cacheKey);
     if (cached) return cached;
 
-    let res = await ApiClient.highergovGet(`/contract/${encodeURIComponent(id)}/`, {}, apiKey);
-    if (!res.success) {
-      if (!shouldTryLookupFallback(res.error)) {
-        return classifyUpstreamError(res.error);
-      }
-
-      const fallback = await ApiClient.highergovGet('/contract/', { award_id: id, page_size: 1 }, apiKey);
-      if (!fallback.success) return classifyUpstreamError(fallback.error);
-
-      const fallbackList = resultArray(fallback.data);
-      if (fallbackList.length > 0) {
-        const result = normalizeContractFull(fallbackList[0]);
+    // HigherGov's /contract/ endpoint requires a query param — path-based
+    // lookups return 400. award_id covers both full PIIDs and parent IDs.
+    const tried: string[] = [];
+    for (const param of ['award_id', 'parent_award_id'] as const) {
+      tried.push(param);
+      const res = await ApiClient.highergovGet('/contract/', { [param]: id, page_size: 1 }, apiKey);
+      if (!res.success) return classifyUpstreamError(res.error);
+      const list = resultArray(res.data);
+      if (list.length > 0) {
+        const result = normalizeContractFull(list[0]);
         cacheSet(cacheKey, result);
         return result;
       }
-
-      return errorResponse('not_found', 'Resource not found');
     }
-
-    const result = normalizeContractFull(res.data?.result ?? res.data);
-    cacheSet(cacheKey, result);
-    return result;
+    return errorResponse('not_found', `No contract found for id "${id}". Tried lookups: ${tried.join(', ')}.`);
   },
 
   async searchPeople(args: any) {

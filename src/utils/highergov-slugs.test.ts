@@ -4,6 +4,7 @@ import {
   normalizeAgency,
   normalizeVehicle,
   normalizeSetAside,
+  asStringArray,
 } from './highergov-slugs.js';
 
 test('normalizeAgency returns null for empty/missing inputs', () => {
@@ -46,6 +47,22 @@ test('normalizeVehicle handles object payloads', () => {
   assert.equal(normalizeVehicle({ name: 'Seaport NxG' } as any), 'seaport-nxg');
   assert.equal(normalizeVehicle({ value: 'OASIS+' } as any), 'oasis-plus');
   assert.equal(normalizeVehicle(null), null);
+});
+
+test('asStringArray extracts the inner code from HigherGov nested objects', () => {
+  // Real HigherGov shapes seen in /opportunity/ responses.
+  assert.deepEqual(asStringArray({ naics_code: '238220' }), ['238220']);
+  assert.deepEqual(asStringArray({ psc_code: 'X' }), ['X']);
+  assert.deepEqual(asStringArray({ code: '12345' }), ['12345']);
+  assert.deepEqual(asStringArray([{ naics_code: '111' }, { naics_code: '222' }]), ['111', '222']);
+});
+
+test('asStringArray still handles legacy string and array shapes', () => {
+  assert.deepEqual(asStringArray('111,222'), ['111', '222']);
+  assert.deepEqual(asStringArray(['a', 'b', '']), ['a', 'b']);
+  assert.deepEqual(asStringArray(null), []);
+  assert.deepEqual(asStringArray(undefined), []);
+  assert.deepEqual(asStringArray(''), []);
 });
 
 test('normalizeSetAside handles object payloads', () => {
