@@ -1,0 +1,54 @@
+name: Deploy to Railway
+
+# Auto-deploys to Railway on push to main. Also runnable manually via the
+# Actions tab. Requires a RAILWAY_TOKEN repository secret (Railway project
+# token from https://railway.com/account/tokens).
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+concurrency:
+  group: railway-deploy
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    name: Deploy to Railway
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    permissions:
+      contents: read
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Install Railway CLI
+        run: npm install -g @railway/cli
+
+      - name: Deploy to Railway
+        env:
+          RAILWAY_TOKEN: ${{ secrets.RAILWAY_TOKEN }}
+        run: |
+          if [ -z "$RAILWAY_TOKEN" ]; then
+            echo "::error::RAILWAY_TOKEN secret is not configured. See README's Railway deploy section."
+            exit 1
+          fi
+          railway up --service capture-mcp-server --ci
+
+      - name: Verify health
+        run: |
+          # Give Railway a moment to flip traffic to the new build.
+          for i in $(seq 1 30); do
+            status=$(curl -sS -o /dev/null -w '%{http_code}' https://capture.mcp.blencorp.com/health || true)
+            if [ "$status" = "200" ]; then
+              echo "Health check passed (HTTP $status)"
+              curl -sS https://capture.mcp.blencorp.com/health
+              exit 0
+            fi
+            echo "Attempt $i: HTTP $status, retrying in 10s..."
+            sleep 10
+          done
+          echo "::error::Health check did not succeed within 5 minutes"
+          exit 1
