@@ -1044,35 +1044,54 @@ The server runs in HTTP mode (StreamableHTTP transport) when `MCP_TRANSPORT=http
 2. Set environment variables in the Railway dashboard:
    - `MCP_TRANSPORT=http` (required — switches from stdio)
    - `NODE_ENV=production`
-   - `MCP_REQUIRE_OAUTH=true` (required for Claude remote-connector users to enter their own HigherGov key)
+   - `NPM_CONFIG_PRODUCTION=false` (required so `npm ci` installs devDependencies; the build step needs `tsc`)
+   - `MCP_REQUIRE_OAUTH=true` (enables the per-user authorization flow for Claude remote-connector users)
    - `MCP_PUBLIC_BASE_URL=https://<your-domain>` (for example, `https://capture.mcp.blencorp.com`)
-   - `OAUTH_TOKEN_SECRET=<random secret>` (protects encrypted per-user HigherGov credentials)
-   - `SAM_GOV_API_KEY` and/or `TANGO_API_KEY` only if you want server-wide access to those tools
-   - `HIGHERGOV_API_KEY` is optional and should usually stay unset for Claude remote connectors; each user supplies their own key during OAuth authorization.
+   - `OAUTH_TOKEN_SECRET=<random secret>` (protects encrypted per-user provider credentials — generate with `openssl rand -base64 48`)
+   - `SAM_GOV_API_KEY`, `TANGO_API_KEY`, and/or `HIGHERGOV_API_KEY` only if you want server-wide access to those tools as a fallback. Usually unset for shared deployments; each user supplies their own keys during OAuth authorization.
    - **Do not set `PORT`** — Railway injects it.
 3. Deploy. Nixpacks installs dependencies, `railway.toml` runs `npm run build`, and the service starts via `node dist/server.js`, with healthcheck on `GET /health`.
 4. Add a custom domain in Settings → Domains (e.g. `capture.mcp.blencorp.com`) and point a CNAME at the value Railway shows.
 
 ### Auth posture
 
-With `MCP_REQUIRE_OAUTH=true`, `POST /mcp` requires OAuth bearer auth and advertises protected-resource metadata for MCP clients. Claude will redirect users through the built-in authorization flow, where they enter their own HigherGov API key. The server encrypts that key into the OAuth token and injects it into HigherGov tool calls; the key is not exposed as a tool argument.
+The hosted server accepts two parallel auth modes when `MCP_REQUIRE_OAUTH=true`:
 
-If `MCP_REQUIRE_OAUTH` is not enabled, HTTP mode keeps the legacy behavior: public USASpending tools are visible without auth, and keyed tools are enabled by server env vars or request headers.
+**1. OAuth (for Claude and other interactive MCP clients).** `POST /mcp` requires a bearer token and advertises protected-resource metadata. The client redirects the user to `/oauth/authorize`, where the user picks which providers they have keys for (SAM.gov, Tango, HigherGov) via checkboxes and pastes the keys for those providers. The server seals all selected keys into one access token; only tools whose keys were authorized appear in the client's tool list. Keys are never exposed as tool arguments.
+
+**2. Header passthrough (for programmatic API callers).** Requests that include `X-Sam-Api-Key`, `X-Tango-Api-Key`, and/or `X-Highergov-Api-Key` headers bypass the bearer-token gate. Only the tools whose keys are present get registered for that request. The provider key itself is the trust anchor — same model as the OAuth flow, just without the browser dance.
+
+If `MCP_REQUIRE_OAUTH` is not set, HTTP mode runs unauthenticated: public USASpending tools are visible without any credential, and keyed tools light up from server env vars or request headers.
 
 ### Smoke test after deploy
 
 ```bash
 curl -sf https://<your-domain>/health
 
-# With OAuth enabled, unauthenticated MCP requests should return 401 with
-# a WWW-Authenticate header pointing to OAuth protected-resource metadata.
+# 1) Unauthenticated MCP requests return 401 with a WWW-Authenticate header
+#    pointing to OAuth protected-resource metadata.
 curl -i https://<your-domain>/mcp \
   -H 'Content-Type: application/json' \
   -H 'Accept: application/json, text/event-stream' \
   -d '{"jsonrpc":"2.0","id":1,"method":"tools/list"}'
+
+# 2) Header passthrough — list HigherGov tools without going through OAuth.
+curl -X POST https://<your-domain>/mcp \
+  -H 'Content-Type: application/json' \
+  -H 'Accept: application/json, text/event-stream' \
+  -H "X-Highergov-Api-Key: $HIGHERGOV_API_KEY" \
+  -d '{"jsonrpc":"2.0","id":1,"method":"tools/list"}'
+
+# 3) Header passthrough — call a tool directly.
+curl -X POST https://<your-domain>/mcp \
+  -H 'Content-Type: application/json' \
+  -H 'Accept: application/json, text/event-stream' \
+  -H "X-Highergov-Api-Key: $HIGHERGOV_API_KEY" \
+  -d '{"jsonrpc":"2.0","id":1,"method":"tools/call",
+       "params":{"name":"search_highergov_forecasts","arguments":{"keyword":"cyber"}}}'
 ```
 
-After a Claude user completes OAuth authorization, `tools/list` returns the USASpending tools plus the HigherGov tools enabled by that user's key.
+After a Claude user completes OAuth authorization, `tools/list` returns the USASpending tools plus the provider tools enabled by that user's keys.
 
 ## Development
 
