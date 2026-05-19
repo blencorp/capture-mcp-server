@@ -1053,6 +1053,16 @@ The server runs in HTTP mode (StreamableHTTP transport) when `MCP_TRANSPORT=http
 3. Deploy. Nixpacks installs dependencies, `railway.toml` runs `npm run build`, and the service starts via `node dist/server.js`, with healthcheck on `GET /health`.
 4. Add a custom domain in Settings → Domains (e.g. `capture.mcp.blencorp.com`) and point a CNAME at the value Railway shows.
 
+### CI deploys via GitHub Actions
+
+`.github/workflows/deploy-railway.yml` deploys to Railway on every push to `main` (and is also runnable manually from the **Actions** tab). One-time setup:
+
+1. In Railway, generate a project token: **Account → Tokens → Create New Token** (or `railway login --browserless` from a workstation). Copy the token value.
+2. In GitHub, add it as a repo secret: **Settings → Secrets and variables → Actions → New repository secret** named `RAILWAY_TOKEN`.
+3. If Railway's built-in GitHub integration is also enabled (Service → Settings → Source), **disable auto-deploys there** to avoid two parallel builds racing on every push. The Action becomes the single source of truth.
+
+The workflow installs the Railway CLI, runs `railway up --service capture-mcp-server --ci`, and then polls `/health` for up to 5 minutes to confirm the new build is serving traffic.
+
 ### Auth posture
 
 The hosted server accepts two parallel auth modes when `MCP_REQUIRE_OAUTH=true`:
