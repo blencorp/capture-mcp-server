@@ -80,36 +80,64 @@ function fallbackSlug(value: string): string {
     .replace(/^-+|-+$/g, '');
 }
 
+// HigherGov sometimes returns these as nested objects ({name: 'DoD', code: '9700'}),
+// numbers, or other non-string truthy shapes. coerce here so the normalizers don't
+// call .trim() on a non-string and blow up the whole response.
+function coerceToString(raw: unknown): string | null {
+  if (raw === null || raw === undefined) return null;
+  if (typeof raw === 'string') return raw;
+  if (typeof raw === 'number') return Number.isFinite(raw) ? String(raw) : null;
+  if (typeof raw === 'boolean') return null;
+  if (Array.isArray(raw)) {
+    const first = raw.find(v => typeof v === 'string' && v.trim());
+    return typeof first === 'string' ? first : null;
+  }
+  if (typeof raw === 'object') {
+    const obj = raw as Record<string, unknown>;
+    for (const key of ['name', 'label', 'display_name', 'value', 'agency_name', 'agency']) {
+      const v = obj[key];
+      if (typeof v === 'string' && v.trim()) return v;
+    }
+  }
+  return null;
+}
+
 // Null means the source field was absent. Non-empty unknown values intentionally
 // return a fallback slug so consumers keep a stable, display-safe value.
 export function normalizeAgency(raw: string): string;
-export function normalizeAgency(raw?: string | null): string | null;
-export function normalizeAgency(raw?: string | null): string | null {
-  if (!raw) return null;
-  const key = raw.trim().toLowerCase();
+export function normalizeAgency(raw?: unknown): string | null;
+export function normalizeAgency(raw?: unknown): string | null {
+  const s = coerceToString(raw);
+  if (!s) return null;
+  const key = s.trim().toLowerCase();
+  if (!key) return null;
   if (AGENCY_MAP[key]) return AGENCY_MAP[key];
-  warnUnknown('agency', raw);
-  return fallbackSlug(raw);
+  warnUnknown('agency', s);
+  return fallbackSlug(s);
 }
 
 export function normalizeVehicle(raw: string): string;
-export function normalizeVehicle(raw?: string | null): string | null;
-export function normalizeVehicle(raw?: string | null): string | null {
-  if (!raw) return null;
-  const key = raw.trim().toLowerCase();
+export function normalizeVehicle(raw?: unknown): string | null;
+export function normalizeVehicle(raw?: unknown): string | null {
+  const s = coerceToString(raw);
+  if (!s) return null;
+  const key = s.trim().toLowerCase();
+  if (!key) return null;
   if (VEHICLE_MAP[key]) return VEHICLE_MAP[key];
-  warnUnknown('vehicle', raw);
-  return fallbackSlug(raw);
+  warnUnknown('vehicle', s);
+  return fallbackSlug(s);
 }
 
 export function normalizeSetAside(raw: string): string;
-export function normalizeSetAside(raw?: string | null): string | null;
-export function normalizeSetAside(raw?: string | null): string | null {
-  if (!raw) return null;
-  const key = raw.trim().toLowerCase();
+export function normalizeSetAside(raw?: unknown): string | null;
+export function normalizeSetAside(raw?: unknown): string | null {
+  const s = coerceToString(raw);
+  if (!s) return null;
+  const key = s.trim().toLowerCase();
+  if (!key) return null;
   if (SET_ASIDE_MAP[key]) return SET_ASIDE_MAP[key];
-  warnUnknown('set_aside', raw);
-  return fallbackSlug(raw);
+  warnUnknown('set_aside', s);
+  return fallbackSlug(s);
 }
 
 export function toIsoOrNull(raw?: string | null): string | null {
