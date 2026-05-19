@@ -87,6 +87,14 @@ HTTP header overrides (precedence over env vars) — used by remote MCP clients:
 
 The server automatically registers only the tools for which API keys are available.
 
+### Remote Auth (HTTP mode)
+
+When `MCP_TRANSPORT=http` and `MCP_REQUIRE_OAUTH=true`:
+- `src/auth/mcp-oauth.ts` implements an OAuth 2.1 server with PKCE, dynamic client registration, and AES-256-GCM sealed access/refresh tokens. Each token carries a `keys: { sam?, tango?, highergov? }` map sealed against `OAUTH_TOKEN_SECRET`.
+- `GET/POST /oauth/authorize` renders a multi-provider authorization page; users pick checkboxes per provider and supply only the keys they have.
+- `POST /mcp` is gated by `requireBearerAuth` UNLESS the caller presents an `X-Sam-Api-Key` / `X-Tango-Api-Key` / `X-Highergov-Api-Key` header. Header presence bypasses OAuth for programmatic clients — the key itself is the trust anchor.
+- Precedence per request: OAuth-sealed key → header → env var.
+
 ### MCP Integration
 
 Server designed for Claude Desktop integration via MCP configuration:
