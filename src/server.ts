@@ -226,16 +226,29 @@ async function runHttpMode(): Promise<void> {
     }));
   }
 
-  // MCP endpoint - stateless mode for Lambda compatibility
+  // MCP endpoint - stateless mode for Lambda compatibility.
+  // Auth gate: when OAuth is enabled, require a bearer token UNLESS the caller
+  // brings their own provider key via X-*-Api-Key headers (header passthrough
+  // for programmatic clients). The provider key itself is the trust anchor.
+  const mcpAuthGate = (() => {
+    if (!oauthProvider) return [];
+    const bearerMiddleware = requireBearerAuth({
+      verifier: oauthProvider,
+      requiredScopes: [],
+      resourceMetadataUrl: getOAuthProtectedResourceMetadataUrl(new URL('/mcp', getOAuthPublicBaseUrl(HTTP_PORT))),
+    });
+    const gate = (req: Request, res: Response, next: (err?: any) => void) => {
+      if (hasProviderHeader(req)) {
+        return next();
+      }
+      return bearerMiddleware(req, res, next);
+    };
+    return [gate];
+  })();
+
   app.post(
     '/mcp',
-    ...(oauthProvider
-      ? [requireBearerAuth({
-          verifier: oauthProvider,
-          requiredScopes: [],
-          resourceMetadataUrl: getOAuthProtectedResourceMetadataUrl(new URL('/mcp', getOAuthPublicBaseUrl(HTTP_PORT))),
-        })]
-      : []),
+    ...mcpAuthGate,
     async (req: Request, res: Response) => {
     try {
       // Create a fresh server instance for each request (stateless)
@@ -341,6 +354,17 @@ async function runHttpMode(): Promise<void> {
     console.error('Server error:', error);
     process.exit(1);
   });
+}
+
+function hasProviderHeader(req: Request): boolean {
+  return Boolean(
+    req.get('X-Sam-Api-Key') ||
+    req.get('x-sam-api-key') ||
+    req.get('X-Tango-Api-Key') ||
+    req.get('x-tango-api-key') ||
+    req.get('X-Highergov-Api-Key') ||
+    req.get('x-highergov-api-key')
+  );
 }
 
 function parseAuthorizeForm(body: any): {
