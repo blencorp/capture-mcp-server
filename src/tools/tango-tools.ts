@@ -222,14 +222,14 @@ export const tangoTools = {
       },
       {
         name: "get_tango_protest",
-        description: "Get the full record for a single bid protest, including digest text and any linked solicitations/contracts. Pass the protest ID or case number returned by search_tango_protests.",
+        description: "Get the full record for a single bid protest by case number (e.g., 'b-422670'). Returns the same fields as search_tango_protests plus docket URLs and decision URLs.",
         inputSchema: {
           type: "object",
           properties: {
             api_key: { type: "string", description: "Tango API key (optional if TANGO_API_KEY env var is set)" },
-            protest_id: { type: "string", description: "Protest UUID (the `protest_id` field returned by search_tango_protests)" }
+            case_number: { type: "string", description: "Protest case number (the `case_number` field returned by search_tango_protests, e.g., 'b-422670')" }
           },
-          required: ["protest_id"]
+          required: ["case_number"]
         }
       },
       {
@@ -979,7 +979,6 @@ export const tangoTools = {
     if (!response.success) return { error: response.error };
 
     const protests = (response.data.results || []).map((p: any) => ({
-      protest_id: p.uuid,
       case_number: p.case_number || p.base_case_number,
       title: p.title || p.case_title,
       protester: p.protester,
@@ -1002,13 +1001,20 @@ export const tangoTools = {
   },
 
   async getProtest(args: any): Promise<any> {
-    const { api_key, protest_id } = args;
+    const { api_key, case_number } = args;
     const tangoApiKey = this.requireKey(api_key);
-    if (!protest_id) throw new Error("protest_id is required");
+    if (!case_number) throw new Error("case_number is required");
 
-    const response = await ApiClient.tangoGet(`/protests/${protest_id}/`, {}, tangoApiKey);
+    // Tango's /protests/{uuid}/ detail endpoint requires a UUID that the list
+    // serializer doesn't expose. Filter the list endpoint by case_number and
+    // return the single match instead.
+    const response = await ApiClient.tangoGet('/protests/', { case_number, limit: 1 }, tangoApiKey);
     if (!response.success) return { error: response.error };
-    return response.data;
+    const results = response.data.results || [];
+    if (results.length === 0) {
+      return { error: `No protest found with case_number '${case_number}'` };
+    }
+    return results[0];
   },
 
   async searchIdvs(args: any): Promise<any> {
