@@ -48,12 +48,19 @@ Capture MCP empowers users to capture and query federal entity, opportunity, and
 - `get_entity_and_awards` - Combine SAM entity data with spending history
 - `get_opportunity_spending_context` - Link opportunities with market context
 
-### Tango API Integration (5 tools - Requires Tango API key)
+### Tango API Integration (12 tools - Requires Tango API key)
 - `search_tango_contracts` - Search federal contracts through unified API
 - `search_tango_grants` - Search federal grants and financial assistance
 - `get_tango_vendor_profile` - Get comprehensive vendor profiles with history
 - `search_tango_opportunities` - Search contract opportunities with forecasts
 - `get_tango_spending_summary` - Get spending summaries and analytics
+- `search_tango_protests` - Search GAO bid protests (agency, protester, outcome, dates)
+- `get_tango_protest` - Get full bid protest record by ID or case number
+- `search_tango_idvs` - Search IDIQs / BPAs / FSS that issue task orders
+- `get_tango_idv_children` - Get child IDVs, task orders, and transactions under one IDV
+- `search_tango_vehicles` - Search the federal contract-vehicle catalog (GWACs, MAS, BPAs)
+- `search_tango_otas` - Search Other Transaction Authority (OTA) awards
+- `get_tango_entity_metrics` - Time-series obligations for one UEI (month/quarter/year)
 
 ## Tool Availability Matrix
 
@@ -63,8 +70,8 @@ The server automatically enables tools based on which API keys you provide:
 | --- | --- | --- |
 | **None** (works out of the box) | USASpending.gov | **4 tools** |
 | `SAM_GOV_API_KEY` only | SAM.gov + USASpending.gov + Join tools | **10 tools** |
-| `TANGO_API_KEY` only | Tango API + USASpending.gov | **9 tools** |
-| **Both keys** | All tool sets | **15 tools** |
+| `TANGO_API_KEY` only | Tango API + USASpending.gov | **16 tools** |
+| **Both keys** | All tool sets | **22 tools** |
 
 ## Quick Start
 
@@ -74,8 +81,8 @@ The server automatically enables tools based on which API keys you provide:
 - **API Keys** (Optional - see [API Keys](#api-keys) section):
   - None required: 4 USASpending.gov tools work immediately
   - SAM.gov API key: Adds 6 more tools (10 total)
-  - Tango API key: Adds 5 more tools (9 total)
-  - Both keys: All 15 tools
+  - Tango API key: Adds 12 more tools (16 total)
+  - Both keys: All 22 tools
 
 ### Choose Your Installation Method
 
@@ -136,7 +143,7 @@ During or after installation, Claude Desktop will prompt you to configure API ke
 
 - **Skip all keys**: Click "Continue" without entering keys → 4 USASpending.gov tools available immediately
 - **Enter one key**: Provide either SAM.gov or Tango key → 9-10 tools available
-- **Enter both keys**: Provide both keys → All 15 tools available
+- **Enter both keys**: Provide both keys → All 22 tools available
 
 You can add or update API keys later via **Settings** → **Extensions** → **Capture MCP Server** → **Configure**.
 
@@ -232,7 +239,7 @@ Open your MCP configuration file and add the Capture MCP Server configuration. C
 }
 ```
 
-**Configuration C: Tango API Key Only (9 tools)**
+**Configuration C: Tango API Key Only (16 tools)**
 
 ```json
 {
@@ -248,7 +255,7 @@ Open your MCP configuration file and add the Capture MCP Server configuration. C
 }
 ```
 
-**Configuration D: Both API Keys (All 15 tools)**
+**Configuration D: Both API Keys (All 22 tools)**
 
 ```json
 {
@@ -289,7 +296,7 @@ Examples:
 **Test the connection**:
 Ask in a new conversation: *"List all available tools from the Capture MCP Server"*
 
-You should see 4-15 tools listed depending on your API key configuration.
+You should see 4-22 tools listed depending on your API key configuration.
 
 ### Method 3: Hosted Version (AWS Serverless)
 
@@ -598,7 +605,7 @@ You can start using the server immediately with 4 USASpending.gov tools, then ad
 - 4 SAM.gov tools (entities, opportunities, details, exclusions)
 - 2 Join tools (entity+awards, opportunity+context)
 
-#### Tango API Key (Enables 5 additional tools)
+#### Tango API Key (Enables 12 additional tools)
 
 **Time to obtain**: Immediate upon approval
 
@@ -621,7 +628,7 @@ You can start using the server immediately with 4 USASpending.gov tools, then ad
    - **Documentation**: https://tango.makegov.com/docs/
 
 **Enables these tools**:
-- 5 Tango tools (contracts, grants, vendor profiles, opportunities, spending summaries)
+- 12 Tango tools (contracts, grants, vendor profiles, opportunities, spending summaries, protests, IDVs, vehicles, OTAs, entity metrics)
 
 ### Managing API Keys
 
@@ -1007,6 +1014,13 @@ For complete API documentation including all parameters, schemas, and examples, 
 - **get_tango_vendor_profile** - Get vendor profiles with full history
 - **search_tango_opportunities** - Search opportunities with forecasts
 - **get_tango_spending_summary** - Get spending analytics
+- **search_tango_protests** - Search GAO bid protests with outcome filters
+- **get_tango_protest** - Get a single protest's full record
+- **search_tango_idvs** - Search IDIQs / BPAs / FSS vehicles that issue task orders
+- **get_tango_idv_children** - Drill into one IDV's child IDVs, task orders, and transactions
+- **search_tango_vehicles** - Search the federal contract-vehicle catalog (GWACs, MAS, BPAs)
+- **search_tango_otas** - Search Other Transaction Authority (OTA) awards
+- **get_tango_entity_metrics** - Time-series obligations for one UEI
 
 ### Rate Limits
 
@@ -1155,7 +1169,7 @@ capture-mcp-server/
 │   │   ├── index.ts           # Tool registry (conditional loading)
 │   │   ├── sam-tools.ts       # SAM.gov integration (4 tools)
 │   │   ├── usaspending-tools.ts # USASpending integration (4 tools)
-│   │   ├── tango-tools.ts     # Tango API integration (5 tools)
+│   │   ├── tango-tools.ts     # Tango API integration (12 tools)
 │   │   └── join-tools.ts      # Cross-API tools (2 tools)
 │   └── utils/
 │       └── api-client.ts      # HTTP client with rate limiting
@@ -1176,7 +1190,7 @@ capture-mcp-server/
 **Tool Registry** (`src/tools/index.ts`):
 - Dynamically loads tool sets based on available API keys
 - Enables graceful degradation when keys are missing
-- Provides 4-15 tools depending on configuration
+- Provides 4-22 tools depending on configuration
 
 **API Client** (`src/utils/api-client.ts`):
 - Centralized HTTP client with rate limiting

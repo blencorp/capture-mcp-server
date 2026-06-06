@@ -66,7 +66,7 @@ export async function initializeTools(config: ApiKeyConfig): Promise<Tool[]> {
       toolRegistry.set(tool.name, (args) => tangoTools.callTool(tool.name, args));
       toolApiKeyRegistry.set(tool.name, 'tangoKey');
     });
-    enabledToolSets.push("Tango API (5 tools)");
+    enabledToolSets.push("Tango API (12 tools)");
   }
 
   // Conditionally register HigherGov tools

@@ -17,7 +17,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Architecture Overview
 
-This is a Model Context Protocol (MCP) server that captures federal procurement and spending data through 21 specialized tools. The architecture follows a modular tool-based design:
+This is a Model Context Protocol (MCP) server that captures federal procurement and spending data through 28 specialized tools. The architecture follows a modular tool-based design:
 
 ### Core Components
 
@@ -30,7 +30,7 @@ This is a Model Context Protocol (MCP) server that captures federal procurement 
 - Modular tool system with five categories:
   - `sam-tools.ts` - 4 SAM.gov API tools (entities, opportunities, details, exclusions)
   - `usaspending-tools.ts` - 4 USASpending.gov API tools (awards, spending, budgets, recipient search)
-  - `tango-tools.ts` - 5 Tango API tools (contracts, grants, vendor profiles, opportunities, spending summaries)
+  - `tango-tools.ts` - 12 Tango API tools (contracts, grants, vendor profiles, opportunities, spending summaries, GAO protests + detail, IDVs + child/task-order drill-down, vehicle catalog, OTAs, entity time-series metrics)
   - `highergov-tools.ts` - 6 HigherGov tools (forecast search, opportunity/contract/person lookups, contract/people search). Responses are normalized to lowercase agency/vehicle/set-aside slugs via `utils/highergov-slugs.ts`. `get_*` tools cache for 15 min in an in-process LRU.
   - `join-tools.ts` - 2 cross-API tools (entity+awards, opportunity+context)
 - Each tool module exports `getTools()` and `callTool()` methods
@@ -78,9 +78,9 @@ Optional environment variables (configure based on which tools you need):
 
 **Tool Availability Based on API Keys** (USASpending is always available):
 - 4 SAM + 2 Join when `SAM_GOV_API_KEY` is set
-- 5 Tango when `TANGO_API_KEY` is set
+- 12 Tango when `TANGO_API_KEY` is set
 - 6 HigherGov when `HIGHERGOV_API_KEY` is set
-- All 21 tools when all three keys are set
+- All 28 tools when all three keys are set
 
 HTTP header overrides (precedence over env vars) — used by remote MCP clients:
 `X-Sam-Api-Key`, `X-Tango-Api-Key`, `X-Highergov-Api-Key`.
