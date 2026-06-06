@@ -227,7 +227,7 @@ export const tangoTools = {
           type: "object",
           properties: {
             api_key: { type: "string", description: "Tango API key (optional if TANGO_API_KEY env var is set)" },
-            protest_id: { type: "string", description: "Protest ID or base case number (e.g., 'b-423274')" }
+            protest_id: { type: "string", description: "Protest UUID (the `protest_id` field returned by search_tango_protests)" }
           },
           required: ["protest_id"]
         }
@@ -248,7 +248,7 @@ export const tangoTools = {
             naics_code: { type: "string", description: "NAICS code" },
             psc_code: { type: "string", description: "Product/Service Code (PSC)" },
             set_aside: { type: "string", description: "Set-aside code(s); use '|' for OR" },
-            idv_type: { type: "string", description: "IDV type code (e.g., 'IDC', 'GWAC', 'BPA', 'BOA', 'FSS')" },
+            idv_type: { type: "string", description: "IDV type code: 'A'=GWAC, 'B'=IDC, 'C'=FSS, 'D'=BOA, 'E'=BPA. Accepts the descriptive name too (e.g., 'GWAC')." },
             award_date_from: { type: "string", description: "Award date on or after (YYYY-MM-DD)" },
             award_date_to: { type: "string", description: "Award date on or before (YYYY-MM-DD)" },
             expiring_from: { type: "string", description: "Last date to order on or after (YYYY-MM-DD) — find IDVs still accepting orders" },
@@ -979,7 +979,7 @@ export const tangoTools = {
     if (!response.success) return { error: response.error };
 
     const protests = (response.data.results || []).map((p: any) => ({
-      protest_id: p.id || p.base_case_number || p.case_number,
+      protest_id: p.uuid,
       case_number: p.case_number || p.base_case_number,
       title: p.title || p.case_title,
       protester: p.protester,
@@ -1030,7 +1030,13 @@ export const tangoTools = {
     if (naics_code) params.naics = naics_code;
     if (psc_code) params.psc = psc_code;
     if (set_aside) params.set_aside = set_aside;
-    if (idv_type) params.idv_type = idv_type;
+    if (idv_type) {
+      const IDV_TYPE_BY_NAME: Record<string, string> = {
+        GWAC: 'A', IDC: 'B', FSS: 'C', BOA: 'D', BPA: 'E'
+      };
+      const upper = String(idv_type).toUpperCase();
+      params.idv_type = IDV_TYPE_BY_NAME[upper] || upper;
+    }
     if (award_date_from) params.award_date_gte = award_date_from;
     if (award_date_to) params.award_date_lte = award_date_to;
     if (expiring_from) params.last_date_to_order_gte = expiring_from;
