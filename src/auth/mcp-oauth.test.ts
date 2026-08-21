@@ -4,6 +4,8 @@ import type { Response } from 'express';
 import type { OAuthClientInformationFull } from '@modelcontextprotocol/sdk/shared/auth.js';
 import type { AuthorizationParams } from '@modelcontextprotocol/sdk/server/auth/provider.js';
 import {
+  DEFAULT_CLIENT_SCOPE,
+  InMemoryOAuthClientsStore,
   McpOAuthProvider,
   getProviderKeysFromAuth,
 } from './mcp-oauth.js';
@@ -202,6 +204,27 @@ test('completeAuthorization trims whitespace-only keys and rejects if none remai
     async () => provider.completeAuthorization(requestId, { sam: '   ', highergov: '' }),
     /at least one provider API key/
   );
+});
+
+test('registerClient defaults a missing scope to mcp:tools', () => {
+  const store = new InMemoryOAuthClientsStore();
+  const { scope: _omitted, client_id: _id, client_id_issued_at: _issuedAt, ...metadata } = makeClient();
+
+  const registered = store.registerClient(metadata);
+  assert.equal(registered.scope, DEFAULT_CLIENT_SCOPE);
+  assert.equal(store.getClient(registered.client_id)?.scope, DEFAULT_CLIENT_SCOPE);
+});
+
+test('registerClient defaults a blank scope to mcp:tools', () => {
+  const store = new InMemoryOAuthClientsStore();
+  const registered = store.registerClient({ ...makeClient(), scope: '   ' });
+  assert.equal(registered.scope, DEFAULT_CLIENT_SCOPE);
+});
+
+test('registerClient preserves an explicitly requested scope', () => {
+  const store = new InMemoryOAuthClientsStore();
+  const registered = store.registerClient({ ...makeClient(), scope: 'custom:scope' });
+  assert.equal(registered.scope, 'custom:scope');
 });
 
 test('getProviderKeysFromAuth returns empty object for missing/invalid extras', () => {

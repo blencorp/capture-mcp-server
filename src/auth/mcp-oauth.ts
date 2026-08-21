@@ -23,6 +23,8 @@ const DEFAULT_ACCESS_TOKEN_TTL_SECONDS = 60 * 60 * 24 * 30;
 const DEFAULT_REFRESH_TOKEN_TTL_SECONDS = 60 * 60 * 24 * 90;
 const DEFAULT_AUTHORIZATION_TTL_MS = 10 * 60 * 1000;
 
+export const DEFAULT_CLIENT_SCOPE = 'mcp:tools';
+
 export const PROVIDER_IDS = ['sam', 'tango', 'highergov'] as const;
 export type ProviderId = typeof PROVIDER_IDS[number];
 export type ProviderKeys = Partial<Record<ProviderId, string>>;
@@ -87,6 +89,9 @@ export class InMemoryOAuthClientsStore implements OAuthRegisteredClientsStore {
       ...client,
       client_id: client.client_id ?? randomUUID(),
       client_id_issued_at: client.client_id_issued_at ?? nowSeconds,
+      // Clients registering without a scope would later fail authorization
+      // when they request the advertised mcp:tools scope.
+      scope: client.scope?.trim() ? client.scope : DEFAULT_CLIENT_SCOPE,
     } as OAuthClientInformationFull;
 
     this.clients.set(fullClient.client_id, fullClient);
