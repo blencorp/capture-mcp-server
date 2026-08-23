@@ -16,20 +16,37 @@ verdicts.
 
 | Param | Status | Notes |
 | --- | --- | --- |
-| `limit` | verified | Page size, ≤100. |
-| `awarding_agency` (code) | verified | Agency code binds (`2100` → Army-scoped results, 2026-08-23). |
-| `awarding_agency` (name) | does-not-bind | `"Army"` caused a 30s upstream timeout twice (2026-08-23). Send codes only. |
-| `award_date_gte` / `award_date_lte` | verified (binding) | Binds, but **which FPDS date field it compares is unverified** — `action_date` vs `date_signed` produced 1,928 vs 2,847 on the same window in the originating session. Responses label this as `date_field`. |
-| `set_aside` | verified (loose) | Binds but matches loosely: `8A` (1,450) is a superset including `8AN` rows (1,331) on the same window (2026-08-23). Exact-match handling is done client-side; an exact-match upstream param has not been found. |
-| `search`, `uei`, `naics`, `psc`, `recipient` | unverified | Passed through historically; binding never confirmed. |
-| amount bounds | none known | No server-side amount parameter has been found. `award_amount_min/max` are applied client-side per page and reported as such. Candidates to probe: `obligated_gte`, `min_obligated`. |
-| pagination | verified (shape) | Responses carry a DRF-style `next` URL; used verbatim as `next_cursor` and validated against the Tango origin on the way back in. |
+Documentation source: tango.makegov.com/docs (indexed via Context7,
+`/websites/tango_makegov` — quick-start, api-reference/contracts,
+data-dictionary/contracts). "documented" below means confirmed there.
+
+| Param | Status | Notes |
+| --- | --- | --- |
+| `limit`, `page`, `ordering` | documented | Page size ≤100 observed; `page` and `ordering` (e.g. `-award_date`) are documented. |
+| `shape` | documented | Field selection incl. nested expansions, e.g. `recipient(display_name,uei)`, `set_aside(code,description)`. **The default list response is a subset of fields that omits set_aside** — this was the root cause of unreadable per-row codes. The tool always sends a shape and falls back to unshaped on a 400. |
+| `awarding_agency` (code) | verified + documented | Binds (`2100` → Army, 2026-08-23). Docs say codes, names, and abbreviations with best-effort matching. |
+| `awarding_agency` (name) | rejected by us | Despite the docs, `"Army"` hung upstream past our 30s timeout twice (2026-08-23). The tool requires codes. `/api/organizations/?fpds_code=` exists for resolution. |
+| `award_date_gte` / `award_date_lte` | verified + documented | Documented; **which FPDS date field it compares is still undocumented** — `action_date` vs `date_signed` produced 1,928 vs 2,847 on the same window. Responses label `date_field`. |
+| `set_aside` | verified (loose) + documented | Documented param; docs also document OR syntax (`a|b`) which the tool uses for multi-code filters. Matching semantics are not documented and were observed loose live (`8A` (1,450) ⊇ `8AN` (1,331), 2026-08-23), so exact matching stays client-side against the shaped `set_aside.code`. |
+| `obligated_gte` / `obligated_lte` | documented | Server-side amount bounds in USD (obligated dollars). `award_amount_min/max` map to these, with client-side verification kept as a tripwire. |
+| `search`, `uei`, `recipient`, `naics`, `psc`, `piid`, `fiscal_year` | documented | `uei` exact, `recipient` partial, `piid` case-insensitive, `naics`/`psc` support OR syntax. |
+| `award_type` | documented | Award type code filter. |
+| pagination | verified + documented | DRF envelope `{count, next, previous, results}`; the `next` URL is used verbatim as `next_cursor` and validated against the Tango origin on the way back in. |
 
 Open items:
-- `total`/`count` unit (awards vs transactions vs IDVs) is **unverified**; responses label it.
+- `count` is documented as "the total number of contracts matching the query" (award-level); whether modifications/transactions ever roll up separately is unverified.
 - Unscoped totals diverge from agency-scoped sums (unscoped 8AN = 1,331 vs Army alone = 510 + GSA 107, while USAspending grand total = 1,928). Reported per P0-4; until resolved, set-aside-filtered totals are surfaced as `total_upstream_unverified`.
+- Contract detail endpoint `GET /api/contracts/{key}/` is documented (transactions + subawards_summary) — a candidate backend for future mod-history work.
 
 ## HigherGov `GET /api-external/contract/`
+
+Documentation source: Context7 indexes the HigherGov API docs
+(`/websites/highergov_api-external`), but the site is a Swagger UI whose
+parameter/field tables render client-side, so the index only carries endpoint
+stubs. It does confirm the endpoint roster (`/contract/`, `/opportunity/`,
+`/awardee/`, `/people/`, `/vehicle/`, `/document/`). Field-level schema still
+requires a live `capture-fixtures` run or the "Try It Out" button in the OAS
+docs at highergov.com/api-external/docs/.
 
 | Param | Status | Notes |
 | --- | --- | --- |

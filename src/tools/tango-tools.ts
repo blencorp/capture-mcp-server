@@ -5,16 +5,40 @@ import { listEnvelope, enforceClientBound } from '../utils/envelope.js';
 import { describeSetAside, isKnownSetAsideCode, validateSetAsideCodes } from '../utils/fpds-codes.js';
 
 // Semantics caveats surfaced on every response (docs/upstream-api-notes.md):
-// what Tango's count counts and which FPDS date field its date filter compares
-// are both unverified, and its set_aside matching is loose, not exact.
+// Tango documents `count` as "the total number of contracts matching the
+// query" (contract-award level); which FPDS date field award_date compares is
+// still undocumented, and set_aside matching was observed loose live even
+// though the docs don't specify its semantics.
 const CONTRACT_COUNT_UNIT =
-  'awards (Tango /contracts/ count; award vs transaction vs IDV unit unverified — see docs/upstream-api-notes.md)';
+  'contract awards matching the query (per Tango docs; transaction-level rollup semantics unverified)';
 const GRANT_COUNT_UNIT = 'grant awards (Tango /grants/ count; unit unverified)';
 const OPPORTUNITY_COUNT_UNIT = 'opportunity notices (Tango /opportunities/ count)';
 const AWARD_DATE_FIELD =
-  'award_date (Tango award_date_gte/lte; whether this is FPDS action_date or date_signed is unverified)';
+  'award_date (Tango award_date_gte/lte; whether this is FPDS action_date or date_signed is undocumented)';
 const LOOSE_SET_ASIDE_WARNING =
-  "Tango's set_aside filter matches loosely (e.g. '8A' also matches 8AN records), so the upstream total may include other codes and is reported as total_upstream_unverified.";
+  "Tango's set_aside filter matches loosely (e.g. '8A' also matches 8AN records; observed live), so the upstream total may include other codes and is reported as total_upstream_unverified.";
+
+// Tango's list endpoint returns only "a subset of commonly-used fields" unless
+// `shape` names the fields — set_aside in particular is an expansion that the
+// default subset omits (which is why per-row codes were unreadable before).
+// Every field here is documented in Tango's data dictionary or was observed in
+// live responses; if the shaped request is rejected we retry unshaped.
+const CONTRACT_LIST_SHAPE = [
+  'key',
+  'piid',
+  'description',
+  'award_date',
+  'obligated',
+  'total_contract_value',
+  'base_and_exercised_options_value',
+  'naics_code',
+  'psc_code',
+  'recipient(display_name,uei)',
+  'awarding_office(agency_name,agency_code,office_name)',
+  'set_aside(code,description)',
+  'award_type(code,description)',
+  'place_of_performance(city_name,state_name,country_name)',
+].join(',');
 
 function bad(message: string) {
   return { error: { code: 'bad_request', message } };
@@ -32,7 +56,8 @@ function resolveAgencyCode(agency: unknown): { code?: string; error?: string } {
   if (/^\d{2,4}$/.test(text)) return { code: text };
   return {
     error:
-      `agency must be an FPDS agency code (agency names hang the Tango upstream). ` +
+      `agency must be an FPDS agency code. Tango's docs describe best-effort name matching, ` +
+      `but agency-name queries were observed to hang upstream past our 30s timeout, so codes are required. ` +
       `Common codes: ${COMMON_AGENCY_CODES}. The code for any award appears in results under agency.code.`,
   };
 }
@@ -410,10 +435,13 @@ export const tangoTools = {
     if (psc_code) params.psc = psc_code;
     if (date_from) params.award_date_gte = date_from;
     if (date_to) params.award_date_lte = date_to;
-    // Upstream set_aside narrows loosely; useful with a single code (its loose
-    // matches are a superset of the exact matches we keep). With multiple
-    // codes there is no upstream parameter, so filtering is client-side only.
-    if (setAsideCodes.length === 1) params.set_aside = setAsideCodes[0];
+    // Documented server-side amount bounds (obligated dollars).
+    if (award_amount_min !== undefined) params.obligated_gte = award_amount_min;
+    if (award_amount_max !== undefined) params.obligated_lte = award_amount_max;
+    // Documented OR syntax for filter values (a|b). Upstream narrowing still
+    // matches loosely (observed live), so exact enforcement below stays.
+    if (setAsideCodes.length > 0) params.set_aside = setAsideCodes.join('|');
+    params.shape = CONTRACT_LIST_SHAPE;
 
     let request;
     try {
@@ -422,15 +450,28 @@ export const tangoTools = {
       return bad(err instanceof Error ? err.message : String(err));
     }
 
-    const response = await ApiClient.tangoGet(request.endpoint, request.params, tangoApiKey);
+    let response = await ApiClient.tangoGet(request.endpoint, request.params, tangoApiKey);
+    let shapeFallback = false;
+    if (!response.success && request.params.shape && /API Error 400/.test(response.error ?? '')) {
+      // A field name in the shape the upstream doesn't recognize — degrade to
+      // the default subset rather than failing the whole search.
+      const { shape: _unused, ...unshaped } = request.params;
+      response = await ApiClient.tangoGet(request.endpoint, unshaped, tangoApiKey);
+      shapeFallback = true;
+    }
 
     if (!response.success) {
       return { error: response.error };
     }
 
-    const rawContracts: any[] = response.data.results || [];
+    const rawContracts: any[] = response.data.results || response.data.contracts || [];
     const warnings: string[] = [];
     const clientSide: Record<string, unknown> = {};
+    if (shapeFallback) {
+      warnings.push(
+        'Upstream rejected the field-shape request; the default field subset was returned instead, so some fields (notably per-row set_aside) may be missing.'
+      );
+    }
 
     // Map to essential fields first so all client-side verification runs
     // against the same normalized rows the caller sees.
@@ -448,6 +489,7 @@ export const tangoTools = {
         office: contract.awarding_office?.office_name || contract.office_name
       },
       award_amount: contract.obligated ?? contract.total_contract_value ?? contract.base_and_exercised_options_value ?? contract.award_amount ?? null,
+      obligated: contract.obligated ?? null,
       award_date: contract.award_date || contract.date_signed,
       naics_code: contract.naics_code,
       naics_description: contract.naics_description,
@@ -483,10 +525,11 @@ export const tangoTools = {
       }
     }
 
-    // P0-2: amount and vendor-name filters have no verified upstream
-    // parameter — enforce client-side with an explicit echo, never silently.
-    contracts = enforceClientBound(contracts, 'award_amount_min', award_amount_min, c => c.award_amount, (v, b) => Number(v) >= Number(b), clientSide, warnings);
-    contracts = enforceClientBound(contracts, 'award_amount_max', award_amount_max, c => c.award_amount, (v, b) => Number(v) <= Number(b), clientSide, warnings);
+    // P0-2: amount bounds run upstream via the documented obligated_gte/lte
+    // params; this pass verifies the upstream actually honored them (a
+    // violation gets filtered and flagged, never returned silently).
+    contracts = enforceClientBound(contracts, 'award_amount_min', award_amount_min, c => c.obligated ?? c.award_amount, (v, b) => Number(v) >= Number(b), clientSide, warnings);
+    contracts = enforceClientBound(contracts, 'award_amount_max', award_amount_max, c => c.obligated ?? c.award_amount, (v, b) => Number(v) <= Number(b), clientSide, warnings);
     if (vendor_name) {
       const needle = String(vendor_name).toLowerCase();
       contracts = enforceClientBound(contracts, 'vendor_name', vendor_name, c => c.vendor.name ?? null, v => String(v).toLowerCase().includes(needle), clientSide, warnings);
@@ -505,11 +548,7 @@ export const tangoTools = {
       // per P0-4, unscoped set-aside totals have not reconciled with
       // agency-scoped sums — never present one as trustworthy when the exact
       // filter could not be applied to the rows.
-      distrustUpstreamTotal: looseOnly
-        ? setAsideCodes.length === 1
-          ? LOOSE_SET_ASIDE_WARNING
-          : 'The set_aside filter was not applied upstream (no multi-code parameter exists) or client-side (rows carry no readable code), so the total reflects the query WITHOUT any set-aside filtering.'
-        : undefined,
+      distrustUpstreamTotal: looseOnly ? LOOSE_SET_ASIDE_WARNING : undefined,
     });
   },
 
