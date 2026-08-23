@@ -72,21 +72,29 @@ async function captureHighergov(apiKey: string): Promise<void> {
   console.log(`  record keys: ${topLevelKeys(base.data).join(', ')}`);
   console.log(`  payload top-level keys: ${Object.keys(base.data as any).join(', ')}`);
 
-  // Agency-binding probe: does any agency filter param actually constrain?
-  const agencyParams = ['agency_key', 'awarding_agency_key', 'awarding_agency', 'agency_name'];
-  for (const param of agencyParams) {
+  // Agency-binding probe. The OpenAPI spec documents awarding_agency_key as
+  // an integer HigherGov agency key; take one from the page just captured so
+  // the probe uses a real key, then confirm every returned row carries it.
+  const firstAgencyKey = (base.data as any)?.results?.[0]?.awarding_agency?.agency_key;
+  if (Number.isInteger(firstAgencyKey)) {
     const res = await ApiClient.highergovGet(
       '/contract/',
-      { [param]: 'department-of-veterans-affairs', page_size: 2 },
+      { awarding_agency_key: firstAgencyKey, page_size: 3 },
       apiKey
     );
     if (!res.success) {
-      console.log(`  probe ${param}: ERROR ${res.error}`);
-      continue;
+      console.log(`  probe awarding_agency_key=${firstAgencyKey}: ERROR ${res.error}`);
+    } else {
+      const rows = (res.data as any).results ?? [];
+      const bound = rows.every((r: any) => r?.awarding_agency?.agency_key === firstAgencyKey);
+      console.log(
+        `  probe awarding_agency_key=${firstAgencyKey}: ${rows.length} rows, ` +
+          (bound ? 'ALL match (binds)' : 'MISMATCHED rows (does not bind)')
+      );
+      await save('highergov-contract-agency-awarding_agency_key', res.data);
     }
-    const rows = (res.data as any).results ?? [];
-    console.log(`  probe ${param}: ${rows.length} rows — inspect fixtures to confirm agency binding`);
-    await save(`highergov-contract-agency-${param}`, res.data);
+  } else {
+    console.log('  probe awarding_agency_key: skipped (no agency_key on captured page)');
   }
 
   console.log('== HigherGov /opportunity/');

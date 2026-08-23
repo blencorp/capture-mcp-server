@@ -92,7 +92,7 @@ async function smokeHighergov(): Promise<void> {
       rows.every((r: any) => r.piid && r.title && r.agency) || drift,
       JSON.stringify(rows[0] ?? {}));
     check('no non-VA rows returned as VA (post-verified)',
-      rows.every((r: any) => r.agency === 'va' || r.sub_agency === 'vha' || r.sub_agency === 'va')
+      rows.every((r: any) => r.agency === 'va' || r.funding_agency === 'va')
       || (res.warnings ?? []).some((w: string) => /UNFILTERED by agency/.test(w)),
       JSON.stringify(rows.map((r: any) => r.agency)));
     check('large result sets expose next_cursor', res.next_cursor !== null || rows.length < 10,

@@ -248,100 +248,83 @@ function normalizeOpportunity(raw: any) {
   };
 }
 
+// Field names below are the `Federal Contract` schema from the HigherGov
+// OpenAPI spec (fixtures/raw/highergov-openapi.json, v1.2, retrieved
+// 2026-08-23). Nested shapes: awardee → AwardeeSimple {awardee_key,
+// clean_name, uei, cage_code, path}; awarding_agency/funding_agency →
+// AgencySimple {agency_key, agency_name, agency_abbreviation, agency_type,
+// path}; vehicle → VehicleSimple {vehicle_key, vehicle_name, ...};
+// naics_code → {naics_code, naics_description}; psc_code → {psc_code, ...}.
 export function normalizeContractSummary(raw: any) {
-  const sourceUrl = str(pick(raw, ['path', 'source_url', 'source_path', 'url']));
-  const awardId = str(pick(raw, ['award_id', 'piid', 'award_id_piid', 'award_piid'])) || idFromSourceUrl(sourceUrl);
-  const rawSetAside = pick(raw, [
-    'type_of_set_aside_code',
-    'type_of_set_aside',
-    'set_aside_code',
-    'set_aside.code',
-    'set_aside',
-    'set_aside_description',
-  ]);
+  const sourceUrl = str(pick(raw, ['path']));
+  const awardId = str(pick(raw, ['award_id'])) || idFromSourceUrl(sourceUrl);
+  const rawSetAside = pick(raw, ['type_of_set_aside']);
   return {
-    contract_id: str(pick(raw, ['contract_award_unique_key', 'award_key', 'contract_id', 'key', 'id'])) || awardId,
+    // The spec exposes no separate surrogate key; award_id is the record ID
+    // and the lookup param for get_highergov_contract.
+    contract_id: awardId,
     piid: awardId,
-    title: str(pick(raw, ['award_description', 'description', 'title', 'project_name'])),
-    incumbent_name: str(
-      pick(raw, [
-        'awardee.clean_name',
-        'awardee.awardee_name',
-        'awardee.name',
-        'awardee_name',
-        'recipient_name',
-        'vendor_name',
-        'recipient.name',
-      ])
-    ),
-    incumbent_uei: (pick(raw, ['awardee.uei', 'awardee_uei', 'recipient_uei', 'recipient.uei']) as string | null),
-    agency: normalizeAgency(
-      pick(raw, ['awarding_agency.agency_name', 'awarding_agency', 'awarding_agency_name', 'agency_name', 'agency'])
-    ),
-    sub_agency: normalizeAgency(
-      pick(raw, [
-        'awarding_agency.sub_agency_name',
-        'awarding_agency.subtier_agency_name',
-        'awarding_sub_agency_name',
-        'sub_agency_name',
-        'sub_agency',
-      ])
-    ),
+    title: str(pick(raw, ['award_description_original', 'alt_description', 'related_opportunity_title'])),
+    incumbent_name: str(pick(raw, ['awardee.clean_name'])),
+    incumbent_uei: (pick(raw, ['awardee.uei']) as string | null),
+    agency: normalizeAgency(pick(raw, ['awarding_agency.agency_name'])),
+    // The spec has no sub-agency on contracts; funding_agency is the second
+    // agency dimension it does carry.
+    funding_agency: normalizeAgency(pick(raw, ['funding_agency.agency_name'])),
     naics: asStringArray(raw.naics_code ?? raw.naics),
     psc: asStringArray(raw.psc_code ?? raw.psc),
     set_aside: normalizeSetAside(rawSetAside),
     set_aside_code: setAsideCodePair(rawSetAside),
-    vehicle: normalizeVehicle(pick(raw, ['contract_vehicle', 'vehicle'])),
-    value:
-      toUsdInteger(
-        pick(raw, [
-          'current_total_value_of_award',
-          'potential_total_value_of_award',
-          'total_contract_value',
-          'base_and_all_options_value',
-          'value',
-          'obligated',
-        ])
-      ) ?? 0,
-    pop_start: toIsoOrNull(
-      str(pick(raw, ['period_of_performance_start_date', 'period_of_performance_start', 'pop_start', 'start_date'])) || null
-    ),
-    pop_end: toIsoOrNull(
-      str(
-        pick(raw, [
-          'period_of_performance_current_end_date',
-          'period_of_performance_end',
-          'pop_end',
-          'end_date',
-        ])
-      ) || null
-    ),
+    vehicle: normalizeVehicle(pick(raw, ['vehicle.vehicle_name', 'vehicle'])),
+    value: toUsdInteger(pick(raw, ['current_total_value_of_award', 'potential_total_value_of_award'])) ?? 0,
+    pop_start: toIsoOrNull(str(pick(raw, ['period_of_performance_start_date'])) || null),
+    pop_end: toIsoOrNull(str(pick(raw, ['period_of_performance_current_end_date'])) || null),
     pop_potential_end: toIsoOrNull(str(pick(raw, ['period_of_performance_potential_end_date'])) || null),
     source_url: sourceUrl,
   };
 }
 
+function normalizeContact(raw: any, role: string) {
+  if (!raw || typeof raw !== 'object') return null;
+  const name = str(pick(raw, ['contact_name']));
+  const email = str(pick(raw, ['contact_email']));
+  if (!name && !email) return null;
+  return {
+    role,
+    name: name || null,
+    title: str(pick(raw, ['contact_title'])) || null,
+    email: email || null,
+    phone: str(pick(raw, ['contact_phone'])) || null,
+  };
+}
+
 export function normalizeContractFull(raw: any) {
   const base = normalizeContractSummary(raw);
+  const contacts = [
+    normalizeContact(raw.created_by, 'created_by'),
+    normalizeContact(raw.last_modified_by, 'last_modified_by'),
+    normalizeContact(raw.approved_by, 'approved_by'),
+  ].filter((c): c is NonNullable<typeof c> => c !== null);
   return {
     ...base,
-    description: str(pick(raw, ['description_text', 'award_description', 'description'])) || null,
-    incumbent_size: raw.awardee_business_size ?? raw.recipient_business_size ?? raw.recipient_size ?? null,
-    office: str(pick(raw, ['awarding_agency.office_name', 'office_name', 'office'])) || null,
-    obligated_value: toUsdInteger(
-      pick(raw, ['total_dollars_obligated', 'federal_action_obligation', 'obligated_value', 'obligated'])
-    ),
-    option_periods: Array.isArray(raw.option_periods)
-      ? raw.option_periods.map((p: any) => ({
-          label: String(p.label ?? p.name ?? ''),
-          exercised: Boolean(p.exercised),
-          start: toIsoOrNull(p.start ?? p.start_date),
-          end: toIsoOrNull(p.end ?? p.end_date),
-        }))
-      : [],
-    modifications: Number(pick(raw, ['modification_count', 'modifications', 'mod_count']) ?? 0),
-    cpars_score: raw.cpars_rating ?? raw.cpars_score ?? null,
-    protests: Number(pick(raw, ['protest_count', 'protests']) ?? 0),
+    description: str(pick(raw, ['award_description_original', 'alt_description'])) || null,
+    obligated_value: toUsdInteger(pick(raw, ['total_dollars_obligated'])),
+    potential_value: toUsdInteger(pick(raw, ['potential_total_value_of_award'])),
+    award_type: str(pick(raw, ['award_type'])) || null,
+    parent_award_id: str(pick(raw, ['parent_award_id'])) || null,
+    solicitation_id: str(pick(raw, ['solicitation_identifier'])) || null,
+    pricing_type: str(pick(raw, ['type_of_contract_pricing_description'])) || null,
+    extent_competed: str(pick(raw, ['extent_competed'])) || null,
+    number_of_offers_received: str(pick(raw, ['number_of_offers_received'])) || null,
+    latest_action_date: toIsoOrNull(str(pick(raw, ['latest_action_date'])) || null),
+    last_modified_date: toIsoOrNull(str(pick(raw, ['last_modified_date'])) || null),
+    place_of_performance: {
+      city: str(pick(raw, ['primary_place_of_performance_city_name'])) || null,
+      state: str(pick(raw, ['primary_place_of_performance_state_code'])) || null,
+      zip: str(pick(raw, ['primary_place_of_performance_zip'])) || null,
+      country: str(pick(raw, ['primary_place_of_performance_country_name'])) || null,
+    },
+    contracting_contacts: contacts,
   };
 }
 
@@ -370,32 +353,34 @@ export function contractMappingDriftWarning(mapped: any[], rawList: any[]): stri
   );
 }
 
+// `People` schema per the OpenAPI spec: contact_first_name, contact_last_name,
+// contact_name, contact_title, contact_email, contact_phone, contact_ext,
+// contact_fax, agency (AgencySimple), contact_type, last_seen, path. There is
+// no numeric person ID; contact_email is the only lookup param the API
+// documents, so it doubles as person_id when present.
 function normalizePersonSummary(raw: any) {
+  const email = str(pick(raw, ['contact_email']));
+  const sourceUrl = str(pick(raw, ['path']));
+  const name =
+    str(pick(raw, ['contact_name'])) ||
+    [str(pick(raw, ['contact_first_name'])), str(pick(raw, ['contact_last_name']))].filter(Boolean).join(' ');
   return {
-    person_id: String(raw.person_id ?? raw.id ?? raw.key ?? ''),
-    name: String(raw.name ?? raw.full_name ?? ''),
-    title: String(raw.title ?? raw.position ?? ''),
-    agency: normalizeAgency(raw.agency_name ?? raw.agency),
-    sub_agency: normalizeAgency(raw.sub_agency_name ?? null),
-    office: raw.office_name ?? raw.office ?? null,
-    verified_email: raw.verified_email ?? raw.email_verified ?? null,
-    source_url: String(raw.source_url ?? raw.path ?? raw.url ?? ''),
+    person_id: email || idFromSourceUrl(sourceUrl),
+    name,
+    title: str(pick(raw, ['contact_title'])),
+    agency: normalizeAgency(raw.agency),
+    contact_type: str(pick(raw, ['contact_type'])) || null,
+    email: email || null,
+    last_seen: toIsoOrNull(str(pick(raw, ['last_seen'])) || null),
+    source_url: sourceUrl,
   };
 }
 
 function normalizePersonFull(raw: any) {
   return {
     ...normalizePersonSummary(raw),
-    phone: raw.phone ?? null,
-    bio: truncate(raw.bio ?? raw.biography ?? '', 1000) || null,
-    recent_activity: Array.isArray(raw.recent_activity)
-      ? raw.recent_activity.slice(0, 10).map((a: any) => ({
-          date: toIsoOrNull(a.date ?? a.activity_date) ?? '',
-          kind: String(a.kind ?? a.activity_type ?? ''),
-          summary: String(a.summary ?? a.description ?? ''),
-          url: a.url ?? null,
-        }))
-      : [],
+    phone: str(pick(raw, ['contact_phone'])) || null,
+    phone_ext: str(pick(raw, ['contact_ext'])) || null,
   };
 }
 
@@ -404,9 +389,11 @@ function resultArray(raw: any): any[] {
   return Array.isArray(list) ? list : [];
 }
 
-// Total count from a HigherGov payload, wherever this API version put it.
+// Total count from a HigherGov payload. The OpenAPI spec puts it at
+// meta.pagination.count; the rest are fallbacks for older payload shapes.
 function highergovTotal(raw: any): number | null {
   const candidates = [
+    raw?.meta?.pagination?.count,
     raw?.count,
     raw?.total_count,
     raw?.num_results,
@@ -463,7 +450,12 @@ export const highergovTools = {
           type: 'object',
           properties: {
             api_key: { type: 'string', description: 'HigherGov API key (optional if HIGHERGOV_API_KEY env var is set)' },
-            agency: { type: 'string', description: 'Agency slug or name (post-verified against returned records; see warnings)' },
+            agency: { type: 'string', description: 'Agency name or slug. The upstream API only filters by numeric key (see agency_key), so names are enforced client-side against returned records — see warnings.' },
+            agency_key: {
+              type: 'number',
+              description: 'HigherGov awarding agency key (numeric). The only agency filter the upstream API honors (awarding_agency_key). Find it on the agency page URL in the HigherGov UI or via /api-external/agency/.',
+            },
+            awardee_uei: { type: 'string', description: 'Awardee UEI (server-side filter)' },
             naics: { type: 'array', items: { type: 'string' } },
             psc: { type: 'array', items: { type: 'string' } },
             set_aside: {
@@ -471,10 +463,10 @@ export const highergovTools = {
               items: { type: 'string' },
               description: "Set-aside slugs or FPDS codes (e.g. ['sdvosb','8a'] or ['SDVOSBS','8AN']). Applied client-side against normalized records.",
             },
-            pop_end_after: { type: 'string', description: 'ISO-8601 date; period-of-performance end on/after this date' },
-            pop_end_before: { type: 'string', description: 'ISO-8601 date; period-of-performance end on/before this date' },
-            min_value: { type: 'number', description: 'USD' },
-            max_value: { type: 'number', description: 'USD' },
+            pop_end_after: { type: 'string', description: 'ISO-8601 date; period-of-performance end on/after this date (applied client-side; upstream has no PoP filter)' },
+            pop_end_before: { type: 'string', description: 'ISO-8601 date; period-of-performance end on/before this date (applied client-side)' },
+            min_value: { type: 'number', description: 'USD (applied client-side; upstream has no value filter)' },
+            max_value: { type: 'number', description: 'USD (applied client-side)' },
             limit: { type: 'number', description: 'Default 50, max 200' },
             cursor: { type: 'string', description: 'Page number from prior next_cursor' },
           },
@@ -484,7 +476,7 @@ export const highergovTools = {
       {
         name: 'get_highergov_contract',
         description:
-          'Get full record for one contract by HigherGov contract ID or PIID. Returns incumbent, dates, value, set-aside, vehicle, option-period status, CPARS, and protest count.',
+          'Get full record for one contract by award ID (PIID). Returns incumbent, dates, values, set-aside, vehicle, competition details (extent competed, offers received), pricing type, place of performance, and contracting-office contacts.',
         inputSchema: {
           type: 'object',
           properties: {
@@ -497,29 +489,29 @@ export const highergovTools = {
       {
         name: 'search_highergov_people',
         description:
-          'Search federal POCs by agency and optional role keywords. Use to find named individuals for outreach. `verified_email` may be null — if absent, do not draft outreach.',
+          'Search federal POCs. The upstream API only filters by contact email; agency and role keywords are applied client-side against returned pages — page with next_cursor to cover more. `email` may be null — if absent, do not draft outreach.',
         inputSchema: {
           type: 'object',
           properties: {
             api_key: { type: 'string', description: 'HigherGov API key (optional if HIGHERGOV_API_KEY env var is set)' },
-            agency: { type: 'string', description: 'Agency slug or name (required)' },
-            sub_agency: { type: 'string' },
-            role_keywords: { type: 'array', items: { type: 'string' } },
+            agency: { type: 'string', description: 'Agency slug or name (applied client-side; see warnings)' },
+            email: { type: 'string', description: 'Exact contact email (the only server-side filter the upstream API supports)' },
+            role_keywords: { type: 'array', items: { type: 'string' }, description: 'Matched client-side against contact titles' },
             limit: { type: 'number', description: 'Default 20, max 100' },
             cursor: { type: 'string', description: 'Page number from prior next_cursor' },
           },
-          required: ['agency'],
+          required: [],
         },
       },
       {
         name: 'get_highergov_person',
         description:
-          'Get the full profile for one POC, including verified email and recent activity (forecasts, awards, speaking engagements). Use as the source for the opening hook in cold outreach. If `verified_email` is null, refuse to draft.',
+          'Get the full profile for one POC by contact email (the only lookup the upstream API supports), including phone and agency. If `email` is null on a search result, there is nothing to look up — do not draft outreach.',
         inputSchema: {
           type: 'object',
           properties: {
             api_key: { type: 'string', description: 'HigherGov API key (optional if HIGHERGOV_API_KEY env var is set)' },
-            id: { type: 'string', description: 'HigherGov person ID' },
+            id: { type: 'string', description: 'Contact email address (person_id from search_highergov_people when it is an email)' },
           },
           required: ['id'],
         },
@@ -618,9 +610,11 @@ export const highergovTools = {
     const limit = Math.min(Math.max(Number(args.limit) || 50, 1), 200);
     const since = args.since ?? new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString();
 
-    // The documented parameter is last_modified_date with day granularity
-    // (docs example: last_modified_date=2023-07-06). The previously sent
-    // `modified_since` appears nowhere in the docs and was presumably ignored.
+    // HigherGov's help-guide examples document last_modified_date (day
+    // granularity, e.g. 2023-07-06) for since-style pulls, but the OpenAPI
+    // spec for /opportunity/ lists only captured_date and posted_date (both
+    // single-day matches). Send last_modified_date as best-effort narrowing
+    // and say so — records carry no last-modified field to verify against.
     const params: Record<string, any> = {
       search_id: args.saved_search_id,
       last_modified_date: String(since).slice(0, 10),
@@ -637,6 +631,9 @@ export const highergovTools = {
       total: highergovTotal(res.data),
       count_unit: 'forecast opportunities (HigherGov records)',
       filters: { upstream: params, client_side: {} },
+      warnings: [
+        'last_modified_date comes from HigherGov help-guide examples but is absent from the /opportunity/ OpenAPI spec; if ignored upstream, results may include records older than `since`.',
+      ],
       next_cursor: highergovNextCursor(res.data),
     };
   },
@@ -673,19 +670,26 @@ export const highergovTools = {
 
     const naics = asStringArray(args.naics);
     const psc = asStringArray(args.psc);
-    if (!args.agency && naics.length === 0 && psc.length === 0) {
-      return errorResponse('bad_request', 'At least one of agency, naics, or psc is required');
+    if (!args.agency && args.agency_key === undefined && !args.awardee_uei && naics.length === 0 && psc.length === 0) {
+      return errorResponse('bad_request', 'At least one of agency, agency_key, awardee_uei, naics, or psc is required');
     }
 
     const limit = Math.min(Math.max(Number(args.limit) || 50, 1), 200);
+    // Upstream params are exactly the ones the OpenAPI spec documents for
+    // /contract/ (docs/upstream-api-notes.md). Agency *names* have no upstream
+    // param — only awarding_agency_key binds — and there is no PoP-date or
+    // value filter, so those stay client-side below.
     const upstream: Record<string, any> = { page_size: limit };
-    if (args.agency) upstream.agency_name = args.agency;
+    if (args.agency_key !== undefined) {
+      const key = Number(args.agency_key);
+      if (!Number.isInteger(key) || key <= 0) {
+        return errorResponse('bad_request', `agency_key must be a positive integer HigherGov agency key (got "${args.agency_key}")`);
+      }
+      upstream.awarding_agency_key = key;
+    }
+    if (args.awardee_uei) upstream.awardee_uei = args.awardee_uei;
     if (naics.length) upstream.naics_code = naics.join(',');
     if (psc.length) upstream.psc_code = psc.join(',');
-    if (args.pop_end_after) upstream.pop_end_after = args.pop_end_after;
-    if (args.pop_end_before) upstream.pop_end_before = args.pop_end_before;
-    if (args.min_value !== undefined) upstream.min_value = args.min_value;
-    if (args.max_value !== undefined) upstream.max_value = args.max_value;
     applyPageCursor(upstream, args.cursor);
 
     const res = await ApiClient.highergovGet('/contract/', upstream, apiKey);
@@ -699,23 +703,23 @@ export const highergovTools = {
     const drift = contractMappingDriftWarning(rows, rawList);
     if (drift) warnings.push(drift);
 
-    // P0-6: upstream is not known to honor the agency filter (see
-    // docs/upstream-api-notes.md), so verify it against what came back and
-    // enforce it client-side. Never return other agencies' awards as if the
-    // filter had run.
+    // P0-6: the upstream API has no agency-*name* filter (the OpenAPI spec
+    // only documents awarding_agency_key), so a requested agency name is
+    // enforced client-side against the returned records. Never return other
+    // agencies' awards as if the filter had run.
     if (args.agency) {
       const want = normalizeAgency(String(args.agency));
-      const verifiable = rows.filter(r => r.agency || r.sub_agency);
+      const verifiable = rows.filter(r => r.agency || r.funding_agency);
       if (verifiable.length === 0 && rows.length > 0) {
         warnings.push(
-          'The agency filter could not be verified: returned records carry no readable agency and upstream is not known to honor agency_name. Treat these results as UNFILTERED by agency.'
+          'The agency filter could not be verified: returned records carry no readable agency. Treat these results as UNFILTERED by agency.'
         );
       } else {
-        const matching = rows.filter(r => r.agency === want || r.sub_agency === want);
+        const matching = rows.filter(r => r.agency === want || r.funding_agency === want);
         if (matching.length !== rows.length) {
           clientSide.agency = args.agency;
           warnings.push(
-            `Upstream did not honor the agency filter (${rows.length - matching.length} of ${rows.length} records on this page were other agencies); it was applied client-side. Page through next_cursor to enumerate.`
+            `The upstream API has no agency-name filter (only the numeric agency_key binds server-side); "${args.agency}" was applied client-side and removed ${rows.length - matching.length} of ${rows.length} records on this page. Page through next_cursor to enumerate, or pass agency_key to filter server-side.`
           );
           rows = matching;
         }
@@ -789,42 +793,54 @@ export const highergovTools = {
 
   async searchPeople(args: any) {
     const apiKey = getApiKey(args);
-    if (!args.agency) return errorResponse('bad_request', 'agency is required');
+    if (!args.agency && !args.email) {
+      return errorResponse('bad_request', 'At least one of agency or email is required');
+    }
 
     const limit = Math.min(Math.max(Number(args.limit) || 20, 1), 100);
-    const params: Record<string, any> = { agency_name: args.agency, page_size: limit };
-    if (args.sub_agency) params.sub_agency_name = args.sub_agency;
-    const roleKeywords = asStringArray(args.role_keywords);
-    if (roleKeywords.length) params.search = roleKeywords.join(' ');
+    // Per the OpenAPI spec, /people/ filters only by contact_email; agency and
+    // role keywords have no upstream param and are enforced client-side.
+    const params: Record<string, any> = { page_size: limit };
+    if (args.email) params.contact_email = args.email;
     applyPageCursor(params, args.cursor);
 
     const res = await ApiClient.highergovGet('/people/', params, apiKey);
     if (!res.success) return classifyUpstreamError(res.error);
 
     const list = resultArray(res.data);
-    const rows = list.map(normalizePersonSummary);
+    let rows = list.map(normalizePersonSummary);
     const warnings: string[] = [];
+    const clientSide: Record<string, unknown> = {};
 
-    // Same agency-binding caveat as contract search: verify, warn if it didn't hold.
-    const want = normalizeAgency(String(args.agency));
-    const withAgency = rows.filter(r => r.agency || r.sub_agency);
-    if (withAgency.length > 0) {
-      const mismatched = withAgency.filter(r => r.agency !== want && r.sub_agency !== want).length;
-      if (mismatched > 0) {
+    if (args.agency) {
+      const want = normalizeAgency(String(args.agency));
+      const before = rows.length;
+      rows = rows.filter(r => r.agency === want);
+      clientSide.agency = args.agency;
+      if (before > 0) {
         warnings.push(
-          `${mismatched} of ${rows.length} people on this page belong to other agencies — upstream may not honor the agency filter. Check each record's agency field.`
+          `The upstream /people/ API filters only by contact email; the agency filter was applied client-side (${before - rows.length} of ${before} records on this page removed). Page through next_cursor to cover more.`
         );
       }
     }
+    const roleKeywords = asStringArray(args.role_keywords).map(k => k.toLowerCase());
+    if (roleKeywords.length) {
+      clientSide.role_keywords = roleKeywords;
+      rows = rows.filter(r => {
+        const title = (r.title || '').toLowerCase();
+        return roleKeywords.some(k => title.includes(k));
+      });
+    }
 
-    return {
-      results: rows,
-      total: highergovTotal(res.data),
-      count_unit: 'people records (HigherGov)',
-      filters: { upstream: params, client_side: {} },
-      ...(warnings.length ? { warnings } : {}),
-      next_cursor: highergovNextCursor(res.data),
-    };
+    return listEnvelope({
+      resourceKey: 'results',
+      rows,
+      upstreamTotal: highergovTotal(res.data),
+      countUnit: 'people records (HigherGov)',
+      filters: { upstream: params, client_side: clientSide },
+      warnings,
+      nextCursor: highergovNextCursor(res.data),
+    });
   },
 
   async getPerson(args: any) {
@@ -832,14 +848,26 @@ export const highergovTools = {
     if (!args.id) return errorResponse('bad_request', 'id is required');
 
     const id = extractId(String(args.id));
+    // The OpenAPI spec exposes /people/ as a list endpoint whose only lookup
+    // param is contact_email — there is no detail route and no person key.
+    if (!id.includes('@')) {
+      return errorResponse(
+        'bad_request',
+        `The HigherGov API looks up people by contact email only (got "${id}"). Use the person_id/email from search_highergov_people when it is an email address.`
+      );
+    }
     const cacheKey = buildCacheKey('person', id, apiKey);
     const cached = cacheGet(cacheKey);
     if (cached) return cached;
 
-    const res = await ApiClient.highergovGet(`/people/${encodeURIComponent(id)}/`, {}, apiKey);
+    const res = await ApiClient.highergovGet('/people/', { contact_email: id, page_size: 1 }, apiKey);
     if (!res.success) return classifyUpstreamError(res.error);
 
-    const result = normalizePersonFull(res.data?.result ?? res.data);
+    const list = resultArray(res.data);
+    if (list.length === 0) {
+      return errorResponse('not_found', `No person found for contact email "${id}".`);
+    }
+    const result = normalizePersonFull(list[0]);
     cacheSet(cacheKey, result);
     return result;
   },
@@ -863,10 +891,12 @@ export const highergovTools = {
     }
 
     const limit = Math.min(Math.max(Number(args.limit) || 50, 1), 200);
+    // Per the OpenAPI spec, /opportunity/ has no naics/psc/set-aside params and
+    // its date params (captured_date, posted_date) are single-day matches, not
+    // range bounds — so every filter below runs client-side; upstream narrowing
+    // is limited to source_type. Saved searches (search_id) are the upstream's
+    // own filtering mechanism — see search_highergov_forecasts.
     const upstream: Record<string, any> = { page_size: limit, source_type: 'sam' };
-    if (naics.length) upstream.naics_code = naics.join(',');
-    if (psc.length) upstream.psc_code = psc.join(',');
-    if (args.posted_after) upstream.captured_date = args.posted_after;
     applyPageCursor(upstream, args.cursor);
 
     const res = await ApiClient.highergovGet('/opportunity/', upstream, apiKey);
@@ -961,22 +991,29 @@ export const highergovTools = {
     const documents: any[] = (opportunity.attachments ?? []).map((a: any) => ({ ...a, source: 'opportunity' }));
     const warnings: string[] = [];
 
-    // Enrich from the document endpoint when it recognizes the opportunity key
-    // (HigherGov indexes RFP documents separately from the notice record).
+    // Enrich from the document endpoint (HigherGov indexes RFP documents
+    // separately from the notice record). Per the OpenAPI spec, /document/
+    // takes a required `related_key` ("Document Key") and returns FileTracker
+    // records {file_name, file_type, file_size, posted_date, summary,
+    // download_url}. The opportunity's opp_key is the best-guess related key;
+    // whether it is accepted is unverified against a live response.
+    const relatedKey = String(opportunity.opportunity_id || extractId(String(args.id)));
     const res = await ApiClient.highergovGet(
       '/document/',
-      { opp_key: extractId(String(args.id)), page_size: 100 },
+      { related_key: relatedKey, page_size: 100 },
       apiKey
     );
     if (res.success) {
       for (const doc of resultArray(res.data)) {
-        const url = String(doc.url ?? doc.download_url ?? doc.path ?? '');
+        const url = String(doc.download_url ?? doc.url ?? '');
         if (url && !documents.some(d => d.url === url)) {
           documents.push({
-            name: String(doc.name ?? doc.file_name ?? doc.title ?? ''),
+            name: String(doc.file_name ?? doc.name ?? ''),
             url,
-            mime_type: doc.mime_type ?? doc.content_type ?? null,
-            size_bytes: typeof doc.size === 'number' ? doc.size : doc.size_bytes ?? null,
+            mime_type: doc.file_type ?? doc.mime_type ?? null,
+            size_bytes: typeof doc.file_size === 'number' ? doc.file_size : null,
+            posted_date: toIsoOrNull(doc.posted_date ?? null),
+            summary: doc.summary ?? null,
             source: 'document_index',
           });
         }
