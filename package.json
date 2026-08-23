@@ -10,6 +10,7 @@
     "dev": "node --import ./ts-node.register.mjs src/server.ts",
     "manage-keys": "node --import ./ts-node.register.mjs scripts/manage-keys.ts",
     "capture-fixtures": "node --import ./ts-node.register.mjs scripts/capture-fixtures.ts",
+    "release-version": "node --import ./ts-node.register.mjs scripts/release-version.ts",
     "smoke": "node --import ./ts-node.register.mjs scripts/smoke.ts",
     "sync-config": "node --import ./ts-node.register.mjs scripts/sync-config.ts",
     "cdk:bootstrap": "cd infrastructure && npx cdk bootstrap",

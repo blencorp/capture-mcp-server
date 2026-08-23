@@ -71,6 +71,16 @@ Enhancement suggestions are tracked as GitHub issues. Before creating enhancemen
 - Limit the first line to 72 characters or less
 - Reference issues and pull requests liberally after the first line
 
+Conventional Commit prefixes are optional but they decide the released version
+(see [Releases](#releases)):
+
+| Prefix | Effect on the next release |
+| --- | --- |
+| `feat:` / `feat(scope):` | minor bump (1.2.3 → 1.3.0) |
+| `fix:`, `docs:`, `chore:`, `ci:`, anything else | patch bump (1.2.3 → 1.2.4) |
+| any type with `!` (`feat!:`), or a `BREAKING CHANGE:` footer | major bump (1.2.3 → 2.0.0) |
+| no prefix at all | patch bump |
+
 ### Testing
 
 - Write tests for new functionality
@@ -84,6 +94,43 @@ Enhancement suggestions are tracked as GitHub issues. Before creating enhancemen
 - Update CLAUDE.md if you add new development commands
 - Document new tools in the appropriate section
 - Include JSDoc comments for public APIs
+
+## Releases
+
+Releases are automatic. Every merge to `main` runs
+[`.github/workflows/release.yml`](.github/workflows/release.yml), which:
+
+1. Runs the full test suite — a failing suite blocks the release.
+2. Picks the next version from the Conventional Commit prefixes since the last
+   tag (see the table above). The first release seeds at `package.json`'s
+   current version instead of bumping past it.
+3. Writes the version into `package.json`, `package-lock.json`, and
+   `manifest.json`, commits it as `chore(release): vX.Y.Z [skip ci]`, and
+   pushes it to `main`.
+4. Pushes the `vX.Y.Z` tag and publishes a GitHub release whose notes are
+   generated from the merged pull requests. Note grouping is configured in
+   [`.github/release.yml`](.github/release.yml) — label PRs (`feature`, `bug`,
+   `breaking`, `upstream`, `documentation`) to place them in a section.
+
+To force a level, run the **Release** workflow manually from the Actions tab
+and choose `patch`, `minor`, or `major`. To land a change on `main` without
+releasing, include `[skip release]` in the merge commit message.
+
+Preview what the next release would be without publishing anything:
+
+```bash
+npm run release-version              # prints current/next/bump
+npm run release-version -- --bump=minor
+```
+
+The bump logic lives in `src/utils/version-bump.ts` and is unit tested; the
+workflow only supplies git history and file I/O through
+`scripts/release-version.ts`.
+
+**Requirements:** the workflow pushes the bump commit to `main` with the
+built-in `GITHUB_TOKEN`. If `main` is protected, either allow GitHub Actions to
+bypass the restriction or the push step will fail (the tag and release are
+created only after that push succeeds).
 
 ## Project Structure
 
