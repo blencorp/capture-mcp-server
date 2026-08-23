@@ -6,6 +6,7 @@ import { usaspendingTools } from './usaspending-tools.js';
 import { joinTools } from './join-tools.js';
 import { tangoTools } from './tango-tools.js';
 import { highergovTools } from './highergov-tools.js';
+import { referenceTools } from './reference-tools.js';
 
 // Tool registry
 const toolRegistry = new Map<string, (args: any) => Promise<any>>();
@@ -77,6 +78,16 @@ export async function initializeTools(config: ApiKeyConfig): Promise<Tool[]> {
   toolRegistry.clear();
   toolApiKeyRegistry.clear();
   toolSchemaRegistry.clear();
+
+  // Always register reference tools (static lookups, no API key or network)
+  const referenceToolList = await referenceTools.getTools();
+  referenceToolList.forEach(tool => {
+    allTools.push(tool);
+    toolRegistry.set(tool.name, (args) => referenceTools.callTool(tool.name, args));
+    toolApiKeyRegistry.set(tool.name, null);
+    toolSchemaRegistry.set(tool.name, tool);
+  });
+  enabledToolSets.push(`Reference (${referenceToolList.length} tools)`);
 
   // Always register USASpending.gov tools (no API key required - public API)
   const usaspendingToolList = await usaspendingTools.getTools();

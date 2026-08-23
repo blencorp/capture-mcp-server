@@ -30,34 +30,133 @@
   "support": "https://github.com/blencorp/capture-mcp-server/issues",
   "compatibility": {
     "claude_desktop": ">=0.10.0",
-    "platforms": ["darwin", "win32", "linux"],
+    "platforms": [
+      "darwin",
+      "win32",
+      "linux"
+    ],
     "runtimes": {
       "node": ">=18.0.0"
     }
   },
   "tools": [
-    {"name": "search_sam_entities", "description": "Search for federal entities/businesses registered in SAM.gov"},
-    {"name": "get_sam_opportunities", "description": "Fetch federal contract opportunities from SAM.gov"},
-    {"name": "get_sam_entity_details", "description": "Get comprehensive details for a specific entity by UEI"},
-    {"name": "check_sam_exclusions", "description": "Check if an entity is excluded from federal contracting"},
-    {"name": "get_usaspending_awards", "description": "Get federal awards data for a specific agency"},
-    {"name": "get_usaspending_spending_by_category", "description": "Get spending breakdown by award category"},
-    {"name": "get_usaspending_budgetary_resources", "description": "Get budgetary resources and obligations for an agency"},
-    {"name": "search_usaspending_awards_by_recipient", "description": "Search for federal awards by recipient name"},
-    {"name": "get_entity_and_awards", "description": "Combine SAM entity data with USASpending award history"},
-    {"name": "get_opportunity_spending_context", "description": "Link opportunities with historical spending context"},
-    {"name": "search_tango_contracts", "description": "Search federal contracts through Tango's unified API"},
-    {"name": "search_tango_grants", "description": "Search federal grants and financial assistance"},
-    {"name": "get_tango_vendor_profile", "description": "Get comprehensive vendor profiles with history"},
-    {"name": "search_tango_opportunities", "description": "Search federal contract opportunities with forecasts"},
-    {"name": "get_tango_spending_summary", "description": "Get spending summaries and analytics"}
+    {
+      "name": "search_sam_entities",
+      "description": "Search for federal entities/businesses registered in SAM.gov"
+    },
+    {
+      "name": "get_sam_opportunities",
+      "description": "Fetch federal contract opportunities from SAM.gov"
+    },
+    {
+      "name": "get_sam_entity_details",
+      "description": "Get comprehensive details for a specific entity by UEI"
+    },
+    {
+      "name": "check_sam_exclusions",
+      "description": "Check if an entity is excluded from federal contracting"
+    },
+    {
+      "name": "get_usaspending_awards",
+      "description": "Get federal awards data for a specific agency"
+    },
+    {
+      "name": "get_usaspending_spending_by_category",
+      "description": "Get spending breakdown by award category"
+    },
+    {
+      "name": "get_usaspending_budgetary_resources",
+      "description": "Get budgetary resources and obligations for an agency"
+    },
+    {
+      "name": "search_usaspending_awards_by_recipient",
+      "description": "Search for federal awards by recipient name"
+    },
+    {
+      "name": "get_entity_and_awards",
+      "description": "Combine SAM entity data with USASpending award history"
+    },
+    {
+      "name": "get_opportunity_spending_context",
+      "description": "Link opportunities with historical spending context"
+    },
+    {
+      "name": "search_tango_contracts",
+      "description": "Search federal contracts through Tango's unified API"
+    },
+    {
+      "name": "search_tango_grants",
+      "description": "Search federal grants and financial assistance"
+    },
+    {
+      "name": "get_tango_vendor_profile",
+      "description": "Get comprehensive vendor profiles with history"
+    },
+    {
+      "name": "search_tango_opportunities",
+      "description": "Search federal contract opportunities with forecasts"
+    },
+    {
+      "name": "get_tango_spending_summary",
+      "description": "Get spending summaries and analytics"
+    },
+    {
+      "name": "lookup_reference_code",
+      "description": "Official FPDS descriptions for set-aside, extent-competed, award-type, solicitation-procedure, and competition codes (static, no API key)"
+    },
+    {
+      "name": "get_award_detail",
+      "description": "Full FPDS record for one award from USASpending: set-aside, extent competed, offers received - the verification primitive"
+    },
+    {
+      "name": "aggregate_contracts",
+      "description": "Aggregate USASpending contract awards by agency, sub-agency, recipient, NAICS, PSC, month, or set-aside with count or obligations metric"
+    },
+    {
+      "name": "search_highergov_forecasts",
+      "description": "Pull forecasts matching a HigherGov saved search with cursor pagination"
+    },
+    {
+      "name": "get_highergov_opportunity",
+      "description": "Get one HigherGov opportunity by ID, SAM notice ID, or URL"
+    },
+    {
+      "name": "search_highergov_contracts",
+      "description": "Search awarded contracts for recompete targeting by agency, NAICS, PSC, set-aside, PoP end dates, and value"
+    },
+    {
+      "name": "get_highergov_contract",
+      "description": "Full record for one contract by HigherGov contract ID or PIID"
+    },
+    {
+      "name": "search_highergov_people",
+      "description": "Search federal POCs by agency and role keywords"
+    },
+    {
+      "name": "get_highergov_person",
+      "description": "Full profile for one federal POC including verified email"
+    },
+    {
+      "name": "search_highergov_opportunities",
+      "description": "Search active opportunities by set-aside bundle, NAICS, PSC, agency, and dates without a saved search"
+    },
+    {
+      "name": "list_highergov_saved_searches",
+      "description": "List the saved searches available to the HigherGov API key"
+    },
+    {
+      "name": "get_opportunity_documents",
+      "description": "List solicitation documents and amendments for one opportunity with fetchable URLs"
+    }
   ],
   "server": {
     "type": "node",
     "entry_point": "dist/server.js",
     "mcp_config": {
       "command": "node",
-      "args": ["${__dirname}/dist/server.js"],
+      "args": [
+        "${__dirname}/dist/server.js"
+      ],
       "env": {
         "SAM_GOV_API_KEY": "${user_config.SAM_GOV_API_KEY}",
         "TANGO_API_KEY": "${user_config.TANGO_API_KEY}"

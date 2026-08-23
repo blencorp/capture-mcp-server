@@ -17,7 +17,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Architecture Overview
 
-This is a Model Context Protocol (MCP) server that captures federal procurement and spending data through 21 specialized tools. The architecture follows a modular tool-based design:
+This is a Model Context Protocol (MCP) server that captures federal procurement and spending data through 27 specialized tools. The architecture follows a modular tool-based design:
 
 ### Core Components
 
@@ -27,12 +27,14 @@ This is a Model Context Protocol (MCP) server that captures federal procurement 
 - Handles tool registration and execution through centralized registry
 
 **Tool Architecture (`src/tools/`)**
-- Modular tool system with five categories:
+- Modular tool system with six categories:
+  - `reference-tools.ts` - 1 static FPDS reference tool (`lookup_reference_code`; no key, no network)
   - `sam-tools.ts` - 4 SAM.gov API tools (entities, opportunities, details, exclusions)
-  - `usaspending-tools.ts` - 4 USASpending.gov API tools (awards, spending, budgets, recipient search)
-  - `tango-tools.ts` - 5 Tango API tools (contracts, grants, vendor profiles, opportunities, spending summaries)
-  - `highergov-tools.ts` - 6 HigherGov tools (forecast search, opportunity/contract/person lookups, contract/people search). Responses are normalized to lowercase agency/vehicle/set-aside slugs via `utils/highergov-slugs.ts`. `get_*` tools cache for 15 min in an in-process LRU.
+  - `usaspending-tools.ts` - 6 USASpending.gov API tools (awards, spending, budgets, recipient search, `get_award_detail` verification, `aggregate_contracts` grouping)
+  - `tango-tools.ts` - 5 Tango API tools (contracts, grants, vendor profiles, opportunities, spending summaries). Set-aside filtering is exact on FPDS codes; cursor pagination via the Tango `next` URL.
+  - `highergov-tools.ts` - 9 HigherGov tools (forecast/opportunity/contract/people search, saved-search listing, opportunity documents, single-record lookups). Responses are normalized to lowercase agency/vehicle/set-aside slugs via `utils/highergov-slugs.ts`. `get_*` tools cache for 15 min in an in-process LRU.
   - `join-tools.ts` - 2 cross-API tools (entity+awards, opportunity+context)
+- Response conventions (see `utils/envelope.ts` and docs/fix-plan.md): every list tool echoes `filters.upstream` vs `filters.client_side`, nulls untrustworthy totals (`total_upstream_unfiltered` / `total_upstream_unverified` + warnings), labels `count_unit` and `date_field`, and returns one `next_cursor` shape. `tools/index.ts` rejects unknown/mistyped parameters with a structured bad_request. `utils/fpds-codes.ts` is the FPDS code table; `docs/upstream-api-notes.md` records which upstream params are verified to bind (run `npm run capture-fixtures` with live keys to re-probe).
 - Each tool module exports `getTools()` and `callTool()` methods
 - Central registry in `tools/index.ts` manages all tool registration
 
@@ -76,11 +78,11 @@ Optional environment variables (configure based on which tools you need):
 - `TANGO_API_KEY` - API key from tango.makegov.com (enables Tango tools)
 - `HIGHERGOV_API_KEY` - API key from highergov.com (enables HigherGov tools)
 
-**Tool Availability Based on API Keys** (USASpending is always available):
+**Tool Availability Based on API Keys** (Reference + USASpending, 7 tools, always available):
 - 4 SAM + 2 Join when `SAM_GOV_API_KEY` is set
 - 5 Tango when `TANGO_API_KEY` is set
-- 6 HigherGov when `HIGHERGOV_API_KEY` is set
-- All 21 tools when all three keys are set
+- 9 HigherGov when `HIGHERGOV_API_KEY` is set
+- All 27 tools when all three keys are set
 
 HTTP header overrides (precedence over env vars) — used by remote MCP clients:
 `X-Sam-Api-Key`, `X-Tango-Api-Key`, `X-Highergov-Api-Key`.
