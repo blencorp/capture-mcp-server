@@ -1,13 +1,13 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import type { Response } from 'express';
-import type { OAuthClientInformationFull } from '@modelcontextprotocol/sdk/shared/auth.js';
-import type { AuthorizationParams } from '@modelcontextprotocol/sdk/server/auth/provider.js';
+import type { OAuthClientInformationFull } from '@modelcontextprotocol/server';
 import {
   DEFAULT_CLIENT_SCOPE,
   InMemoryOAuthClientsStore,
   McpOAuthProvider,
   getProviderKeysFromAuth,
+  type AuthorizationParams,
 } from './mcp-oauth.js';
 
 function makeClient(): OAuthClientInformationFull {

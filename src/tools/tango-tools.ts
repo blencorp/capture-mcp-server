@@ -1,4 +1,4 @@
-import { Tool } from "@modelcontextprotocol/sdk/types.js";
+import type { Tool } from "@modelcontextprotocol/server";
 import { ApiClient } from '../utils/api-client.js';
 import { tangoNextCursor, parseTangoCursor } from '../utils/pagination.js';
 import { listEnvelope, enforceClientBound } from '../utils/envelope.js';

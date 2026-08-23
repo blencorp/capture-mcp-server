@@ -1,21 +1,31 @@
 import { createCipheriv, createDecipheriv, createHash, randomBytes, randomUUID } from 'node:crypto';
 import type { Response } from 'express';
-import type {
-  OAuthClientInformationFull,
-  OAuthTokenRevocationRequest,
-  OAuthTokens,
-} from '@modelcontextprotocol/sdk/shared/auth.js';
-import type { OAuthRegisteredClientsStore } from '@modelcontextprotocol/sdk/server/auth/clients.js';
-import type {
-  AuthorizationParams,
-  OAuthServerProvider,
-} from '@modelcontextprotocol/sdk/server/auth/provider.js';
-import type { AuthInfo } from '@modelcontextprotocol/sdk/server/auth/types.js';
 import {
-  InvalidGrantError,
-  InvalidRequestError,
-  InvalidTokenError,
-} from '@modelcontextprotocol/sdk/server/auth/errors.js';
+  OAuthError,
+  OAuthErrorCode,
+  type AuthInfo,
+  type OAuthClientInformationFull,
+  type OAuthTokenRevocationRequest,
+  type OAuthTokenVerifier,
+  type OAuthTokens,
+} from '@modelcontextprotocol/server';
+
+// SDK v2 dropped the built-in OAuth authorization server (servers are expected
+// to be pure resource servers), but sealing user-supplied provider keys into
+// the token is this server's auth model, so the authorization-server contract
+// lives here now. The HTTP endpoints over it are in oauth-endpoints.ts.
+export type AuthorizationParams = {
+  redirectUri: string;
+  codeChallenge: string;
+  scopes?: string[];
+  state?: string;
+  resource?: URL;
+};
+
+export interface OAuthRegisteredClientsStore {
+  getClient(clientId: string): OAuthClientInformationFull | undefined;
+  registerClient(client: ClientRegistrationInput): OAuthClientInformationFull;
+}
 
 const TOKEN_PREFIX = 'capmcp.v1';
 const TOKEN_AAD = Buffer.from('capture-mcp-oauth-v1');
@@ -108,7 +118,7 @@ export type McpOAuthProviderOptions = {
   now?: () => number;
 };
 
-export class McpOAuthProvider implements OAuthServerProvider {
+export class McpOAuthProvider implements OAuthTokenVerifier {
   readonly clientsStore: OAuthRegisteredClientsStore;
 
   private readonly baseUrl: URL;
@@ -137,7 +147,7 @@ export class McpOAuthProvider implements OAuthServerProvider {
 
   async authorize(client: OAuthClientInformationFull, params: AuthorizationParams, res: Response): Promise<void> {
     if (!client.redirect_uris.includes(params.redirectUri)) {
-      throw new InvalidRequestError('Unregistered redirect_uri');
+      throw new OAuthError(OAuthErrorCode.InvalidRequest, 'Unregistered redirect_uri');
     }
 
     this.cleanupExpired();
@@ -157,12 +167,12 @@ export class McpOAuthProvider implements OAuthServerProvider {
     this.cleanupExpired();
     const pending = this.pendingAuthorizations.get(requestId);
     if (!pending) {
-      throw new InvalidRequestError('Authorization request expired or was not found');
+      throw new OAuthError(OAuthErrorCode.InvalidRequest, 'Authorization request expired or was not found');
     }
 
     const keys = normalizeProviderKeys(rawKeys);
     if (Object.keys(keys).length === 0) {
-      throw new InvalidRequestError('Provide at least one provider API key');
+      throw new OAuthError(OAuthErrorCode.InvalidRequest, 'Provide at least one provider API key');
     }
 
     this.pendingAuthorizations.delete(requestId);
@@ -183,8 +193,16 @@ export class McpOAuthProvider implements OAuthServerProvider {
     if (pending.params.state !== undefined) {
       targetUrl.searchParams.set('state', pending.params.state);
     }
+    // RFC 9207: authorization responses carry the issuer identifier so
+    // clients can detect mix-up attacks (required by MCP 2026-07-28 auth).
+    targetUrl.searchParams.set('iss', this.issuer);
 
     return targetUrl.href;
+  }
+
+  get issuer(): string {
+    const href = this.baseUrl.href;
+    return href.endsWith('/') ? href.slice(0, -1) : href;
   }
 
   async challengeForAuthorizationCode(
@@ -194,7 +212,7 @@ export class McpOAuthProvider implements OAuthServerProvider {
     this.cleanupExpired();
     const codeRecord = this.authorizationCodes.get(authorizationCode);
     if (!codeRecord || codeRecord.clientId !== client.client_id) {
-      throw new InvalidGrantError('Invalid authorization code');
+      throw new OAuthError(OAuthErrorCode.InvalidGrant, 'Invalid authorization code');
     }
 
     return codeRecord.codeChallenge;
@@ -210,17 +228,17 @@ export class McpOAuthProvider implements OAuthServerProvider {
     this.cleanupExpired();
     const codeRecord = this.authorizationCodes.get(authorizationCode);
     if (!codeRecord) {
-      throw new InvalidGrantError('Invalid authorization code');
+      throw new OAuthError(OAuthErrorCode.InvalidGrant, 'Invalid authorization code');
     }
 
     if (codeRecord.clientId !== client.client_id) {
-      throw new InvalidGrantError('Authorization code was issued to a different client');
+      throw new OAuthError(OAuthErrorCode.InvalidGrant, 'Authorization code was issued to a different client');
     }
     if (redirectUri !== undefined && redirectUri !== codeRecord.redirectUri) {
-      throw new InvalidGrantError('redirect_uri does not match the authorization request');
+      throw new OAuthError(OAuthErrorCode.InvalidGrant, 'redirect_uri does not match the authorization request');
     }
     if (resource !== undefined && codeRecord.resource !== undefined && resource.href !== codeRecord.resource) {
-      throw new InvalidGrantError('resource does not match the authorization request');
+      throw new OAuthError(OAuthErrorCode.InvalidGrant, 'resource does not match the authorization request');
     }
 
     this.authorizationCodes.delete(authorizationCode);
@@ -244,16 +262,16 @@ export class McpOAuthProvider implements OAuthServerProvider {
   ): Promise<OAuthTokens> {
     const payload = this.verifySealedToken(refreshToken, 'refresh');
     if (payload.clientId !== client.client_id) {
-      throw new InvalidGrantError('Refresh token was issued to a different client');
+      throw new OAuthError(OAuthErrorCode.InvalidGrant, 'Refresh token was issued to a different client');
     }
     if (resource !== undefined && payload.resource !== undefined && resource.href !== payload.resource) {
-      throw new InvalidGrantError('resource does not match the refresh token');
+      throw new OAuthError(OAuthErrorCode.InvalidGrant, 'resource does not match the refresh token');
     }
 
     const requestedScopes = scopes ?? payload.scopes;
     const unauthorizedScope = requestedScopes.find(scope => !payload.scopes.includes(scope));
     if (unauthorizedScope) {
-      throw new InvalidGrantError(`Refresh token was not granted scope ${unauthorizedScope}`);
+      throw new OAuthError(OAuthErrorCode.InvalidGrant, `Refresh token was not granted scope ${unauthorizedScope}`);
     }
 
     const tokenRecord: AuthorizationCodeRecord = {
@@ -322,17 +340,17 @@ export class McpOAuthProvider implements OAuthServerProvider {
     try {
       payload = this.unsealToken(token);
     } catch {
-      throw new InvalidTokenError(`Invalid ${expectedKind} token`);
+      throw new OAuthError(OAuthErrorCode.InvalidToken, `Invalid ${expectedKind} token`);
     }
 
     if (payload.kind !== expectedKind) {
-      throw new InvalidTokenError(`Invalid ${expectedKind} token`);
+      throw new OAuthError(OAuthErrorCode.InvalidToken, `Invalid ${expectedKind} token`);
     }
     if (this.revokedTokenIds.has(payload.jti)) {
-      throw new InvalidTokenError('Token has been revoked');
+      throw new OAuthError(OAuthErrorCode.InvalidToken, 'Token has been revoked');
     }
     if (payload.exp < Math.floor(this.now() / 1000)) {
-      throw new InvalidTokenError('Token has expired');
+      throw new OAuthError(OAuthErrorCode.InvalidToken, 'Token has expired');
     }
 
     return payload;
