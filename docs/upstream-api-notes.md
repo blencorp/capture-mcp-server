@@ -76,9 +76,17 @@ fixture.
 
 ## HigherGov `GET /api-external/opportunity/`, `/people/`
 
-- `opp_key`, `source_id`, `search_id`, `modified_since`, `page_size`,
-  `page_number`: in use; lookups verified by e2ddba9.
-- Opportunity search filters (`naics_code`, `psc_code`, posted-date):
+- Documented (help-guide example call, retrieved via search 2026-08-23:
+  `/api-external/opportunity/?api_key=...&search_id=...&captured_date=2024-05-01&page_size=10&source_type=sam`):
+  `api_key`, `search_id`, `captured_date`, `page_size`, `source_type`, and
+  `last_modified_date` (day granularity, e.g. `2023-07-06`). The docs advise
+  pairing `search_id` with `source_type` + `captured_date`, and note that
+  `search_id` does not accept all search fields.
+- `modified_since`, which the forecast tool historically sent, appears nowhere
+  in the docs and was presumably ignored — replaced with the documented
+  `last_modified_date`.
+- `opp_key`, `source_id`: lookup params verified live by e2ddba9.
+- Remaining opportunity search filters (`naics_code`, `psc_code`):
   unverified — `search_highergov_opportunities` sends best-guess upstream
   params and always applies verifiable client-side filtering with an explicit
   filter echo.
