@@ -83,8 +83,8 @@ test('P0-1: set_aside accepts an array and rejects unknown codes with the valid 
       set_aside: ['8AN', 'SDVOSBS', 'HZS'],
     });
     assert.deepEqual(out.contracts.map((c: any) => c.contract_id).sort(), ['A', 'B']);
-    // No single upstream code was sent for a multi-code filter.
-    assert.equal(stub.calls[0].params.set_aside, undefined);
+    // Multi-code filters go upstream via Tango's documented OR syntax.
+    assert.equal(stub.calls[0].params.set_aside, '8AN|SDVOSBS|HZS');
 
     const err: any = await tangoTools.callTool('search_tango_contracts', { set_aside: ['8ASS'] });
     assert.equal(err.error.code, 'bad_request');
@@ -128,6 +128,8 @@ test('P0-2: amount bounds are enforced client-side, echoed, and never silently d
       award_amount_min: 1000000,
     });
     assert.deepEqual(out.contracts.map((c: any) => c.contract_id), ['BIG']);
+    // Sent upstream via the documented param AND verified client-side.
+    assert.equal(stub.calls[0].params.obligated_gte, 1000000);
     assert.equal(out.filters.client_side.award_amount_min, 1000000);
     assert.ok(out.warnings.some((w: string) => /award_amount_min/.test(w)));
     // The P0-2 repro: empty-looking page can no longer masquerade as "no matches".
@@ -156,6 +158,36 @@ test('P0-3: next_cursor round-trips and replays the exact next-page query', asyn
     assert.match(wrong.error.message, /belongs to \/contracts\//);
   } finally {
     stub.restore();
+  }
+});
+
+test('contract search requests the documented field shape and degrades gracefully if rejected', async () => {
+  // First: shape is requested (it is what makes per-row set_aside readable).
+  const stub1 = stubTangoGet((_e, params) => {
+    assert.match(String(params.shape), /set_aside\(code,description\)/);
+    return { success: true, data: page([tangoContract()]) };
+  });
+  try {
+    const ok: any = await tangoTools.callTool('search_tango_contracts', { agency: '2100' });
+    assert.equal(ok.contracts.length, 1);
+  } finally {
+    stub1.restore();
+  }
+
+  // Second: a 400 on the shaped request falls back to the default subset with a warning.
+  let call = 0;
+  const stub2 = stubTangoGet((_e, params) => {
+    call += 1;
+    if (params.shape) return { success: false, error: 'API Error 400: {"shape":"unknown field"}' };
+    return { success: true, data: page([tangoContract()]) };
+  });
+  try {
+    const out: any = await tangoTools.callTool('search_tango_contracts', { agency: '2100' });
+    assert.equal(call, 2);
+    assert.equal(out.contracts.length, 1);
+    assert.ok(out.warnings.some((w: string) => /field-shape request/.test(w)));
+  } finally {
+    stub2.restore();
   }
 });
 
