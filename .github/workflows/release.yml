@@ -1,0 +1,116 @@
+name: Release
+
+# Tags and publishes a GitHub release on every merge to main.
+#
+# The version is derived from Conventional Commit prefixes since the last tag:
+# `feat:` bumps the minor, a `!` marker or `BREAKING CHANGE:` footer bumps the
+# major, anything else bumps the patch — so a merge always produces a release.
+# Run it manually from the Actions tab to force a specific level.
+#
+# The first run seeds the release at package.json's current version rather than
+# bumping past it, so a repo with no tags gets v1.0.0.
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+    inputs:
+      bump:
+        description: "Version bump (auto = decide from commit messages)"
+        type: choice
+        options: [auto, patch, minor, major]
+        default: auto
+
+# Serialize releases so two merges landing together can't race for the same tag.
+concurrency:
+  group: release
+  cancel-in-progress: false
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    name: Tag and release
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    # Belt and braces: the bump commit is pushed with GITHUB_TOKEN, which
+    # GitHub already excludes from triggering workflows, and carries [skip ci].
+    if: "!contains(github.event.head_commit.message, '[skip release]')"
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+        with:
+          # Full history and tags: the version decision reads both.
+          fetch-depth: 0
+
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Run test suite
+        run: npm test
+
+      - name: Decide the next version
+        id: version
+        run: npm run --silent release-version -- --bump=${{ inputs.bump || 'auto' }} >> "$GITHUB_OUTPUT"
+
+      - name: Summarize the decision
+        run: |
+          {
+            echo "### Release ${{ steps.version.outputs.tag }}"
+            echo
+            echo "- Previous tag: \`${{ steps.version.outputs.previous_tag || 'none' }}\`"
+            echo "- Bump: \`${{ steps.version.outputs.bump }}\`"
+            echo "- Commits considered: ${{ steps.version.outputs.commit_count }}"
+            if [ "${{ steps.version.outputs.seeded }}" = "true" ]; then
+              echo "- First release: seeded at the current package.json version."
+            fi
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Fail if the tag already exists
+        run: |
+          if git rev-parse -q --verify "refs/tags/${{ steps.version.outputs.tag }}" >/dev/null; then
+            echo "::error::Tag ${{ steps.version.outputs.tag }} already exists. Nothing was released."
+            exit 1
+          fi
+
+      - name: Write the new version into package.json, the lockfile, and the manifests
+        if: steps.version.outputs.seeded == 'false'
+        run: |
+          npm version "${{ steps.version.outputs.next }}" --no-git-tag-version
+          npm run --silent release-version -- --write "${{ steps.version.outputs.next }}"
+
+      - name: Commit the version bump and tag the release
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+
+          # Nothing to commit on a seeded first release: the files already match.
+          if git diff --quiet; then
+            echo "No version files changed; tagging the current commit."
+          else
+            git commit -am "chore(release): ${{ steps.version.outputs.tag }} [skip ci]"
+            # Another merge may have landed while the tests ran; rebase onto it
+            # rather than failing the release on a rejected push.
+            git pull --rebase origin main
+            git push origin HEAD:main
+          fi
+
+          git tag -a "${{ steps.version.outputs.tag }}" -m "Release ${{ steps.version.outputs.tag }}"
+          git push origin "${{ steps.version.outputs.tag }}"
+
+      - name: Publish the GitHub release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release create "${{ steps.version.outputs.tag }}" \
+            --title "${{ steps.version.outputs.tag }}" \
+            --generate-notes \
+            --verify-tag \
+            --latest

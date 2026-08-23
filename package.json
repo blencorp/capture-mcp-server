@@ -9,6 +9,9 @@
     "start": "node dist/server.js",
     "dev": "node --import ./ts-node.register.mjs src/server.ts",
     "manage-keys": "node --import ./ts-node.register.mjs scripts/manage-keys.ts",
+    "capture-fixtures": "node --import ./ts-node.register.mjs scripts/capture-fixtures.ts",
+    "release-version": "node --import ./ts-node.register.mjs scripts/release-version.ts",
+    "smoke": "node --import ./ts-node.register.mjs scripts/smoke.ts",
     "sync-config": "node --import ./ts-node.register.mjs scripts/sync-config.ts",
     "cdk:bootstrap": "cd infrastructure && npx cdk bootstrap",
     "cdk:deploy:yolo": "npm run build:lambda && cd infrastructure && npx cdk deploy CaptureServerless --require-approval never",
@@ -18,7 +21,7 @@
     "cdk:synth": "npm run build:lambda && cd infrastructure && npx cdk synth CaptureServerless",
     "cdk:ls": "cd infrastructure && npx cdk ls",
     "cdk:test": "cd infrastructure && npm test",
-    "test": "npm run build && node --test \"dist/**/*.test.js\"",
+    "test": "npm run build && ./scripts/run-tests.sh",
     "package": "npm run build && npm ci --omit=dev && zip -r capture-mcp-server.mcpb dist/ node_modules/ manifest.json icon.png && npm install",
     "package:hosted": "mkdir -p .tmp-hosted && cp manifest-hosted.json .tmp-hosted/manifest.json && cp icon.png .tmp-hosted/ && cd .tmp-hosted && zip -r ../capture-mcp-server-hosted.mcpb manifest.json icon.png && cd .. && rm -rf .tmp-hosted",
     "package:dxt": "npm run build && zip -r capture-mcp-server.dxt dist/ manifest.json icon.png"
@@ -41,6 +44,9 @@
     "url": "https://github.com/blencorp/capture-mcp-server/issues"
   },
   "homepage": "https://github.com/blencorp/capture-mcp-server#readme",
+  "engines": {
+    "node": ">=20"
+  },
   "type": "module",
   "dependencies": {
     "@aws-lambda-powertools/logger": "^2.12.0",

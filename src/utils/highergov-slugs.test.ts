@@ -65,6 +65,17 @@ test('asStringArray still handles legacy string and array shapes', () => {
   assert.deepEqual(asStringArray(''), []);
 });
 
+test('normalizeSetAside handles the live HigherGov value formats', () => {
+  // Contracts: description with the FPDS code in trailing parens.
+  assert.equal(normalizeSetAside('8(A) Sole Source  (8AN)'), '8a');
+  assert.equal(normalizeSetAside('Service Disabled Veteran Owned Small Business Set-Aside (SDVOSBC)'), 'sdvosb');
+  assert.equal(normalizeSetAside('Small Business Set Aside - Total (SBA)'), 'small-business');
+  // Opportunities: bare FPDS codes.
+  assert.equal(normalizeSetAside('SBA'), 'small-business');
+  assert.equal(normalizeSetAside('8AN'), '8a');
+  assert.equal(normalizeSetAside('SDVOSBC'), 'sdvosb');
+});
+
 test('normalizeSetAside handles object payloads', () => {
   assert.equal(normalizeSetAside({ name: 'SDVOSB' } as any), 'sdvosb');
   assert.equal(normalizeSetAside({ label: '8(a)' } as any), '8a');
