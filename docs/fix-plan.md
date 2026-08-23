@@ -14,6 +14,12 @@
 > reachable from this environment — building it against a guessed source would
 > recreate the silent-failure class this plan exists to kill) and the P1/P2
 > backlog items the plan already left unscheduled.
+>
+> **Update (2026-08-23, later session):** the official HigherGov OpenAPI spec
+> was retrieved (`fixtures/raw/highergov-openapi.json`) and the HigherGov field
+> mappings and parameter names are now spec-verified and corrected — see
+> docs/upstream-api-notes.md. Live-key `capture-fixtures`/`smoke` runs remain
+> outstanding (no API keys in this environment).
 
 **Scope.** Capture MCP is a Model Context Protocol server exposing federal procurement and
 spending data (SAM.gov, USASpending.gov, Tango, HigherGov) as 21 typed tools so a BD agent

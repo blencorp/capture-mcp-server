@@ -25,14 +25,15 @@ export function applyPageCursor(params: Record<string, any>, cursor: unknown): v
   if (pageNumber) params.page_number = pageNumber;
 }
 
-// Extract the next-page token from a HigherGov payload. HigherGov responses
-// have carried the next link in more than one place across versions, so probe
-// the known locations; page math is the last resort when only counts are given.
+// Extract the next-page token from a HigherGov payload. The OpenAPI spec
+// (fixtures/raw/highergov-openapi.json) puts the next link at `links.next` and
+// the page counters at `meta.pagination.{page, pages, count}`; the other
+// locations are kept as fallbacks for older payload shapes.
 export function highergovNextCursor(raw: any): string | null {
   const candidates = [
+    raw?.links?.next,
     raw?.next,
     raw?.next_cursor,
-    raw?.links?.next,
     raw?.pagination?.next,
     raw?.meta?.next,
     raw?.result_set?.next,
@@ -42,10 +43,11 @@ export function highergovNextCursor(raw: any): string | null {
     if (token) return token;
   }
 
-  // Page math fallback: {page_number, total_pages} or {count, page_size, page_number}.
-  const container = raw?.pagination ?? raw?.meta ?? raw;
+  // Page math fallback: {page, pages} per the spec's meta.pagination, or the
+  // legacy {page_number, total_pages} shape.
+  const container = raw?.meta?.pagination ?? raw?.pagination ?? raw?.meta ?? raw;
   const page = Number(container?.page_number ?? container?.page);
-  const totalPages = Number(container?.total_pages ?? container?.num_pages);
+  const totalPages = Number(container?.total_pages ?? container?.num_pages ?? container?.pages);
   if (Number.isFinite(page) && Number.isFinite(totalPages) && page >= 1 && page < totalPages) {
     return String(page + 1);
   }

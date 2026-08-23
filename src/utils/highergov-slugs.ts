@@ -94,7 +94,7 @@ function coerceToString(raw: unknown): string | null {
   }
   if (typeof raw === 'object') {
     const obj = raw as Record<string, unknown>;
-    for (const key of ['name', 'label', 'display_name', 'value', 'agency_name', 'agency']) {
+    for (const key of ['name', 'label', 'display_name', 'value', 'agency_name', 'agency', 'vehicle_name']) {
       const v = obj[key];
       if (typeof v === 'string' && v.trim()) return v;
     }
