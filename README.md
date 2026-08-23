@@ -4,7 +4,7 @@ An MIT-licensed, AI-native Model Context Protocol (MCP) server that integrates S
 
 ## Overview
 
-Capture MCP empowers users to capture and query federal entity, opportunity, and spending data through LLM applications like Claude Desktop. It provides 27 specialized tools that can search, analyze, aggregate, and join data from multiple government APIs.
+Capture MCP empowers users to capture and query federal entity, opportunity, and spending data through LLM applications like Claude Desktop. It provides 34 specialized tools that can search, analyze, aggregate, and join data from multiple government APIs.
 
 **Compatible with**: Claude Desktop, ChatGPT Desktop (Pro+), and any MCP-compatible client
 
@@ -53,12 +53,19 @@ Capture MCP empowers users to capture and query federal entity, opportunity, and
 - `get_entity_and_awards` - Combine SAM entity data with spending history
 - `get_opportunity_spending_context` - Link opportunities with market context
 
-### Tango API Integration (5 tools - Requires Tango API key)
+### Tango API Integration (12 tools - Requires Tango API key)
 - `search_tango_contracts` - Search federal contracts through unified API
 - `search_tango_grants` - Search federal grants and financial assistance
 - `get_tango_vendor_profile` - Get comprehensive vendor profiles with history
 - `search_tango_opportunities` - Search contract opportunities with forecasts
 - `get_tango_spending_summary` - Get spending summaries and analytics (page-scoped; use `aggregate_contracts` for population figures)
+- `search_tango_protests` - Search GAO bid protests (agency, protester, outcome, dates)
+- `get_tango_protest` - Get full bid protest record by ID or case number
+- `search_tango_idvs` - Search IDIQs / BPAs / FSS that issue task orders
+- `get_tango_idv_children` - Get child IDVs, task orders, and transactions under one IDV
+- `search_tango_vehicles` - Search the federal contract-vehicle catalog (GWACs, MAS, BPAs)
+- `search_tango_otas` - Search Other Transaction Authority (OTA) awards
+- `get_tango_entity_metrics` - Time-series obligations for one UEI (month/quarter/year)
 
 ### HigherGov Integration (9 tools - Requires HigherGov API key)
 - `search_highergov_forecasts` - Forecasts from a HigherGov saved search
@@ -88,9 +95,9 @@ The server automatically enables tools based on which API keys you provide:
 | --- | --- | --- |
 | **None** (works out of the box) | Reference + USASpending.gov | **7 tools** |
 | `SAM_GOV_API_KEY` | + SAM.gov + Join tools | **+6 tools** |
-| `TANGO_API_KEY` | + Tango API | **+5 tools** |
+| `TANGO_API_KEY` | + Tango API | **+12 tools** |
 | `HIGHERGOV_API_KEY` | + HigherGov | **+9 tools** |
-| **All three keys** | All tool sets | **27 tools** |
+| **All three keys** | All tool sets | **34 tools** |
 
 ## Quick Start
 
@@ -100,9 +107,9 @@ The server automatically enables tools based on which API keys you provide:
 - **API Keys** (Optional - see [API Keys](#api-keys) section):
   - None required: 7 tools (reference + USASpending.gov) work immediately
   - SAM.gov API key: adds 6 more tools
-  - Tango API key: adds 5 more tools
+  - Tango API key: adds 12 more tools
   - HigherGov API key: adds 9 more tools
-  - All three keys: all 27 tools
+  - All three keys: all 34 tools
 
 ### Choose Your Installation Method
 
@@ -163,7 +170,7 @@ During or after installation, Claude Desktop will prompt you to configure API ke
 
 - **Skip all keys**: Click "Continue" without entering keys → 7 keyless tools available immediately
 - **Enter one key**: Provide a SAM.gov, Tango, or HigherGov key → that provider's tools are added
-- **Enter all keys**: All 27 tools available
+- **Enter all keys**: All 34 tools available
 
 You can add or update API keys later via **Settings** → **Extensions** → **Capture MCP Server** → **Configure**.
 
@@ -259,7 +266,7 @@ Open your MCP configuration file and add the Capture MCP Server configuration. C
 }
 ```
 
-**Configuration C: Tango API Key Only (9 tools)**
+**Configuration C: Tango API Key Only (16 tools)**
 
 ```json
 {
@@ -275,7 +282,7 @@ Open your MCP configuration file and add the Capture MCP Server configuration. C
 }
 ```
 
-**Configuration D: All API Keys (All 27 tools)**
+**Configuration D: All API Keys (All 34 tools)**
 
 ```json
 {
@@ -316,7 +323,7 @@ Examples:
 **Test the connection**:
 Ask in a new conversation: *"List all available tools from the Capture MCP Server"*
 
-You should see 7-27 tools listed depending on your API key configuration.
+You should see 7-34 tools listed depending on your API key configuration.
 
 ### Method 3: Hosted Version (AWS Serverless)
 
@@ -625,7 +632,7 @@ You can start using the server immediately with 4 USASpending.gov tools, then ad
 - 4 SAM.gov tools (entities, opportunities, details, exclusions)
 - 2 Join tools (entity+awards, opportunity+context)
 
-#### Tango API Key (Enables 5 additional tools)
+#### Tango API Key (Enables 12 additional tools)
 
 **Time to obtain**: Immediate upon approval
 
@@ -648,7 +655,7 @@ You can start using the server immediately with 4 USASpending.gov tools, then ad
    - **Documentation**: https://tango.makegov.com/docs/
 
 **Enables these tools**:
-- 5 Tango tools (contracts, grants, vendor profiles, opportunities, spending summaries)
+- 12 Tango tools (contracts, grants, vendor profiles, opportunities, spending summaries, protests, IDVs, vehicles, OTAs, entity metrics)
 
 ### Managing API Keys
 
@@ -727,7 +734,7 @@ Navigate to http://localhost:5173 in your browser.
 
 **Step 5: Test Tools**
 
-1. View available tools (7-27 depending on API keys)
+1. View available tools (7-34 depending on API keys)
 2. Click a tool to see its schema
 3. Fill in parameters and click "Execute"
 4. View responses and debug any issues
@@ -1034,6 +1041,13 @@ For complete API documentation including all parameters, schemas, and examples, 
 - **get_tango_vendor_profile** - Get vendor profiles with full history
 - **search_tango_opportunities** - Search opportunities with forecasts
 - **get_tango_spending_summary** - Get spending analytics
+- **search_tango_protests** - Search GAO bid protests with outcome filters
+- **get_tango_protest** - Get a single protest's full record
+- **search_tango_idvs** - Search IDIQs / BPAs / FSS vehicles that issue task orders
+- **get_tango_idv_children** - Drill into one IDV's child IDVs, task orders, and transactions
+- **search_tango_vehicles** - Search the federal contract-vehicle catalog (GWACs, MAS, BPAs)
+- **search_tango_otas** - Search Other Transaction Authority (OTA) awards
+- **get_tango_entity_metrics** - Time-series obligations for one UEI
 
 ### Rate Limits
 
@@ -1182,7 +1196,7 @@ capture-mcp-server/
 │   │   ├── index.ts           # Tool registry (conditional loading)
 │   │   ├── sam-tools.ts       # SAM.gov integration (4 tools)
 │   │   ├── usaspending-tools.ts # USASpending integration (4 tools)
-│   │   ├── tango-tools.ts     # Tango API integration (5 tools)
+│   │   ├── tango-tools.ts     # Tango API integration (12 tools)
 │   │   └── join-tools.ts      # Cross-API tools (2 tools)
 │   └── utils/
 │       └── api-client.ts      # HTTP client with rate limiting
@@ -1203,7 +1217,7 @@ capture-mcp-server/
 **Tool Registry** (`src/tools/index.ts`):
 - Dynamically loads tool sets based on available API keys
 - Enables graceful degradation when keys are missing
-- Provides 7-27 tools depending on configuration
+- Provides 7-34 tools depending on configuration
 
 **API Client** (`src/utils/api-client.ts`):
 - Centralized HTTP client with rate limiting
