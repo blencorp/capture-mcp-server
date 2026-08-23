@@ -1,12 +1,109 @@
 import { Tool } from "@modelcontextprotocol/sdk/types.js";
 import { ApiClient } from '../utils/api-client.js';
+import { tangoNextCursor, parseTangoCursor } from '../utils/pagination.js';
+import { listEnvelope, enforceClientBound } from '../utils/envelope.js';
+import { describeSetAside, isKnownSetAsideCode, validateSetAsideCodes } from '../utils/fpds-codes.js';
+
+// Semantics caveats surfaced on every response (docs/upstream-api-notes.md):
+// what Tango's count counts and which FPDS date field its date filter compares
+// are both unverified, and its set_aside matching is loose, not exact.
+const CONTRACT_COUNT_UNIT =
+  'awards (Tango /contracts/ count; award vs transaction vs IDV unit unverified — see docs/upstream-api-notes.md)';
+const GRANT_COUNT_UNIT = 'grant awards (Tango /grants/ count; unit unverified)';
+const OPPORTUNITY_COUNT_UNIT = 'opportunity notices (Tango /opportunities/ count)';
+const AWARD_DATE_FIELD =
+  'award_date (Tango award_date_gte/lte; whether this is FPDS action_date or date_signed is unverified)';
+const LOOSE_SET_ASIDE_WARNING =
+  "Tango's set_aside filter matches loosely (e.g. '8A' also matches 8AN records), so the upstream total may include other codes and is reported as total_upstream_unverified.";
+
+function bad(message: string) {
+  return { error: { code: 'bad_request', message } };
+}
+
+// Tango's awarding_agency binds on FPDS agency codes; agency *names* have been
+// observed to hang upstream past our 30s timeout (2026-08-23). Reject names
+// with actionable guidance instead of letting the request die silently.
+const COMMON_AGENCY_CODES =
+  '3600=VA, 2100=Army, 1700=Navy, 5700=Air Force, 9700=DoD other, 4732=GSA/FAS, 7000=DHS, 7500=HHS, 1400=Interior, 1500=DOJ';
+
+function resolveAgencyCode(agency: unknown): { code?: string; error?: string } {
+  const text = String(agency ?? '').trim();
+  if (!text) return {};
+  if (/^\d{2,4}$/.test(text)) return { code: text };
+  return {
+    error:
+      `agency must be an FPDS agency code (agency names hang the Tango upstream). ` +
+      `Common codes: ${COMMON_AGENCY_CODES}. The code for any award appears in results under agency.code.`,
+  };
+}
+
+// Set-aside input: single code or array, validated against the FPDS table so a
+// typo'd or misremembered code fails loudly with the full valid list.
+function parseSetAsideArg(value: unknown): string[] {
+  if (value === undefined || value === null || value === '') return [];
+  const list = Array.isArray(value) ? value : [value];
+  return validateSetAsideCodes(list.map(v => String(v)));
+}
+
+// Extract a per-row FPDS set-aside code wherever Tango put it. Exact-match
+// filtering depends on this being readable; when it is not, the tools warn
+// instead of filtering blind.
+function rowSetAsideCode(contract: any): string | null {
+  const candidates = [
+    contract?.set_aside?.code,
+    contract?.set_aside_code,
+    contract?.type_of_set_aside_code,
+    contract?.type_of_set_aside,
+    typeof contract?.set_aside === 'string' ? contract.set_aside : null,
+  ];
+  for (const candidate of candidates) {
+    if (typeof candidate !== 'string') continue;
+    const code = candidate.trim().toUpperCase();
+    if (code && isKnownSetAsideCode(code)) return code;
+  }
+  return null;
+}
+
+function rowSetAside(contract: any): { code: string; description: string | null } | string | null {
+  const code = rowSetAsideCode(contract);
+  if (code) return describeSetAside(code);
+  const raw = contract?.set_aside?.description ?? contract?.type_of_set_aside ?? contract?.set_aside;
+  return typeof raw === 'string' && raw.trim() ? raw : null;
+}
+
+function upstreamTotal(data: any): number | null {
+  const candidates = [data?.total, data?.count];
+  for (const c of candidates) {
+    const n = Number(c);
+    if (Number.isFinite(n)) return n;
+  }
+  return null;
+}
+
+// Resolve the request for a list call: a cursor replays the exact next-page
+// URL from the previous response (validated against the Tango origin); fresh
+// calls build params. Passing other filters alongside a cursor is an error —
+// the cursor already encodes the query.
+function resolveListRequest(
+  endpoint: string,
+  params: Record<string, any>,
+  cursor: unknown
+): { endpoint: string; params: Record<string, any> } {
+  if (cursor === undefined || cursor === null || cursor === '') return { endpoint, params };
+  const parsed = parseTangoCursor(String(cursor));
+  if (parsed.endpoint !== endpoint) {
+    throw new Error(`Invalid cursor: it belongs to ${parsed.endpoint}, not ${endpoint}`);
+  }
+  return { endpoint: parsed.endpoint, params: parsed.params };
+}
 
 export const tangoTools = {
   async getTools(): Promise<Tool[]> {
     return [
       {
         name: "search_tango_contracts",
-        description: "Search federal contracts through Tango's unified API. Provides comprehensive contract data consolidated from FPDS with enhanced filtering and search capabilities.",
+        description:
+          "Search federal contracts through Tango's unified API (FPDS-derived). Set-aside filtering is EXACT on FPDS codes (e.g. 8A = 8(a) Competed vs 8AN = 8(a) Sole Source) and every response echoes which filters ran upstream vs client-side — read `warnings` before trusting counts. Paginate with `cursor` to enumerate result sets past one page.",
         inputSchema: {
           type: "object",
           properties: {
@@ -20,7 +117,7 @@ export const tangoTools = {
             },
             vendor_name: {
               type: "string",
-              description: "Vendor/contractor name filter"
+              description: "Vendor/contractor name filter (verified client-side against returned records)"
             },
             vendor_uei: {
               type: "string",
@@ -28,7 +125,7 @@ export const tangoTools = {
             },
             agency: {
               type: "string",
-              description: "Awarding agency name or code"
+              description: `Awarding agency FPDS code (e.g. ${COMMON_AGENCY_CODES}). Agency names are rejected: they hang the upstream.`
             },
             naics_code: {
               type: "string",
@@ -40,27 +137,34 @@ export const tangoTools = {
             },
             award_amount_min: {
               type: "number",
-              description: "Minimum contract award amount"
+              description: "Minimum contract award amount (USD). Applied client-side per page — the response says so and nulls the total."
             },
             award_amount_max: {
               type: "number",
-              description: "Maximum contract award amount"
+              description: "Maximum contract award amount (USD). Applied client-side per page."
             },
             date_from: {
               type: "string",
-              description: "Start date for contract awards (YYYY-MM-DD format)"
+              description: "Start date for contract awards (YYYY-MM-DD). See date_field in the response for which underlying date this compares."
             },
             date_to: {
               type: "string",
-              description: "End date for contract awards (YYYY-MM-DD format)"
+              description: "End date for contract awards (YYYY-MM-DD)"
             },
             set_aside: {
-              type: "string",
-              description: "Set-aside type (e.g., 'SBA', 'WOSB', 'SDVOSB', '8A')"
+              anyOf: [
+                { type: "string" },
+                { type: "array", items: { type: "string" } }
+              ],
+              description: "FPDS set-aside code(s), matched EXACTLY — e.g. [\"8AN\", \"SDVOSBS\", \"HZS\"]. Unknown codes are rejected with the valid list. Use lookup_reference_code to check a code's meaning first."
             },
             limit: {
               type: "number",
-              description: "Number of results to return (default: 10, max: 100)"
+              description: "Number of results per page (default: 10, max: 100)"
+            },
+            cursor: {
+              type: "string",
+              description: "Opaque next_cursor from a previous response. Replays the same query for the next page; do not combine with other filters."
             }
           },
           required: []
@@ -68,7 +172,7 @@ export const tangoTools = {
       },
       {
         name: "search_tango_grants",
-        description: "Search federal grants and financial assistance awards through Tango's unified API. Access grant data consolidated from USASpending with advanced filtering.",
+        description: "Search federal grants and financial assistance awards through Tango's unified API. Recipient and amount filters are verified client-side and echoed as such. Paginate with `cursor`.",
         inputSchema: {
           type: "object",
           properties: {
@@ -82,11 +186,11 @@ export const tangoTools = {
             },
             recipient_name: {
               type: "string",
-              description: "Grant recipient organization name"
+              description: "Grant recipient organization name (verified client-side)"
             },
             recipient_uei: {
               type: "string",
-              description: "Recipient Unique Entity Identifier (UEI)"
+              description: "Recipient Unique Entity Identifier (UEI) (verified client-side)"
             },
             agency: {
               type: "string",
@@ -98,11 +202,11 @@ export const tangoTools = {
             },
             award_amount_min: {
               type: "number",
-              description: "Minimum grant award amount"
+              description: "Minimum grant award amount (USD). Applied client-side per page."
             },
             award_amount_max: {
               type: "number",
-              description: "Maximum grant award amount"
+              description: "Maximum grant award amount (USD). Applied client-side per page."
             },
             date_from: {
               type: "string",
@@ -114,7 +218,11 @@ export const tangoTools = {
             },
             limit: {
               type: "number",
-              description: "Number of results to return (default: 10, max: 100)"
+              description: "Number of results per page (default: 10, max: 100)"
+            },
+            cursor: {
+              type: "string",
+              description: "Opaque next_cursor from a previous response"
             }
           },
           required: []
@@ -148,7 +256,7 @@ export const tangoTools = {
       },
       {
         name: "search_tango_opportunities",
-        description: "Search federal contract opportunities through Tango's unified API. Enhanced opportunity search with forecasts and solicitation notices.",
+        description: "Search federal contract opportunities through Tango's unified API. Enhanced opportunity search with forecasts and solicitation notices. Paginate with `cursor`.",
         inputSchema: {
           type: "object",
           properties: {
@@ -190,7 +298,11 @@ export const tangoTools = {
             },
             limit: {
               type: "number",
-              description: "Number of results to return (default: 10, max: 100)"
+              description: "Number of results per page (default: 10, max: 100)"
+            },
+            cursor: {
+              type: "string",
+              description: "Opaque next_cursor from a previous response"
             }
           },
           required: []
@@ -198,7 +310,7 @@ export const tangoTools = {
       },
       {
         name: "get_tango_spending_summary",
-        description: "Get spending summaries and analytics from Tango's unified platform. Aggregate spending data by various dimensions (agency, vendor, category, time).",
+        description: "Get spending summaries and analytics from Tango's unified platform, aggregated over the fetched page of contracts. WARNING: aggregates at most one page (100 records) — the response says when the underlying result set is larger. For reliable full-population aggregation use aggregate_contracts (USASpending).",
         inputSchema: {
           type: "object",
           properties: {
@@ -208,7 +320,7 @@ export const tangoTools = {
             },
             agency: {
               type: "string",
-              description: "Agency name or code for spending summary"
+              description: `Awarding agency FPDS code (e.g. ${COMMON_AGENCY_CODES})`
             },
             vendor_uei: {
               type: "string",
@@ -266,7 +378,8 @@ export const tangoTools = {
       date_from,
       date_to,
       set_aside,
-      limit = 10
+      limit = 10,
+      cursor
     } = args;
 
     const tangoApiKey = api_key || process.env.TANGO_API_KEY;
@@ -275,55 +388,57 @@ export const tangoTools = {
       throw new Error("Tango API key is required. Please provide it as a parameter or set TANGO_API_KEY environment variable");
     }
 
+    let setAsideCodes: string[];
+    try {
+      setAsideCodes = parseSetAsideArg(set_aside);
+    } catch (err) {
+      return bad(err instanceof Error ? err.message : String(err));
+    }
+
+    const agencyResolved = resolveAgencyCode(agency);
+    if (agencyResolved.error) return bad(agencyResolved.error);
+
     const params: Record<string, any> = {
-      limit: Math.min(limit, 100)
+      limit: Math.min(Number(limit) || 10, 100)
     };
 
     if (query) params.search = query;
     if (vendor_name) params.recipient = vendor_name;
     if (vendor_uei) params.uei = vendor_uei;
-    if (agency) params.awarding_agency = agency;
+    if (agencyResolved.code) params.awarding_agency = agencyResolved.code;
     if (naics_code) params.naics = naics_code;
     if (psc_code) params.psc = psc_code;
     if (date_from) params.award_date_gte = date_from;
     if (date_to) params.award_date_lte = date_to;
-    if (set_aside) params.set_aside = set_aside;
+    // Upstream set_aside narrows loosely; useful with a single code (its loose
+    // matches are a superset of the exact matches we keep). With multiple
+    // codes there is no upstream parameter, so filtering is client-side only.
+    if (setAsideCodes.length === 1) params.set_aside = setAsideCodes[0];
 
-    const response = await ApiClient.tangoGet('/contracts/', params, tangoApiKey);
+    let request;
+    try {
+      request = resolveListRequest('/contracts/', params, cursor);
+    } catch (err) {
+      return bad(err instanceof Error ? err.message : String(err));
+    }
+
+    const response = await ApiClient.tangoGet(request.endpoint, request.params, tangoApiKey);
 
     if (!response.success) {
       return { error: response.error };
     }
 
-    let rawContracts: any[] = response.data.results || [];
+    const rawContracts: any[] = response.data.results || [];
+    const warnings: string[] = [];
+    const clientSide: Record<string, unknown> = {};
 
-    if (award_amount_min !== undefined || award_amount_max !== undefined) {
-      rawContracts = rawContracts.filter((contract: any) => {
-        const amount = Number(contract.obligated ?? contract.total_contract_value ?? contract.base_and_exercised_options_value ?? 0);
-        if (typeof award_amount_min === 'number' && amount < award_amount_min) {
-          return false;
-        }
-        if (typeof award_amount_max === 'number' && amount > award_amount_max) {
-          return false;
-        }
-        return true;
-      });
-    }
-
-    if (vendor_name) {
-      const needle = vendor_name.toLowerCase();
-      rawContracts = rawContracts.filter((contract: any) => {
-        const recipient = contract.recipient?.display_name || contract.recipient_name || contract.vendor_name;
-        return typeof recipient === 'string' ? recipient.toLowerCase().includes(needle) : true;
-      });
-    }
-
-    // Filter response to essential contract fields
-    const contracts = rawContracts.map((contract: any) => ({
+    // Map to essential fields first so all client-side verification runs
+    // against the same normalized rows the caller sees.
+    let contracts = rawContracts.map((contract: any) => ({
       contract_id: contract.key || contract.piid || contract.contract_id,
       title: contract.description || contract.title,
       vendor: {
-        name: contract.recipient?.display_name || contract.vendor_name,
+        name: contract.recipient?.display_name || contract.recipient_name || contract.vendor_name,
         uei: contract.recipient?.uei || contract.vendor_uei,
         duns: contract.vendor_duns
       },
@@ -332,13 +447,14 @@ export const tangoTools = {
         code: contract.awarding_office?.agency_code || contract.agency_code,
         office: contract.awarding_office?.office_name || contract.office_name
       },
-      award_amount: contract.obligated ?? contract.total_contract_value ?? contract.base_and_exercised_options_value ?? contract.award_amount,
+      award_amount: contract.obligated ?? contract.total_contract_value ?? contract.base_and_exercised_options_value ?? contract.award_amount ?? null,
       award_date: contract.award_date || contract.date_signed,
       naics_code: contract.naics_code,
       naics_description: contract.naics_description,
       psc_code: contract.psc_code,
       psc_description: contract.psc_description,
-      set_aside: contract.set_aside?.code || contract.type_of_set_aside,
+      set_aside: rowSetAside(contract),
+      set_aside_exact_code: rowSetAsideCode(contract),
       place_of_performance: {
         city: contract.place_of_performance?.city_name || contract.pop_city,
         state: contract.place_of_performance?.state_name || contract.pop_state_code,
@@ -347,12 +463,54 @@ export const tangoTools = {
       status: contract.contract_status || contract.status
     }));
 
-    return {
-      total: response.data.total || response.data.count || 0,
-      contracts,
-      filters: params,
-      limit
-    };
+    // P0-1: exact set-aside matching. Upstream matching is loose, so exact
+    // enforcement happens here against each row's FPDS code — and when rows
+    // don't carry a readable code, we say the filter could NOT be applied
+    // rather than silently returning the loose superset as exact.
+    let looseOnly = false;
+    if (setAsideCodes.length > 0) {
+      const readable = contracts.filter(c => c.set_aside_exact_code !== null).length;
+      if (readable === 0 && contracts.length > 0) {
+        looseOnly = true;
+        warnings.push(
+          'Records on this page carry no readable FPDS set-aside code, so EXACT set-aside matching could not be applied — these are the upstream LOOSE matches. ' +
+          'Verify individual awards with get_award_detail before using counts. ' +
+          'If this persists, run "npm run capture-fixtures" — the field mapping may be out of date.'
+        );
+      } else {
+        clientSide.set_aside_exact = setAsideCodes;
+        contracts = contracts.filter(c => c.set_aside_exact_code && setAsideCodes.includes(c.set_aside_exact_code));
+      }
+    }
+
+    // P0-2: amount and vendor-name filters have no verified upstream
+    // parameter — enforce client-side with an explicit echo, never silently.
+    contracts = enforceClientBound(contracts, 'award_amount_min', award_amount_min, c => c.award_amount, (v, b) => Number(v) >= Number(b), clientSide, warnings);
+    contracts = enforceClientBound(contracts, 'award_amount_max', award_amount_max, c => c.award_amount, (v, b) => Number(v) <= Number(b), clientSide, warnings);
+    if (vendor_name) {
+      const needle = String(vendor_name).toLowerCase();
+      contracts = enforceClientBound(contracts, 'vendor_name', vendor_name, c => c.vendor.name ?? null, v => String(v).toLowerCase().includes(needle), clientSide, warnings);
+    }
+
+    return listEnvelope({
+      resourceKey: 'contracts',
+      rows: contracts,
+      upstreamTotal: upstreamTotal(response.data),
+      countUnit: CONTRACT_COUNT_UNIT,
+      dateField: date_from || date_to ? AWARD_DATE_FIELD : undefined,
+      filters: { upstream: request.params, client_side: clientSide },
+      warnings,
+      nextCursor: tangoNextCursor(response.data),
+      // A set-aside-filtered upstream total is a loose-match count (P0-1) and,
+      // per P0-4, unscoped set-aside totals have not reconciled with
+      // agency-scoped sums — never present one as trustworthy when the exact
+      // filter could not be applied to the rows.
+      distrustUpstreamTotal: looseOnly
+        ? setAsideCodes.length === 1
+          ? LOOSE_SET_ASIDE_WARNING
+          : 'The set_aside filter was not applied upstream (no multi-code parameter exists) or client-side (rows carry no readable code), so the total reflects the query WITHOUT any set-aside filtering.'
+        : undefined,
+    });
   },
 
   async searchGrants(args: any): Promise<any> {
@@ -367,7 +525,8 @@ export const tangoTools = {
       award_amount_max,
       date_from,
       date_to,
-      limit = 10
+      limit = 10,
+      cursor
     } = args;
 
     const tangoApiKey = api_key || process.env.TANGO_API_KEY;
@@ -377,7 +536,7 @@ export const tangoTools = {
     }
 
     const params: Record<string, any> = {
-      limit: Math.min(limit, 100)
+      limit: Math.min(Number(limit) || 10, 100)
     };
 
     if (query) params.search = query;
@@ -386,44 +545,25 @@ export const tangoTools = {
     if (date_from) params.posted_date_after = date_from;
     if (date_to) params.posted_date_before = date_to;
 
-    const response = await ApiClient.tangoGet('/grants/', params, tangoApiKey);
+    let request;
+    try {
+      request = resolveListRequest('/grants/', params, cursor);
+    } catch (err) {
+      return bad(err instanceof Error ? err.message : String(err));
+    }
+
+    const response = await ApiClient.tangoGet(request.endpoint, request.params, tangoApiKey);
 
     if (!response.success) {
       return { error: response.error };
     }
 
-    let rawGrants: any[] = response.data.results || [];
-
-    if (recipient_name) {
-      const nameNeedle = recipient_name.toLowerCase();
-      rawGrants = rawGrants.filter((grant: any) => {
-        const nameValue = grant.recipient?.name || grant.recipient_name;
-        return typeof nameValue === 'string' ? nameValue.toLowerCase().includes(nameNeedle) : true;
-      });
-    }
-
-    if (recipient_uei) {
-      rawGrants = rawGrants.filter((grant: any) => {
-        const ueiValue = grant.recipient?.uei || grant.recipient_uei;
-        return typeof ueiValue === 'string' ? ueiValue === recipient_uei : true;
-      });
-    }
-
-    if (award_amount_min !== undefined || award_amount_max !== undefined) {
-      rawGrants = rawGrants.filter((grant: any) => {
-        const amount = Number(grant.award_amount ?? grant.total_funding_amount ?? 0);
-        if (typeof award_amount_min === 'number' && amount < award_amount_min) {
-          return false;
-        }
-        if (typeof award_amount_max === 'number' && amount > award_amount_max) {
-          return false;
-        }
-        return true;
-      });
-    }
+    const rawGrants: any[] = response.data.results || [];
+    const warnings: string[] = [];
+    const clientSide: Record<string, unknown> = {};
 
     // Filter response to essential grant fields
-    const grants = rawGrants.map((grant: any) => ({
+    let grants = rawGrants.map((grant: any) => ({
       grant_id: grant.fain || grant.grant_id,
       title: grant.description || grant.title || grant.project_title,
       recipient: {
@@ -437,7 +577,7 @@ export const tangoTools = {
         code: grant.agency_code,
         office: grant.office_name
       },
-      award_amount: grant.award_amount || grant.total_funding_amount,
+      award_amount: grant.award_amount ?? grant.total_funding_amount ?? null,
       award_date: grant.award_date || grant.date_signed,
       cfda: {
         number: grant.cfda_number,
@@ -453,14 +593,28 @@ export const tangoTools = {
         start: grant.period_start_date,
         end: grant.period_end_date
       }
-    })) || [];
+    }));
 
-    return {
-      total: response.data.total || response.data.count || 0,
-      grants,
-      filters: params,
-      limit
-    };
+    if (recipient_name) {
+      const needle = String(recipient_name).toLowerCase();
+      grants = enforceClientBound(grants, 'recipient_name', recipient_name, g => g.recipient.name ?? null, v => String(v).toLowerCase().includes(needle), clientSide, warnings);
+    }
+    if (recipient_uei) {
+      grants = enforceClientBound(grants, 'recipient_uei', recipient_uei, g => g.recipient.uei ?? null, (v, b) => String(v) === String(b), clientSide, warnings);
+    }
+    grants = enforceClientBound(grants, 'award_amount_min', award_amount_min, g => g.award_amount, (v, b) => Number(v) >= Number(b), clientSide, warnings);
+    grants = enforceClientBound(grants, 'award_amount_max', award_amount_max, g => g.award_amount, (v, b) => Number(v) <= Number(b), clientSide, warnings);
+
+    return listEnvelope({
+      resourceKey: 'grants',
+      rows: grants,
+      upstreamTotal: upstreamTotal(response.data),
+      countUnit: GRANT_COUNT_UNIT,
+      dateField: date_from || date_to ? 'posted_date (Tango posted_date_after/before)' : undefined,
+      filters: { upstream: request.params, client_side: clientSide },
+      warnings,
+      nextCursor: tangoNextCursor(response.data),
+    });
   },
 
   async getVendorProfile(args: any): Promise<any> {
@@ -565,7 +719,8 @@ export const tangoTools = {
       posted_to,
       response_deadline_from,
       status,
-      limit = 10
+      limit = 10,
+      cursor
     } = args;
 
     const tangoApiKey = api_key || process.env.TANGO_API_KEY;
@@ -575,7 +730,7 @@ export const tangoTools = {
     }
 
     const params: Record<string, any> = {
-      limit: Math.min(limit, 100)
+      limit: Math.min(Number(limit) || 10, 100)
     };
 
     if (query) params.search = query;
@@ -602,7 +757,14 @@ export const tangoTools = {
       }
     }
 
-    const response = await ApiClient.tangoGet('/opportunities/', params, tangoApiKey);
+    let request;
+    try {
+      request = resolveListRequest('/opportunities/', params, cursor);
+    } catch (err) {
+      return bad(err instanceof Error ? err.message : String(err));
+    }
+
+    const response = await ApiClient.tangoGet(request.endpoint, request.params, tangoApiKey);
 
     if (!response.success) {
       return { error: response.error };
@@ -632,14 +794,18 @@ export const tangoTools = {
       },
       description: (opp.summary || opp.description || '').substring(0, 500),
       link: opp.sam_url || opp.url || opp.link
-    })) || [];
+    }));
 
-    return {
-      total: response.data.total || response.data.count || 0,
-      opportunities,
-      filters: params,
-      limit
-    };
+    return listEnvelope({
+      resourceKey: 'opportunities',
+      rows: opportunities,
+      upstreamTotal: upstreamTotal(response.data),
+      countUnit: OPPORTUNITY_COUNT_UNIT,
+      dateField: posted_from || posted_to ? 'posted_date / first_notice_date' : undefined,
+      filters: { upstream: request.params, client_side: {} },
+      warnings: [],
+      nextCursor: tangoNextCursor(response.data),
+    });
   },
 
   async getSpendingSummary(args: any): Promise<any> {
@@ -658,11 +824,14 @@ export const tangoTools = {
       throw new Error("Tango API key is required. Please provide it as a parameter or set TANGO_API_KEY environment variable");
     }
 
+    const agencyResolved = resolveAgencyCode(agency);
+    if (agencyResolved.error) return bad(agencyResolved.error);
+
     const params: Record<string, any> = {
       limit: 100
     };
 
-    if (agency) params.awarding_agency = agency;
+    if (agencyResolved.code) params.awarding_agency = agencyResolved.code;
     if (vendor_uei) params.uei = vendor_uei;
     if (fiscal_year) params.fiscal_year = fiscal_year;
     if (award_type && award_type !== 'all') params.award_type = award_type;
@@ -772,21 +941,32 @@ export const tangoTools = {
         contract_count: entry.contractCount
       }));
 
+    const totalAvailable = response.data.count ?? null;
+    const warnings: string[] = [];
+    if (typeof totalAvailable === 'number' && totalAvailable > normalized.length) {
+      warnings.push(
+        `PARTIAL AGGREGATION: only the first ${normalized.length} of ${totalAvailable} matching contracts were aggregated. ` +
+        'Do not treat these totals as population figures — use aggregate_contracts (USASpending) for full-population aggregation.'
+      );
+    }
+
     return {
       total_contracts: normalized.length,
       total_obligated: Number(totalObligated.toFixed(2)),
+      count_unit: 'contracts on the fetched page only (max 100)',
       breakdown,
       group_by,
       award_type,
       fiscal_year,
       filters: {
-        awarding_agency: agency,
-        vendor_uei
+        upstream: params,
+        client_side: {}
       },
+      ...(warnings.length ? { warnings } : {}),
       page_info: {
         limit: params.limit,
-        total_available: response.data.count ?? null,
-        next_cursor: response.data.next ?? null
+        total_available: totalAvailable,
+        next_cursor: tangoNextCursor(response.data)
       }
     };
   }
