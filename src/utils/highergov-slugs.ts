@@ -43,23 +43,48 @@ const VEHICLE_MAP: Record<string, string> = {
   'alliant 2': 'alliant-2',
 };
 
+// Values observed live (2026-08-23): HigherGov contracts carry descriptions
+// with the FPDS code in trailing parens ("8(A) Sole Source  (8AN)");
+// opportunities carry bare FPDS codes ("SBA", "8AN", "SDVOSBC").
+// normalizeSetAside() strips the parenthesized code before lookup, so keys
+// here are either bare lowercase codes or code-free descriptions. Slugs
+// collapse to the program family (sole source and competed map together).
 const SET_ASIDE_MAP: Record<string, string> = {
-  'service-disabled veteran-owned small business': 'sdvosb',
-  'sdvosb': 'sdvosb',
-  'sdvosbc': 'sdvosb',
-  '8(a)': '8a',
+  // FPDS codes (see utils/fpds-codes.ts for the full reference table)
+  'sba': 'small-business',
+  'sbp': 'small-business',
   '8a': '8a',
+  '8an': '8a',
+  'hzc': 'hubzone',
+  'hzs': 'hubzone',
+  'sdvosbc': 'sdvosb',
+  'sdvosbs': 'sdvosb',
+  'wosb': 'wosb',
+  'wosbss': 'wosb',
+  'edwosb': 'edwosb',
+  'edwosbss': 'edwosb',
+  'las': 'local-area',
+  'vsa': 'vosb',
+  'vss': 'vosb',
+  'none': 'full_and_open',
+  // Descriptions
+  'service-disabled veteran-owned small business': 'sdvosb',
+  'service disabled veteran owned small business set-aside': 'sdvosb',
+  'sdvosb': 'sdvosb',
+  'sdvosb sole source': 'sdvosb',
+  '8(a)': '8a',
   '8(a) competitive': '8a',
   '8a competitive': '8a',
+  '8(a) competed': '8a',
   '8(a) sole source': '8a',
   '8a sole source': '8a',
   'hubzone': 'hubzone',
   'historically underutilized business zone': 'hubzone',
   'woman-owned small business': 'wosb',
-  'wosb': 'wosb',
+  'women owned small business sole source': 'wosb',
   'economically disadvantaged woman-owned small business': 'edwosb',
-  'edwosb': 'edwosb',
   'small business set-aside': 'small-business',
+  'small business set aside - total': 'small-business',
   'total small business': 'small-business',
   'total small business set-aside': 'small-business',
   'small business': 'small-business',
@@ -94,7 +119,7 @@ function coerceToString(raw: unknown): string | null {
   }
   if (typeof raw === 'object') {
     const obj = raw as Record<string, unknown>;
-    for (const key of ['name', 'label', 'display_name', 'value', 'agency_name', 'agency']) {
+    for (const key of ['name', 'label', 'display_name', 'value', 'agency_name', 'agency', 'vehicle_name']) {
       const v = obj[key];
       if (typeof v === 'string' && v.trim()) return v;
     }
@@ -133,9 +158,15 @@ export function normalizeSetAside(raw?: unknown): string | null;
 export function normalizeSetAside(raw?: unknown): string | null {
   const s = coerceToString(raw);
   if (!s) return null;
-  const key = s.trim().toLowerCase();
+  const key = s.trim().toLowerCase().replace(/\s+/g, ' ');
   if (!key) return null;
   if (SET_ASIDE_MAP[key]) return SET_ASIDE_MAP[key];
+  // "8(a) sole source (8an)" → try the code, then the code-free description.
+  const suffix = key.match(/^(.*?)\s*\(([0-9a-z]{1,10})\)$/);
+  if (suffix) {
+    if (SET_ASIDE_MAP[suffix[2]]) return SET_ASIDE_MAP[suffix[2]];
+    if (SET_ASIDE_MAP[suffix[1]]) return SET_ASIDE_MAP[suffix[1]];
+  }
   warnUnknown('set_aside', s);
   return fallbackSlug(s);
 }

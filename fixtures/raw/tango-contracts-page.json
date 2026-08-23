@@ -1,0 +1,255 @@
+{
+  "count": 86298616,
+  "next": "https://tango.makegov.com/api/contracts/?limit=3&cursor=WyIyMDI2LTA4LTIyIiwgImVhN2MwMzE1LTBhY2MtNWRlMy04NDMxLTAwNDhhNzg2YzM5ZSJd",
+  "previous": null,
+  "cursor": "WyIyMDI2LTA4LTIyIiwgImVhN2MwMzE1LTBhY2MtNWRlMy04NDMxLTAwNDhhNzg2YzM5ZSJd",
+  "previous_cursor": null,
+  "results": [
+    {
+      "award_date": "2026-08-22",
+      "award_type": {
+        "code": "B",
+        "description": "Purchase Order"
+      },
+      "awarding_office": {
+        "organization_id": "5f290f80-aaec-5eeb-8bb0-0b576ccc2017",
+        "office_code": "15M102",
+        "office_name": "PROCUREMENT DIVISION, APC",
+        "agency_code": "1544",
+        "agency_name": "US MARSHALS SERVICE",
+        "department_code": "015",
+        "department_name": "JUSTICE, DEPARTMENT OF"
+      },
+      "base_and_exercised_options_value": 25000,
+      "description": "MISSION - FY2027 DISTRICT GUARD SUPPORT SERVICES - D45 - MISSION CRITICAL: TRANSPORTING AND PRODUCING PRISONERS FOR COURT PROCEEDINGS.",
+      "fiscal_year": 2026,
+      "funding_office": {
+        "organization_id": "7b4cb437-e9c4-5af4-9615-26de3eeb6913",
+        "office_code": "MS045",
+        "office_name": "U.S. DEPT OF JUSTICE, USM, W/MO",
+        "agency_code": "1544",
+        "agency_name": "US MARSHALS SERVICE",
+        "department_code": "015",
+        "department_name": "JUSTICE, DEPARTMENT OF"
+      },
+      "key": "CONT_AWD_15M10226PA47S1275_1544_-NONE-_-NONE-",
+      "legislative_mandates": {
+        "clinger_cohen_act_planning": {
+          "code": "N",
+          "description": "No"
+        },
+        "construction_wage_rate_requirements": {
+          "code": "N",
+          "description": "No"
+        },
+        "employment_eligibility_verification": null,
+        "interagency_contracting_authority": {
+          "code": "X",
+          "description": "Not Applicable"
+        },
+        "labor_standards": {
+          "code": "Y",
+          "description": "Yes"
+        },
+        "materials_supplies_articles_equipment": {
+          "code": "N",
+          "description": "No"
+        },
+        "other_statutory_authority": null,
+        "service_contract_inventory": null
+      },
+      "naics_code": 561612,
+      "obligated": 0,
+      "parent_award": null,
+      "period_of_performance": {
+        "start_date": "2026-10-01",
+        "current_end_date": "2027-09-30",
+        "ultimate_completion_date": "2027-09-30"
+      },
+      "piid": "15M10226PA47S1275",
+      "place_of_performance": {
+        "country_code": "USA",
+        "country_name": "UNITED STATES",
+        "state_code": "DC",
+        "state_name": "DISTRICT OF COLUMBIA",
+        "city_name": "WASHINGTON",
+        "zip_code": "20405"
+      },
+      "psc_code": "S206",
+      "recipient": {
+        "uei": "KA5HQCLKUVW1",
+        "display_name": "DOMESTIC AWARDEES (UNDISCLOSED)",
+        "legal_business_name": "DOMESTIC AWARDEES (UNDISCLOSED)",
+        "cage_code": "3JEH0"
+      },
+      "set_aside": null,
+      "solicitation_identifier": "15M10225QA4700209",
+      "subawards_summary": null,
+      "total_contract_value": 25000
+    },
+    {
+      "award_date": "2026-08-22",
+      "award_type": {
+        "code": "B",
+        "description": "Purchase Order"
+      },
+      "awarding_office": {
+        "organization_id": "ca386d2c-b2f2-52ad-88bf-28590d787224",
+        "office_code": "36C244",
+        "office_name": "244-NETWORK CONTRACT OFFICE 4 (36C244)",
+        "agency_code": "3600",
+        "agency_name": "VETERANS AFFAIRS, DEPARTMENT OF",
+        "department_code": "036",
+        "department_name": "VETERANS AFFAIRS, DEPARTMENT OF"
+      },
+      "base_and_exercised_options_value": 14845,
+      "description": "CURVED STAIRLIFT",
+      "fiscal_year": 2026,
+      "funding_office": {
+        "organization_id": "3e770d98-0989-547b-b18f-f76b1ed40416",
+        "office_code": "00595",
+        "office_name": "VETERANS HEALTH ADMINISTRATION",
+        "agency_code": "3600",
+        "agency_name": "VETERANS AFFAIRS, DEPARTMENT OF",
+        "department_code": "036",
+        "department_name": "VETERANS AFFAIRS, DEPARTMENT OF"
+      },
+      "key": "CONT_AWD_36C24426P0473_3600_-NONE-_-NONE-",
+      "legislative_mandates": {
+        "clinger_cohen_act_planning": {
+          "code": "N",
+          "description": "No"
+        },
+        "construction_wage_rate_requirements": {
+          "code": "X",
+          "description": "Not Applicable"
+        },
+        "employment_eligibility_verification": null,
+        "interagency_contracting_authority": {
+          "code": "X",
+          "description": "Not Applicable"
+        },
+        "labor_standards": {
+          "code": "X",
+          "description": "Not Applicable"
+        },
+        "materials_supplies_articles_equipment": {
+          "code": "X",
+          "description": "Not Applicable"
+        },
+        "other_statutory_authority": null,
+        "service_contract_inventory": null
+      },
+      "naics_code": 339113,
+      "obligated": 14845,
+      "parent_award": null,
+      "period_of_performance": {
+        "start_date": "2026-08-22",
+        "current_end_date": "2026-11-22",
+        "ultimate_completion_date": "2026-11-22"
+      },
+      "piid": "36C24426P0473",
+      "place_of_performance": {
+        "country_code": "USA",
+        "country_name": "UNITED STATES",
+        "state_code": "DE",
+        "state_name": "DELAWARE",
+        "city_name": "LEWES",
+        "zip_code": "19958"
+      },
+      "psc_code": "6515",
+      "recipient": {
+        "uei": "KZH2KUVJ2NC6",
+        "display_name": "ACCESS4U INC",
+        "legal_business_name": "ACCESS4U INC",
+        "cage_code": "4UFU5"
+      },
+      "set_aside": null,
+      "solicitation_identifier": "595-P60051",
+      "subawards_summary": null,
+      "total_contract_value": 14845
+    },
+    {
+      "award_date": "2026-08-22",
+      "award_type": {
+        "code": "B",
+        "description": "Purchase Order"
+      },
+      "awarding_office": {
+        "organization_id": "5f290f80-aaec-5eeb-8bb0-0b576ccc2017",
+        "office_code": "15M102",
+        "office_name": "PROCUREMENT DIVISION, APC",
+        "agency_code": "1544",
+        "agency_name": "US MARSHALS SERVICE",
+        "department_code": "015",
+        "department_name": "JUSTICE, DEPARTMENT OF"
+      },
+      "base_and_exercised_options_value": 20000,
+      "description": "MISSION - FY2027 DISTRICT GUARD SUPPORT SERVICES - D46 - MISSION CRITICAL: TRANSPORTING AND PRODUCING PRISONERS FOR COURT PROCEEDINGS.",
+      "fiscal_year": 2026,
+      "funding_office": {
+        "organization_id": "0d8a9725-c0ff-59d5-a8af-c8b7b580dfba",
+        "office_code": "MS046",
+        "office_name": "U.S. DEPT OF JUSTICE, USM, MT",
+        "agency_code": "1544",
+        "agency_name": "US MARSHALS SERVICE",
+        "department_code": "015",
+        "department_name": "JUSTICE, DEPARTMENT OF"
+      },
+      "key": "CONT_AWD_15M10226PA47S1277_1544_-NONE-_-NONE-",
+      "legislative_mandates": {
+        "clinger_cohen_act_planning": {
+          "code": "N",
+          "description": "No"
+        },
+        "construction_wage_rate_requirements": {
+          "code": "N",
+          "description": "No"
+        },
+        "employment_eligibility_verification": null,
+        "interagency_contracting_authority": {
+          "code": "X",
+          "description": "Not Applicable"
+        },
+        "labor_standards": {
+          "code": "Y",
+          "description": "Yes"
+        },
+        "materials_supplies_articles_equipment": {
+          "code": "N",
+          "description": "No"
+        },
+        "other_statutory_authority": null,
+        "service_contract_inventory": null
+      },
+      "naics_code": 561612,
+      "obligated": 0,
+      "parent_award": null,
+      "period_of_performance": {
+        "start_date": "2026-10-01",
+        "current_end_date": "2027-09-30",
+        "ultimate_completion_date": "2027-09-30"
+      },
+      "piid": "15M10226PA47S1277",
+      "place_of_performance": {
+        "country_code": "USA",
+        "country_name": "UNITED STATES",
+        "state_code": "DC",
+        "state_name": "DISTRICT OF COLUMBIA",
+        "city_name": "WASHINGTON",
+        "zip_code": "20405"
+      },
+      "psc_code": "S206",
+      "recipient": {
+        "uei": "KA5HQCLKUVW1",
+        "display_name": "DOMESTIC AWARDEES (UNDISCLOSED)",
+        "legal_business_name": "DOMESTIC AWARDEES (UNDISCLOSED)",
+        "cage_code": "3JEH0"
+      },
+      "set_aside": null,
+      "solicitation_identifier": "15M10225QA4700209",
+      "subawards_summary": null,
+      "total_contract_value": 20000
+    }
+  ]
+}

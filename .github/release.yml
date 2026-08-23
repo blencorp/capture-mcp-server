@@ -1,0 +1,35 @@
+# Groups the auto-generated release notes produced by the Release workflow.
+# Categories match on PR labels; anything unlabeled falls into "Other changes"
+# so nothing is silently dropped from the notes.
+changelog:
+  exclude:
+    labels:
+      - no-release-note
+    authors:
+      - dependabot
+  categories:
+    - title: Breaking changes
+      labels:
+        - breaking
+        - breaking-change
+    - title: New tools and features
+      labels:
+        - feature
+        - enhancement
+    - title: Bug fixes
+      labels:
+        - bug
+        - fix
+    - title: Upstream API accuracy
+      labels:
+        - upstream
+        - data-accuracy
+    - title: Documentation
+      labels:
+        - documentation
+    - title: Dependencies
+      labels:
+        - dependencies
+    - title: Other changes
+      labels:
+        - "*"
