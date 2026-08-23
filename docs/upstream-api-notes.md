@@ -34,6 +34,11 @@ data-dictionary/contracts). "documented" below means confirmed there.
 | pagination | verified + documented | DRF envelope `{count, next, previous, results}`; the `next` URL is used verbatim as `next_cursor` and validated against the Tango origin on the way back in. |
 
 Open items:
+- **Daily rate limit**: the 2026-08-23 capture run hit `429 Rate limit
+  exceeded for daily` after a handful of calls (reset ~6h) — the account's
+  daily ceiling is small; budget probes accordingly. The captured page
+  (`fixtures/raw/tango-contracts-page.json`) shows the current default list
+  response DOES include `set_aside` per row.
 - `count` is documented as "the total number of contracts matching the query" (award-level); whether modifications/transactions ever roll up separately is unverified.
 - Unscoped totals diverge from agency-scoped sums (unscoped 8AN = 1,331 vs Army alone = 510 + GSA 107, while USAspending grand total = 1,928). Reported per P0-4; until resolved, set-aside-filtered totals are surfaced as `total_upstream_unverified`.
 - Contract detail endpoint `GET /api/contracts/{key}/` is documented (transactions + subawards_summary) — a candidate backend for future mod-history work.
@@ -45,8 +50,13 @@ Documentation source: **the official OpenAPI 3.0.3 spec (v1.2), retrieved
 (the URL the Swagger UI at `/api-external/docs/` loads) and committed as
 `fixtures/raw/highergov-openapi.json`. "spec" below means confirmed there.
 The spec is authoritative for which parameters and record fields *exist*;
-"spec + verified" additionally means observed live. Note: HigherGov silently
-ignores unknown query params, so a spec-absent param is a no-op, not an error.
+"spec + verified" additionally means observed live — a full live
+`capture-fixtures` run was completed 2026-08-23 with a real key
+(`fixtures/raw/highergov-*-page.json`; api_key redacted from all saved
+payloads, which matters because HigherGov embeds it in `links.*` and
+`document_path` URLs). Note: HigherGov silently ignores unknown query params,
+so a spec-absent param is a no-op — EXCEPT on `/opportunity/`, which returns
+400 when no binding param at all is present (see below).
 
 Endpoint roster per the spec: `/agency/`, `/awardee/`, `/awardee-mp/`,
 `/awardee-partnership/`, `/contract/`, `/document/`, `/grant/`,
@@ -73,7 +83,8 @@ exist upstream:
 | `page_size`, `page_number`, `ordering` | spec + verified | `page_size` max 100. `ordering` field names are not enumerated in the spec — unverified which values bind. |
 | `award_id`, `parent_award_id` | spec + verified | Lookup params used by `get_highergov_contract` (fixed in e2ddba9); `award_id` is also the record field. |
 | `naics_code`, `psc_code` | spec + verified | Bound in live probe (rows matched requested NAICS, 2026-08-23). Multi-code/OR syntax is **not** documented — the tools still send comma-joined lists as best effort. |
-| `awarding_agency_key`, `funding_agency_key` | spec | Integer HigherGov agency keys — the only agency filters that exist. Exposed as `agency_key` on `search_highergov_contracts`. `/agency/` itself is only filterable by `agency_key`, so a *name* cannot be resolved server-side. |
+| `awarding_agency_key` | spec + verified | Binds: probe with key `318` (Census) returned only rows whose `awarding_agency.agency_key === 318` (2026-08-23). Integer HigherGov agency keys are the only agency filters that exist; exposed as `agency_key` on `search_highergov_contracts`. `/agency/` itself is only filterable by `agency_key`, so a *name* cannot be resolved server-side. |
+| `funding_agency_key` | spec | Same shape as `awarding_agency_key`; not live-probed. |
 | `awardee_key`, `awardee_key_parent`, `awardee_uei`, `awardee_uei_parent` | spec | `awardee_uei` exposed on `search_highergov_contracts`. |
 | `captured_date`, `last_modified_date` | spec | `last_modified_date` "filter (format: YYYY-MM-DD)"; `captured_date` is the date HigherGov captured the last amendment (may lag `last_modified_date` by 1–90 days per the spec). |
 | `search_id`, `vehicle_key` | spec | Saved-search and vehicle-key filters. |
@@ -103,9 +114,16 @@ sub-agency field exists**), `vehicle` (VehicleSimple: `vehicle_key`,
 `award_description`, `contract_vehicle`, `type_of_set_aside_code`, CPARS /
 protest / option-period / modification-count fields **do not exist** — the
 normalizer and the `get_highergov_contract` output no longer claim them.
-Whether `type_of_set_aside` carries FPDS codes or descriptions is not stated in
-the spec (plain nullable string) — the normalizer handles both; confirm with a
-live capture.
+
+Live confirmations (2026-08-23 capture, `highergov-contract-page.json`):
+record keys and nesting match the spec exactly; the envelope is
+`results`/`meta`/`links` as documented. `type_of_set_aside` carries a
+**description with the FPDS code in trailing parens** (e.g.
+`"8(A) Sole Source  (8AN)"`, `"Small Business Set Aside - Total (SBA)"`,
+null when unrestricted) — `setAsideCodePair`/`normalizeSetAside` parse the
+parenthesized code. One caveat: an all-time NAICS query reported
+`meta.pagination.count = 100000` with `pages = 33334` — **the count appears
+capped at 100,000**; the tool warns when the total is exactly 100,000.
 
 ## HigherGov `GET /api-external/opportunity/`, `/people/`, `/document/`
 
@@ -115,6 +133,18 @@ agency, YYYY-MM-DD), `opp_key`, `version_key`, `source_id`, `source_type`
 (`sam`, `dibbs`, `sbir`, `grant`, `sled`), `search_id`, `ordering`,
 `page_number`, `page_size`.
 
+- **A binding param is required** (verified live 2026-08-23): a query with
+  only `page_size`/`source_type` returns
+  `400 ["At least one of the following parameters must be included:
+  search_id, captured_date, posted_date, source_id, agency_key, or
+  version_key"]`. `search_highergov_opportunities` therefore requires
+  `posted_after` and/or `agency_key`.
+- **`posted_date` is a single-day exact match** (verified live:
+  `posted_date=2026-08-20` returned only rows posted that day, count 2,086) —
+  not a range bound. `search_highergov_opportunities` serves `posted_after` by
+  walking the window one day per request with a resumable
+  `"YYYY-MM-DD|page"` cursor (≤8 requests per call, window capped at 45
+  days); `total` is null during a walk.
 - **`naics_code` / `psc_code` do not exist on `/opportunity/`** — the tool no
   longer sends them; NAICS/PSC/set-aside/agency-name filtering is client-side
   (the spec's own filtering mechanism for these is a saved search: the
@@ -125,11 +155,9 @@ agency, YYYY-MM-DD), `opp_key`, `version_key`, `source_id`, `source_type`
   `search_highergov_forecasts` still sends it as best-effort narrowing and now
   warns that it may not bind; records carry no last-modified field to verify
   against (record dates are `captured_date` / `posted_date` / `due_date`).
-- `captured_date` / `posted_date` are single-day matches per their spec
-  descriptions, not range bounds — so they cannot implement `posted_after` and
-  are not sent for it.
 - `opp_key`, `source_id`: lookup params, spec + verified live (e2ddba9).
-- Opportunity record fields (spec `Opportunity` schema): `opp_cat`, `title`,
+- Opportunity record fields (spec `Opportunity` schema, live-confirmed
+  2026-08-23 — `highergov-opportunity-page.json`): `opp_cat`, `title`,
   `description_text`, `ai_summary`, `source_id(_version)`, `captured_date`,
   `posted_date`, `due_date`, `agency` (AgencySimple), `naics_code`/`psc_code`
   (nested single-code objects), `opp_type.description`, `vehicle` (string),
@@ -137,7 +165,11 @@ agency, YYYY-MM-DD), `opp_key`, `version_key`, `source_id`, `source_type`
   `set_aside` (string), `nsn`, `val_est_low`/`val_est_high`, `pop_country`/
   `pop_state`/`pop_city`/`pop_zip`, `opp_key`, `version_key`, `source_type`,
   `sole_source_flag`, `path`, `source_path`, `document_path`. There is **no
-  `attachments` field** — documents come from `/document/`.
+  `attachments` field** — documents come from `/document/`. `set_aside`
+  carries **bare FPDS codes** live (`SBA`, `8AN`, `SDVOSBC`; null when
+  unrestricted) — unlike contracts, no description. `document_path` is a
+  ready-made `/document/` URL **embedding the caller's api_key** — never
+  surface it; the tools parse only its `related_key`.
 
 `/people/` params per the spec: `api_key`, `contact_email`, `ordering`,
 `page_number`, `page_size` — **`contact_email` is the only filter and the only
@@ -145,7 +177,8 @@ lookup key; there is no person ID or detail route.** The previously sent
 `agency_name` / `sub_agency_name` / `search` params do not exist and were
 ignored (results were unfiltered). `search_highergov_people` now binds `email`
 upstream and applies agency / role keywords client-side with warnings;
-`get_highergov_person` requires an email. Record fields: `contact_first_name`,
+`get_highergov_person` requires an email. Record fields (live-confirmed
+2026-08-23 — `highergov-people-page.json`): `contact_first_name`,
 `contact_last_name`, `contact_name`, `contact_title`, `contact_email`,
 `contact_phone`, `contact_ext`, `contact_fax`, `agency` (AgencySimple),
 `contact_type`, `last_seen`, `path`. The previously mapped `verified_email`,
@@ -153,13 +186,17 @@ upstream and applies agency / role keywords client-side with warnings;
 
 `/document/` params per the spec: `api_key`, `related_key` (**required**,
 described only as "Document Key"), `ordering`, `page_number`, `page_size`.
-The previously sent `opp_key` param does not exist (the call 400'd or returned
-nothing, hitting the tool's fallback path). `get_opportunity_documents` now
-sends the opportunity's `opp_key` **as** `related_key` — best guess, unverified
-live whether an opp_key is accepted as a related key; the Opportunity record's
-`document_path` suggests the linkage. Record fields (`FileTracker`):
-`file_name`, `file_type`, `file_size`, `posted_date`, `text_extract`,
-`summary`, `download_url`.
+The previously sent `opp_key` param does not exist. **The correct
+`related_key` is the hex key embedded in the opportunity record's own
+`document_path` URL** (verified live 2026-08-23): querying with the raw
+`opp_key` returns 200 with zero rows (silent miss), and the document_path key
+is not always the `source_id` (for one solicitation, `source_id` was
+`36C26027R0007` while the related key was a hex ID; that key returned 1
+document). `get_opportunity_documents` parses `related_key` from
+`document_path`, falling back to `source_id`. Record fields (`FileTracker`,
+live-confirmed — `highergov-document-page.json`): `file_name`, `file_type`
+(e.g. `.pdf`), `file_size` (bytes), `posted_date` (full ISO timestamp),
+`text_extract`, `summary`, `download_url`.
 
 ## USASpending (api.usaspending.gov/api/v2)
 

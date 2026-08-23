@@ -38,7 +38,8 @@ test('normalizeContractSummary populates every declared field from a spec-shape 
   assert.equal(row.funding_agency, 'va');
   assert.deepEqual(row.naics, ['541511']);
   assert.deepEqual(row.psc, ['D307']);
-  assert.equal(row.set_aside, 'sdvosbs');
+  // "SDVOSB Sole Source (SDVOSBS)" → family slug + exact FPDS code pair.
+  assert.equal(row.set_aside, 'sdvosb');
   assert.deepEqual(row.set_aside_code, {
     code: 'SDVOSBS',
     description: 'Service-Disabled Veteran-Owned Small Business Sole Source (FAR 19.14)',
@@ -166,7 +167,8 @@ test('search_highergov_contracts applies set_aside and pop_end bounds client-sid
     });
     assert.equal(out.results.length, 1);
     assert.equal(out.results[0].piid, '36C10B21D0042');
-    assert.deepEqual(out.filters.client_side.set_aside, ['sdvosbs']);
+    // Codes normalize to the family slug ('sdvosbs' → 'sdvosb').
+    assert.deepEqual(out.filters.client_side.set_aside, ['sdvosb']);
   } finally {
     restore();
   }
@@ -240,12 +242,14 @@ test('search_highergov_opportunities filters the set-aside bundle and drops clos
     // Per the spec, /opportunity/ has no naics/psc params — they must not be sent.
     assert.equal(params.naics_code, undefined);
     assert.equal(params.psc_code, undefined);
+    assert.equal(params.agency_key, 3600);
     return { success: true, data: oppPage };
   });
   try {
     const out: any = await highergovTools.callTool('search_highergov_opportunities', {
       set_aside: ['8a'],
       naics: ['5415'],
+      agency_key: 3600,
     });
     assert.equal(out.results.length, 1);
     assert.equal(out.results[0].sam_notice_id, 'FA0000-25-R-0001');
@@ -253,6 +257,72 @@ test('search_highergov_opportunities filters the set-aside bundle and drops clos
   } finally {
     restore();
   }
+});
+
+test('search_highergov_opportunities walks posted_date day by day with a resumable cursor', async () => {
+  const today = new Date().toISOString().slice(0, 10);
+  const dayBefore = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString().slice(0, 10);
+  const calls: Array<{ posted_date: string; page_number: number }> = [];
+  const restore = stubHighergovGet((_endpoint, params) => {
+    calls.push({ posted_date: params.posted_date, page_number: Number(params.page_number) });
+    // Day 1 has two pages; every other day has one.
+    const hasSecondPage = params.posted_date === dayBefore && Number(params.page_number) === 1;
+    return {
+      success: true,
+      data: {
+        results: [
+          {
+            opp_key: `k-${params.posted_date}-${params.page_number}`,
+            source_id: `N-${params.posted_date}-${params.page_number}`,
+            title: 'Notice',
+            agency: { agency_name: 'Department of Veterans Affairs' },
+            posted_date: params.posted_date,
+            due_date: '2099-01-01',
+            path: 'https://www.highergov.com/opportunity/x/',
+          },
+        ],
+        meta: { pagination: { page: Number(params.page_number), pages: hasSecondPage ? 2 : 1, count: 1 } },
+        links: {
+          next: hasSecondPage
+            ? `https://www.highergov.com/api-external/opportunity/?posted_date=${params.posted_date}&page_number=2`
+            : null,
+        },
+      },
+    };
+  });
+  try {
+    const out: any = await highergovTools.callTool('search_highergov_opportunities', {
+      posted_after: dayBefore,
+      limit: 200,
+    });
+    // Walked: dayBefore p1, dayBefore p2, today p1 — then the window is done.
+    assert.deepEqual(calls, [
+      { posted_date: dayBefore, page_number: 1 },
+      { posted_date: dayBefore, page_number: 2 },
+      { posted_date: today, page_number: 1 },
+    ]);
+    assert.equal(out.next_cursor, null);
+    assert.equal(out.results.length, 3);
+    assert.equal(out.total, null);
+
+    // A cursor resumes mid-walk without repeating earlier days.
+    calls.length = 0;
+    const resumed: any = await highergovTools.callTool('search_highergov_opportunities', {
+      posted_after: dayBefore,
+      cursor: `${today}|1`,
+      limit: 200,
+    });
+    assert.deepEqual(calls, [{ posted_date: today, page_number: 1 }]);
+    assert.equal(resumed.next_cursor, null);
+  } finally {
+    restore();
+  }
+});
+
+test('search_highergov_opportunities requires posted_after or agency_key (upstream demands a binding filter)', async () => {
+  const out: any = await highergovTools.callTool('search_highergov_opportunities', { naics: ['5415'] });
+  assert.equal(out.error.code, 'bad_request');
+  assert.match(out.error.message, /posted_after.*agency_key/);
 });
 
 test('search_highergov_contracts sends agency_key upstream as awarding_agency_key', async () => {
@@ -366,8 +436,9 @@ test('search_highergov_opportunities requires at least one filter', async () => 
 test('get_opportunity_documents merges notice attachments with the document index', async () => {
   const restore = stubHighergovGet((endpoint: string, params: Record<string, any>) => {
     if (endpoint === '/document/') {
-      // The spec's only lookup param on /document/ is related_key.
-      assert.equal(params.related_key, 'doc-test-opp-1');
+      // The related_key must come from the record's own document_path (a hex
+      // key — NOT the opp_key, which returns zero rows; verified live).
+      assert.equal(params.related_key, 'a1b2c3d4e5f60718293a4b5c6d7e8f90');
       assert.equal(params.opp_key, undefined);
     }
     if (endpoint === '/opportunity/') {
@@ -379,6 +450,8 @@ test('get_opportunity_documents merges notice attachments with the document inde
               opp_key: 'doc-test-opp-1',
               source_id: 'W912DY-25-R-0011',
               title: 'RFP with attachments',
+              document_path:
+                'https://www.highergov.com/api-external/document/?api_key=REDACTED&page_size=10&related_key=a1b2c3d4e5f60718293a4b5c6d7e8f90',
               attachments: [{ name: 'RFP.pdf', url: 'https://sam.gov/docs/rfp.pdf' }],
             },
           ],
