@@ -1,5 +1,20 @@
 # Capture MCP Server — Bug Fix & Hardening Plan
 
+> **Implementation status (2026-08-23):** Phases 0–2 and the bulk of Phase 3 are
+> implemented on this branch. Shipped: the shared envelope/pagination/FPDS-code
+> infra, all six P0 fixes (with the caveat that this environment had no live
+> API keys or reachable upstream docs, so HigherGov field mappings and
+> parameter bindings are guarded by runtime self-checks — see
+> docs/upstream-api-notes.md — and locked in by running
+> `npm run capture-fixtures` + `npm run smoke` once with live keys),
+> unknown-parameter rejection, CI test gating, `lookup_reference_code`,
+> `get_award_detail`, `aggregate_contracts`, `search_highergov_opportunities`,
+> `list_highergov_saved_searches`, and `get_opportunity_documents`.
+> Deferred: `get_sba_goaling_report` (no verifiable machine-readable source
+> reachable from this environment — building it against a guessed source would
+> recreate the silent-failure class this plan exists to kill) and the P1/P2
+> backlog items the plan already left unscheduled.
+
 **Scope.** Capture MCP is a Model Context Protocol server exposing federal procurement and
 spending data (SAM.gov, USASpending.gov, Tango, HigherGov) as 21 typed tools so a BD agent
 can run capture workflows without raw HTTP. This plan fixes the reported P0 bugs in the
