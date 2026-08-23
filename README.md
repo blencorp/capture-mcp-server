@@ -1096,7 +1096,11 @@ The server runs in HTTP mode (StreamableHTTP transport) when `MCP_TRANSPORT=http
 
 ### CI deploys via GitHub Actions
 
-`.github/workflows/deploy-railway.yml` deploys to Railway on every push to `main` (and is also runnable manually from the **Actions** tab). One-time setup:
+`.github/workflows/deploy-railway.yml` deploys to Railway on every push to `main` (and is also runnable manually from the **Actions** tab).
+
+**Forks are not tied to Railway.** The deploy job runs only in `blencorp/capture-mcp-server`; on a fork it skips cleanly (no failing check). Railway is where we happen to host our instance — the server itself is host-agnostic (any Node 20+ host that can run `npm run build && node dist/server.js` with the env vars above works). If your fork *wants* the same automation, opt in by setting a repository **variable** `DEPLOY_TO_RAILWAY=true` (Settings → Secrets and variables → Actions → Variables) plus your own `RAILWAY_TOKEN` secret. The same pattern applies to the Release workflow: automatic tagging/releases run only in the canonical repo unless a fork sets `RELEASE_ENABLED=true`.
+
+One-time setup (canonical repo, or an opted-in fork):
 
 1. In Railway, generate a project token: **Account → Tokens → Create New Token** (or `railway login --browserless` from a workstation). Copy the token value.
 2. In GitHub, add it as a repo secret: **Settings → Secrets and variables → Actions → New repository secret** named `RAILWAY_TOKEN`.
