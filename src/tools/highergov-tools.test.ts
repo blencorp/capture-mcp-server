@@ -240,6 +240,24 @@ test('search_highergov_opportunities filters the set-aside bundle and drops clos
   }
 });
 
+test('search_highergov_forecasts sends the documented last_modified_date param, not modified_since', async () => {
+  const restore = stubHighergovGet((_endpoint, params) => {
+    assert.equal(params.modified_since, undefined);
+    assert.match(String(params.last_modified_date), /^\d{4}-\d{2}-\d{2}$/);
+    assert.equal(params.search_id, 'SS1');
+    return { success: true, data: { results: [], next: null } };
+  });
+  try {
+    const out: any = await highergovTools.callTool('search_highergov_forecasts', {
+      saved_search_id: 'SS1',
+      since: '2026-08-20T12:34:56Z',
+    });
+    assert.equal(out.filters.upstream.last_modified_date, '2026-08-20');
+  } finally {
+    restore();
+  }
+});
+
 test('search_highergov_opportunities requires at least one filter', async () => {
   const out: any = await highergovTools.callTool('search_highergov_opportunities', {});
   assert.equal(out.error.code, 'bad_request');

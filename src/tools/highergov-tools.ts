@@ -618,9 +618,12 @@ export const highergovTools = {
     const limit = Math.min(Math.max(Number(args.limit) || 50, 1), 200);
     const since = args.since ?? new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString();
 
+    // The documented parameter is last_modified_date with day granularity
+    // (docs example: last_modified_date=2023-07-06). The previously sent
+    // `modified_since` appears nowhere in the docs and was presumably ignored.
     const params: Record<string, any> = {
       search_id: args.saved_search_id,
-      modified_since: since,
+      last_modified_date: String(since).slice(0, 10),
       page_size: limit,
     };
     applyPageCursor(params, args.cursor);
