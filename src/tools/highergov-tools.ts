@@ -11,7 +11,7 @@ import {
   asStringArray,
 } from '../utils/highergov-slugs.js';
 import { applyPageCursor, highergovNextCursor } from '../utils/pagination.js';
-import { listEnvelope } from '../utils/envelope.js';
+import { listEnvelope, enforceClientBound } from '../utils/envelope.js';
 import { describeSetAside, isKnownSetAsideCode } from '../utils/fpds-codes.js';
 
 // ---- Cache (in-process LRU + TTL) ----
@@ -419,42 +419,6 @@ function highergovTotal(raw: any): number | null {
     if (Number.isFinite(n)) return n;
   }
   return null;
-}
-
-// Client-side enforcement of a bound the upstream is not known to honor:
-// drop rows that verifiably violate it, keep rows that cannot be verified
-// (warning either way). Returns the surviving rows.
-function enforceClientBound(
-  rows: any[],
-  label: string,
-  bound: unknown,
-  getter: (row: any) => number | string | null,
-  ok: (value: any, bound: any) => boolean,
-  clientSide: Record<string, unknown>,
-  warnings: string[]
-): any[] {
-  if (bound === undefined || bound === null || bound === '') return rows;
-  const violating = rows.filter(r => {
-    const v = getter(r);
-    return v !== null && v !== undefined && v !== '' && !ok(v, bound);
-  });
-  const unverifiable = rows.filter(r => {
-    const v = getter(r);
-    return v === null || v === undefined || v === '';
-  }).length;
-  if (violating.length > 0) {
-    clientSide[label] = bound;
-    warnings.push(
-      `Upstream did not honor ${label} (${violating.length} of ${rows.length} record(s) on this page violated it); it was applied client-side.`
-    );
-  }
-  if (unverifiable > 0) {
-    warnings.push(`${label}: ${unverifiable} record(s) lack the field needed to verify this filter and were kept.`);
-  }
-  return rows.filter(r => {
-    const v = getter(r);
-    return v === null || v === undefined || v === '' || ok(v, bound);
-  });
 }
 
 // ---- Tool surface ----
