@@ -1,4 +1,4 @@
-import { Tool } from "@modelcontextprotocol/sdk/types.js";
+import type { Tool } from "@modelcontextprotocol/server";
 
 // Import all tool implementations
 import { samTools } from './sam-tools.js';

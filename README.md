@@ -1210,9 +1210,10 @@ capture-mcp-server/
 ### Architecture
 
 **Server Core** (`src/server.ts`):
-- Uses `@modelcontextprotocol/sdk` for MCP protocol
-- Stdio transport for desktop integration
-- Centralized tool registration and routing
+- Uses the MCP TypeScript SDK v2 (`@modelcontextprotocol/server` + `node`/`express` adapters), implementing MCP spec 2026-07-28
+- Serves both protocol eras: 2026-07-28 clients natively, plus a stateless legacy path for 2025-era clients (older Claude Desktop / remote connectors keep working)
+- Stdio transport for desktop integration, stateless HTTP for hosted deployments
+- Centralized tool registration and routing (`src/mcp-factory.ts`, `src/mcp-http.ts`)
 
 **Tool Registry** (`src/tools/index.ts`):
 - Dynamically loads tool sets based on available API keys

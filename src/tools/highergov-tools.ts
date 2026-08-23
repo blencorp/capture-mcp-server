@@ -1,4 +1,4 @@
-import { Tool } from "@modelcontextprotocol/sdk/types.js";
+import type { Tool } from "@modelcontextprotocol/server";
 import { createHash } from 'node:crypto';
 import { ApiClient, ApiResponse } from '../utils/api-client.js';
 import {
