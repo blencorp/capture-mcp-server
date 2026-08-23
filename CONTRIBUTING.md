@@ -132,6 +132,12 @@ built-in `GITHUB_TOKEN`. If `main` is protected, either allow GitHub Actions to
 bypass the restriction or the push step will fail (the tag and release are
 created only after that push succeeds).
 
+**Forks:** automatic releases and the Railway deploy are the canonical repo's
+policy, not the project's. Both workflows skip cleanly on forks; a fork can opt
+in with repository variables `RELEASE_ENABLED=true` and/or
+`DEPLOY_TO_RAILWAY=true` (the latter also needs a `RAILWAY_TOKEN` secret). The
+Test workflow runs everywhere.
+
 ## Project Structure
 
 ```

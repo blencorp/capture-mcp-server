@@ -3,6 +3,13 @@ name: Deploy to Railway
 # Auto-deploys to Railway on push to main. Also runnable manually via the
 # Actions tab. Requires a RAILWAY_TOKEN repository secret (Railway project
 # token from https://railway.com/account/tokens).
+#
+# This is blencorp's own deployment, not part of the open-source project's
+# contract: on forks, both jobs skip (green, no red X) unless the fork opts
+# in by setting a repository variable DEPLOY_TO_RAILWAY=true (Settings →
+# Secrets and variables → Actions → Variables) alongside its own
+# RAILWAY_TOKEN secret. Nothing about the server requires Railway — see
+# README "Deploying to Railway" for what any host needs.
 
 on:
   push:
@@ -16,6 +23,9 @@ concurrency:
 jobs:
   test:
     name: Build and test
+    # Deployment gate, not project CI (test.yml covers that everywhere):
+    # run only for blencorp's repo or a fork that opted in.
+    if: github.repository == 'blencorp/capture-mcp-server' || vars.DEPLOY_TO_RAILWAY == 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 10
     permissions:
@@ -39,6 +49,7 @@ jobs:
   deploy:
     name: Deploy to Railway
     needs: test
+    if: github.repository == 'blencorp/capture-mcp-server' || vars.DEPLOY_TO_RAILWAY == 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 15
     permissions:

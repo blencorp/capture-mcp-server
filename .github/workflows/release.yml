@@ -34,9 +34,14 @@ jobs:
     name: Tag and release
     runs-on: ubuntu-latest
     timeout-minutes: 15
-    # Belt and braces: the bump commit is pushed with GITHUB_TOKEN, which
-    # GitHub already excludes from triggering workflows, and carries [skip ci].
-    if: "!contains(github.event.head_commit.message, '[skip release]')"
+    # Two gates: (1) skip when the merge commit opts out; (2) auto-releasing
+    # is the canonical repo's policy, not the project's — forks skip unless
+    # they opt in with a repository variable RELEASE_ENABLED=true. (The bump
+    # commit itself carries [skip ci] and is pushed with GITHUB_TOKEN, which
+    # GitHub already excludes from retriggering workflows.)
+    if: >-
+      !contains(github.event.head_commit.message, '[skip release]') &&
+      (github.repository == 'blencorp/capture-mcp-server' || vars.RELEASE_ENABLED == 'true')
     steps:
       - name: Check out repository
         uses: actions/checkout@v4
