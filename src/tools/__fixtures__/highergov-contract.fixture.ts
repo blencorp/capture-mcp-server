@@ -1,11 +1,11 @@
 // HigherGov /api-external/contract/ record fixtures.
 //
-// STATUS: SPEC-DERIVED — field names and nesting follow the `Federal Contract`
-// schema in the official OpenAPI spec (fixtures/raw/highergov-openapi.json,
-// v1.2, retrieved 2026-08-23 from https://www.highergov.com/api-external/schema/).
-// Values are representative, not captured; replace with a live record from
-// `npm run capture-fixtures` at first opportunity — the tests only get
-// stronger with real payloads.
+// STATUS: SPEC-DERIVED, LIVE-CONFIRMED — field names and nesting follow the
+// `Federal Contract` schema in the official OpenAPI spec
+// (fixtures/raw/highergov-openapi.json, v1.2) and were confirmed against live
+// captures on 2026-08-23 (fixtures/raw/highergov-contract-page.json): record
+// keys, nesting, the meta/links envelope, and the set-aside value format all
+// match. Values here are representative, not copied from a live record.
 
 // A record shaped exactly the way the OpenAPI spec declares it.
 export const documentedContractRecord = {
@@ -83,7 +83,8 @@ export const documentedContractRecord = {
   dod_claimant_program_code: null,
   subcontracting_plan: null,
   research: null,
-  type_of_set_aside: 'SDVOSBS',
+  // Live format (2026-08-23): description with the FPDS code in trailing parens.
+  type_of_set_aside: 'SDVOSB Sole Source (SDVOSBS)',
   number_of_offers_received: '1',
   extent_competed: 'NOT COMPETED UNDER SAP',
   solicitation_procedures: 'ONLY ONE SOURCE',

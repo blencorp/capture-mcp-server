@@ -20,7 +20,10 @@ const OUT_DIR = new URL('../fixtures/raw/', import.meta.url).pathname;
 async function save(name: string, data: unknown): Promise<void> {
   await mkdir(OUT_DIR, { recursive: true });
   const path = `${OUT_DIR}${name}.json`;
-  await writeFile(path, JSON.stringify(data, null, 2));
+  // HigherGov embeds the caller's api_key in links.next/document_path URLs —
+  // never let a live key land in a committed fixture.
+  const redacted = JSON.stringify(data, null, 2).replace(/api_key=[0-9a-zA-Z]+/g, 'api_key=REDACTED');
+  await writeFile(path, redacted);
   console.log(`  saved ${path}`);
 }
 
@@ -98,9 +101,30 @@ async function captureHighergov(apiKey: string): Promise<void> {
   }
 
   console.log('== HigherGov /opportunity/');
-  const opp = await ApiClient.highergovGet('/opportunity/', { page_size: 2 }, apiKey);
+  // /opportunity/ rejects queries without a binding param (verified live
+  // 2026-08-23); posted_date is a single-day match, so probe yesterday.
+  const yesterday = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString().slice(0, 10);
+  const opp = await ApiClient.highergovGet(
+    '/opportunity/',
+    { posted_date: yesterday, source_type: 'sam', page_size: 5 },
+    apiKey
+  );
   if (opp.success) {
     await save('highergov-opportunity-page', opp.data);
+    // The record's document_path names the /document/ related_key; capture the
+    // matching document page to lock the linkage in.
+    const first = (opp.data as any)?.results?.find((r: any) => r?.document_path);
+    const relatedKey = first
+      ? new URL(first.document_path, 'https://www.highergov.com').searchParams.get('related_key')
+      : null;
+    if (relatedKey) {
+      const docs = await ApiClient.highergovGet('/document/', { related_key: relatedKey, page_size: 5 }, apiKey);
+      if (docs.success) {
+        await save('highergov-document-page', docs.data);
+      } else {
+        console.error(`  document FAILED: ${docs.error}`);
+      }
+    }
   } else {
     console.error(`  FAILED: ${opp.error}`);
   }

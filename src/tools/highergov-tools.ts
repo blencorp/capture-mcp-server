@@ -154,7 +154,9 @@ function idFromSourceUrl(sourceUrl: string): string {
   }
 }
 
-// FPDS {code, description} for a raw set-aside value when it looks like a code.
+// FPDS {code, description} for a raw set-aside value. Live formats
+// (2026-08-23): opportunities carry the bare code ("8AN"); contracts carry a
+// description with the code in trailing parens ("8(A) Sole Source  (8AN)").
 function setAsideCodePair(rawValue: unknown): { code: string; description: string | null } | null {
   let s = '';
   if (typeof rawValue === 'string') {
@@ -164,9 +166,11 @@ function setAsideCodePair(rawValue: unknown): { code: string; description: strin
     s = str(obj.code ?? obj.set_aside_code ?? '');
   }
   s = s.trim().toUpperCase();
-  if (!s || !/^[0-9A-Z]{1,10}$/.test(s)) return null;
-  if (!isKnownSetAsideCode(s)) return null;
-  return describeSetAside(s);
+  if (!s) return null;
+  const parenthesized = s.match(/\(([0-9A-Z]{1,10})\)$/);
+  const candidate = /^[0-9A-Z]{1,10}$/.test(s) ? s : parenthesized ? parenthesized[1] : '';
+  if (!candidate || !isKnownSetAsideCode(candidate)) return null;
+  return describeSetAside(candidate);
 }
 
 // Parse a caller-supplied date bound; a garbled date must be a clear
@@ -211,6 +215,23 @@ function normalizeForecast(raw: any) {
   };
 }
 
+// The related key for /document/ lives inside the record's own document_path
+// URL (verified live 2026-08-23: it is a HigherGov hex key, NOT the opp_key,
+// and not always the source_id). Parse just the key — the raw URL embeds the
+// caller's api_key and must never be surfaced.
+function documentRelatedKey(raw: any): string | null {
+  const dp = raw?.document_path;
+  if (typeof dp === 'string' && dp) {
+    try {
+      const key = new URL(dp, 'https://www.highergov.com').searchParams.get('related_key');
+      if (key) return key;
+    } catch {
+      // fall through to source_id
+    }
+  }
+  return raw?.source_id ? String(raw.source_id) : null;
+}
+
 function normalizeOpportunity(raw: any) {
   const oppType = raw.opp_type;
   const typeStr = typeof oppType === 'object' && oppType
@@ -227,6 +248,7 @@ function normalizeOpportunity(raw: any) {
     naics: asStringArray(raw.naics_code ?? raw.naics),
     psc: asStringArray(raw.psc_code ?? raw.psc),
     set_aside: normalizeSetAside(raw.set_aside ?? null),
+    set_aside_code: setAsideCodePair(raw.set_aside ?? null),
     vehicle: normalizeVehicle(raw.vehicle ?? raw.contract_vehicle ?? null),
     estimated_value: toUsdInteger(
       raw.estimated_value ?? raw.award_amount ?? raw.val_est_high ?? raw.val_est_low
@@ -244,6 +266,7 @@ function normalizeOpportunity(raw: any) {
         }))
       : [],
     incumbent_contract_id: raw.incumbent_contract_id ?? raw.related_contract_key ?? null,
+    document_related_key: documentRelatedKey(raw),
     source_url: String(raw.path ?? raw.source_url ?? raw.source_path ?? raw.url ?? ''),
   };
 }
@@ -519,7 +542,7 @@ export const highergovTools = {
       {
         name: 'search_highergov_opportunities',
         description:
-          'Search active contract opportunities without a saved search: filter by set-aside bundle, NAICS, PSC, agency, posted date, and response deadline. Returns Notice IDs for dedup. Upstream filter binding is limited, so filters are also verified and applied client-side against normalized records — read the filter echo and warnings. At least one filter is required.',
+          'Search active contract opportunities without a saved search. The upstream API requires posted_after (served by walking its single-day posted_date filter, one request per day, resumable via next_cursor) and/or agency_key; set-aside bundle, NAICS, PSC, agency name, and deadline filters are applied client-side — read the filter echo and warnings. Returns Notice IDs for dedup.',
         inputSchema: {
           type: 'object',
           properties: {
@@ -527,12 +550,13 @@ export const highergovTools = {
             set_aside: {
               type: 'array',
               items: { type: 'string' },
-              description: "Set-aside slugs or FPDS codes (e.g. ['8a','sdvosb','hubzone'] or ['8AN','SDVOSBS'])",
+              description: "Set-aside slugs or FPDS codes (e.g. ['8a','sdvosb','hubzone'] or ['8AN','SDVOSBS']); applied client-side",
             },
-            naics: { type: 'array', items: { type: 'string' }, description: 'NAICS code prefixes (e.g. ["5415"] matches 541511)' },
-            psc: { type: 'array', items: { type: 'string' }, description: 'PSC code prefixes' },
-            agency: { type: 'string', description: 'Agency slug or name (post-verified client-side)' },
-            posted_after: { type: 'string', description: 'ISO-8601 date; opportunities posted on/after' },
+            naics: { type: 'array', items: { type: 'string' }, description: 'NAICS code prefixes (e.g. ["5415"] matches 541511); applied client-side' },
+            psc: { type: 'array', items: { type: 'string' }, description: 'PSC code prefixes; applied client-side' },
+            agency: { type: 'string', description: 'Agency slug or name (applied client-side; agency_key is the server-side filter)' },
+            agency_key: { type: 'number', description: 'HigherGov agency key (numeric; server-side filter)' },
+            posted_after: { type: 'string', description: 'ISO-8601 date; opportunities posted on/after (max 45 days back; walked upstream one day per request)' },
             response_due_before: { type: 'string', description: 'ISO-8601 date; response deadline on/before' },
             response_due_after: { type: 'string', description: 'ISO-8601 date; response deadline on/after (defaults to now — drops already-closed notices; pass an earlier date to include them)' },
             limit: { type: 'number', description: 'Default 50, max 200' },
@@ -703,6 +727,13 @@ export const highergovTools = {
     const drift = contractMappingDriftWarning(rows, rawList);
     if (drift) warnings.push(drift);
 
+    const upstreamTotal = highergovTotal(res.data);
+    if (upstreamTotal === 100_000) {
+      // Observed live 2026-08-23: an all-time NAICS query reported exactly
+      // count=100000/pages=33334 — a cap, not a real total.
+      warnings.push('Upstream count is exactly 100,000, which appears to be a cap; treat the total as "at least 100,000".');
+    }
+
     // P0-6: the upstream API has no agency-*name* filter (the OpenAPI spec
     // only documents awarding_agency_key), so a requested agency name is
     // enforced client-side against the returned records. Never return other
@@ -751,7 +782,7 @@ export const highergovTools = {
     return listEnvelope({
       resourceKey: 'results',
       rows,
-      upstreamTotal: highergovTotal(res.data),
+      upstreamTotal,
       countUnit: 'contract award records (HigherGov; award vs IDV level unverified)',
       dateField:
         args.pop_end_after || args.pop_end_before
@@ -873,39 +904,100 @@ export const highergovTools = {
   },
 
   // Opportunity search without a saved search (spec: takes the daily set-aside
-  // pull off browser automation). Upstream binding for these filters is
-  // unverified, so upstream params are sent as best-effort narrowing and every
-  // filter is then applied client-side against the normalized records — the
-  // agent pages with next_cursor and the filter echo says exactly what ran where.
+  // pull off browser automation). Verified live 2026-08-23: /opportunity/
+  // REJECTS queries without a binding param (search_id, captured_date,
+  // posted_date, source_id, agency_key, opp_key, or version_key), it has no
+  // naics/psc/set-aside params, and posted_date is a single-day match. So
+  // posted_after is served by walking posted_date one day per request
+  // (resumable via "YYYY-MM-DD|page" cursors), agency_key binds server-side,
+  // and every other filter runs client-side with an explicit echo.
   async searchOpportunities(args: any) {
     const apiKey = getApiKey(args);
 
     const setAsides = asStringArray(args.set_aside).map(s => normalizeSetAside(s)).filter(Boolean) as string[];
     const naics = asStringArray(args.naics);
     const psc = asStringArray(args.psc);
-    if (!setAsides.length && !naics.length && !psc.length && !args.agency && !args.posted_after) {
+    if (!args.posted_after && args.agency_key === undefined) {
       return errorResponse(
         'bad_request',
-        'At least one filter is required: set_aside, naics, psc, agency, or posted_after'
+        'The HigherGov /opportunity/ API requires a binding filter: pass posted_after (walked day-by-day upstream) and/or agency_key. set_aside, naics, psc, and agency are applied client-side on top.'
       );
     }
 
     const limit = Math.min(Math.max(Number(args.limit) || 50, 1), 200);
-    // Per the OpenAPI spec, /opportunity/ has no naics/psc/set-aside params and
-    // its date params (captured_date, posted_date) are single-day matches, not
-    // range bounds — so every filter below runs client-side; upstream narrowing
-    // is limited to source_type. Saved searches (search_id) are the upstream's
-    // own filtering mechanism — see search_highergov_forecasts.
-    const upstream: Record<string, any> = { page_size: limit, source_type: 'sam' };
-    applyPageCursor(upstream, args.cursor);
+    const upstream: Record<string, any> = { page_size: Math.min(limit, 100), source_type: 'sam' };
+    if (args.agency_key !== undefined) {
+      const key = Number(args.agency_key);
+      if (!Number.isInteger(key) || key <= 0) {
+        return errorResponse('bad_request', `agency_key must be a positive integer HigherGov agency key (got "${args.agency_key}")`);
+      }
+      upstream.agency_key = key;
+    }
 
-    const res = await ApiClient.highergovGet('/opportunity/', upstream, apiKey);
-    if (!res.success) return classifyUpstreamError(res.error);
-
-    const rawList = resultArray(res.data);
-    let rows = rawList.map(normalizeOpportunity);
     const warnings: string[] = [];
     const clientSide: Record<string, unknown> = {};
+    const rawList: any[] = [];
+    let nextCursor: string | null;
+    let upstreamTotal: number | null = null;
+
+    if (args.posted_after) {
+      const startDay = isoBound(args.posted_after, 'posted_after').slice(0, 10);
+      const today = new Date().toISOString().slice(0, 10);
+      if (startDay > today) {
+        return errorResponse('bad_request', `posted_after is in the future (${startDay})`);
+      }
+      const spanDays = Math.round((Date.parse(today) - Date.parse(startDay)) / 86_400_000) + 1;
+      if (spanDays > 45) {
+        return errorResponse(
+          'bad_request',
+          `posted_after spans ${spanDays} days, and the upstream posted_date filter is single-day, so wide ranges take one request per day. Narrow the window to 45 days or use a saved search (search_highergov_forecasts).`
+        );
+      }
+
+      let day = startDay;
+      let page = 1;
+      if (typeof args.cursor === 'string' && args.cursor.includes('|')) {
+        const [cursorDay, cursorPage] = args.cursor.split('|');
+        if (/^\d{4}-\d{2}-\d{2}$/.test(cursorDay)) day = cursorDay;
+        const parsed = Number(cursorPage);
+        if (Number.isInteger(parsed) && parsed >= 1) page = parsed;
+      }
+
+      // Bound the requests spent in one tool call; the cursor resumes exactly.
+      const MAX_REQUESTS_PER_CALL = 8;
+      let requests = 0;
+      while (day <= today && rawList.length < limit && requests < MAX_REQUESTS_PER_CALL) {
+        const res = await ApiClient.highergovGet(
+          '/opportunity/',
+          { ...upstream, posted_date: day, page_number: page },
+          apiKey
+        );
+        if (!res.success) return classifyUpstreamError(res.error);
+        requests += 1;
+        rawList.push(...resultArray(res.data));
+        const pageNext = highergovNextCursor(res.data);
+        if (pageNext) {
+          page = Number(pageNext) || page + 1;
+        } else {
+          day = new Date(Date.parse(day) + 86_400_000).toISOString().slice(0, 10);
+          page = 1;
+        }
+      }
+      nextCursor = day <= today ? `${day}|${page}` : null;
+      upstream.posted_date = `${startDay}..${today} (walked one day per request)`;
+      warnings.push(
+        'posted_after is served by walking the single-day upstream posted_date filter; total is unavailable — page with next_cursor until null to cover the window.'
+      );
+    } else {
+      applyPageCursor(upstream, args.cursor);
+      const res = await ApiClient.highergovGet('/opportunity/', upstream, apiKey);
+      if (!res.success) return classifyUpstreamError(res.error);
+      rawList.push(...resultArray(res.data));
+      upstreamTotal = highergovTotal(res.data);
+      nextCursor = highergovNextCursor(res.data);
+    }
+
+    let rows = rawList.map(normalizeOpportunity);
 
     if (setAsides.length > 0) {
       const readable = rows.filter(r => r.set_aside).length;
@@ -941,12 +1033,12 @@ export const highergovTools = {
     return listEnvelope({
       resourceKey: 'results',
       rows,
-      upstreamTotal: highergovTotal(res.data),
+      upstreamTotal,
       countUnit: 'contract opportunity notices (HigherGov; dedup on sam_notice_id)',
-      dateField: 'posted_date / response_deadline (client-verified)',
+      dateField: 'posted_date (upstream day-walk) / response_deadline (client-verified)',
       filters: { upstream, client_side: clientSide },
       warnings,
-      nextCursor: highergovNextCursor(res.data),
+      nextCursor,
     });
   },
 
@@ -993,11 +1085,12 @@ export const highergovTools = {
 
     // Enrich from the document endpoint (HigherGov indexes RFP documents
     // separately from the notice record). Per the OpenAPI spec, /document/
-    // takes a required `related_key` ("Document Key") and returns FileTracker
-    // records {file_name, file_type, file_size, posted_date, summary,
-    // download_url}. The opportunity's opp_key is the best-guess related key;
-    // whether it is accepted is unverified against a live response.
-    const relatedKey = String(opportunity.opportunity_id || extractId(String(args.id)));
+    // takes a required `related_key`; the correct value is the key embedded in
+    // the opportunity record's own document_path URL (verified live 2026-08-23
+    // — the opp_key silently returns zero rows).
+    const relatedKey = String(
+      opportunity.document_related_key || opportunity.sam_notice_id || extractId(String(args.id))
+    );
     const res = await ApiClient.highergovGet(
       '/document/',
       { related_key: relatedKey, page_size: 100 },

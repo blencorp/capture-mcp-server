@@ -1,0 +1,331 @@
+{
+  "results": [
+    {
+      "opp_cat": "Federal Contract Opportunity",
+      "title": "J--I455518 Repairs for a L9000 Ford Truck for Chinle ",
+      "description_text": "I455518 Repairs for a L9000 Ford Truck for Chinle Agency, BOT.",
+      "ai_summary": null,
+      "source_id": "140A0926P0061",
+      "source_id_version": "3281eded3d144b90b17fa97eedbcfeda",
+      "captured_date": "2026-08-22",
+      "posted_date": "2026-08-22",
+      "due_date": null,
+      "agency": {
+        "agency_key": 948,
+        "agency_name": "BIA Navajo Region",
+        "agency_abbreviation": null,
+        "agency_type": "Federal",
+        "path": "https://www.highergov.com/agency/bia-navajo-region-948/"
+      },
+      "naics_code": {
+        "naics_code": "811310"
+      },
+      "psc_code": {
+        "psc_code": "J028"
+      },
+      "opp_type": {
+        "description": "Award Notice"
+      },
+      "vehicle": null,
+      "primary_contact_email": {
+        "contact_title": "Procurement Officer",
+        "contact_name": "Benallie, Lynelle",
+        "contact_first_name": "Benallie,",
+        "contact_last_name": "Lynelle",
+        "contact_email": "lynelle.benallie@bia.gov",
+        "contact_phone": "5058638404"
+      },
+      "secondary_contact_email": null,
+      "set_aside": null,
+      "nsn": null,
+      "val_est_low": null,
+      "val_est_high": null,
+      "pop_country": null,
+      "pop_state": null,
+      "pop_city": null,
+      "pop_zip": null,
+      "opp_key": "7fb52c0332345a5880a64f668fd21b6c",
+      "version_key": "3281eded3d144b90b17fa97eedbcfeda",
+      "source_type": "sam",
+      "sole_source_flag": false,
+      "product_service": "S",
+      "dibbs_status": null,
+      "dibbs_quantity": null,
+      "dibbs_days_to_deliver": null,
+      "dibbs_fast_award_flag": null,
+      "dibbs_aidc_flag": null,
+      "dibbs_tech_docs_flag": null,
+      "dibbs_delivery_fob": null,
+      "path": "https://www.highergov.com/contract-opportunity/j-i455518-repairs-f-140a0926p0061-award-140a0926p0061-wagner-equipment-co-cfeda",
+      "source_path": "https://sam.gov/opp/3281eded3d144b90b17fa97eedbcfeda/view",
+      "document_path": "https://www.highergov.com/api-external/document/?api_key=REDACTED&page_size=10&related_key=3281eded3d144b90b17fa97eedbcfeda"
+    },
+    {
+      "opp_cat": "Federal Contract Opportunity",
+      "title": "Z--AZ - IMPERIAL NWR - Urgent Roof-Mounted HVAC Repla",
+      "description_text": "AZ - IMPERIAL NWR - Urgent Roof-Mounted HVAC Replacement",
+      "ai_summary": null,
+      "source_id": "140FS226P0279",
+      "source_id_version": "984dde9191ec4710b1ade709f03557b8",
+      "captured_date": "2026-08-22",
+      "posted_date": "2026-08-22",
+      "due_date": null,
+      "agency": {
+        "agency_key": 634,
+        "agency_name": "Fish and Wildlife Service",
+        "agency_abbreviation": "FWS",
+        "agency_type": "Federal",
+        "path": "https://www.highergov.com/agency/fish-and-wildlife-service-fws-634/"
+      },
+      "naics_code": {
+        "naics_code": "238220"
+      },
+      "psc_code": {
+        "psc_code": "Z2AZ"
+      },
+      "opp_type": {
+        "description": "Award Notice"
+      },
+      "vehicle": null,
+      "primary_contact_email": {
+        "contact_title": "Contracting Officer",
+        "contact_name": "Dana Arnold",
+        "contact_first_name": "Dana",
+        "contact_last_name": "Arnold",
+        "contact_email": "dana_arnold@ios.doi.gov",
+        "contact_phone": "7034688289"
+      },
+      "secondary_contact_email": null,
+      "set_aside": null,
+      "nsn": null,
+      "val_est_low": null,
+      "val_est_high": null,
+      "pop_country": null,
+      "pop_state": null,
+      "pop_city": null,
+      "pop_zip": null,
+      "opp_key": "571fa9dd9c795a488ab0ecd69c0f5a47",
+      "version_key": "984dde9191ec4710b1ade709f03557b8",
+      "source_type": "sam",
+      "sole_source_flag": false,
+      "product_service": "S",
+      "dibbs_status": null,
+      "dibbs_quantity": null,
+      "dibbs_days_to_deliver": null,
+      "dibbs_fast_award_flag": null,
+      "dibbs_aidc_flag": null,
+      "dibbs_tech_docs_flag": null,
+      "dibbs_delivery_fob": null,
+      "path": "https://www.highergov.com/contract-opportunity/z-az-imperial-nwr-140fs226p0279-award-140fs226p0279-elevate-air-water-llc-557b8",
+      "source_path": "https://sam.gov/opp/984dde9191ec4710b1ade709f03557b8/view",
+      "document_path": "https://www.highergov.com/api-external/document/?api_key=REDACTED&page_size=10&related_key=984dde9191ec4710b1ade709f03557b8"
+    },
+    {
+      "opp_cat": "Federal Contract Opportunity",
+      "title": "F--OK - Salt Plains NWR - Salt Cedar Herbicide Applic",
+      "description_text": "OK - Salt Plains NWR - Salt Cedar Herbicide Application",
+      "ai_summary": null,
+      "source_id": "140FS226Q0164",
+      "source_id_version": "390d5d7ec0474cfd98ee770b5a339689",
+      "captured_date": "2026-08-22",
+      "posted_date": "2026-08-22",
+      "due_date": null,
+      "agency": {
+        "agency_key": 634,
+        "agency_name": "Fish and Wildlife Service",
+        "agency_abbreviation": "FWS",
+        "agency_type": "Federal",
+        "path": "https://www.highergov.com/agency/fish-and-wildlife-service-fws-634/"
+      },
+      "naics_code": {
+        "naics_code": "115112"
+      },
+      "psc_code": {
+        "psc_code": "F105"
+      },
+      "opp_type": {
+        "description": "Award Notice"
+      },
+      "vehicle": null,
+      "primary_contact_email": {
+        "contact_title": "Contracting Officer",
+        "contact_name": "Dana Arnold",
+        "contact_first_name": "Dana",
+        "contact_last_name": "Arnold",
+        "contact_email": "dana_arnold@ios.doi.gov",
+        "contact_phone": "7034688289"
+      },
+      "secondary_contact_email": null,
+      "set_aside": null,
+      "nsn": null,
+      "val_est_low": null,
+      "val_est_high": null,
+      "pop_country": null,
+      "pop_state": null,
+      "pop_city": null,
+      "pop_zip": null,
+      "opp_key": "5af57a93612f582895366e7011fb363c",
+      "version_key": "390d5d7ec0474cfd98ee770b5a339689",
+      "source_type": "sam",
+      "sole_source_flag": false,
+      "product_service": "S",
+      "dibbs_status": null,
+      "dibbs_quantity": null,
+      "dibbs_days_to_deliver": null,
+      "dibbs_fast_award_flag": null,
+      "dibbs_aidc_flag": null,
+      "dibbs_tech_docs_flag": null,
+      "dibbs_delivery_fob": null,
+      "path": "https://www.highergov.com/contract-opportunity/f-ok-salt-plains-140fs226q0164-award-140fs226p0269-hexagon-helicopters-inc-39689",
+      "source_path": "https://sam.gov/opp/390d5d7ec0474cfd98ee770b5a339689/view",
+      "document_path": "https://www.highergov.com/api-external/document/?api_key=REDACTED&page_size=10&related_key=390d5d7ec0474cfd98ee770b5a339689"
+    },
+    {
+      "opp_cat": "Federal Contract Opportunity",
+      "title": "G&L Horizontal Boring Mills  Preventive Maintenance",
+      "description_text": null,
+      "ai_summary": null,
+      "source_id": "N3225326P0027",
+      "source_id_version": "12592fe3bbf9449e824f6935e9010a19",
+      "captured_date": "2026-08-22",
+      "posted_date": "2026-08-22",
+      "due_date": null,
+      "agency": {
+        "agency_key": 1031,
+        "agency_name": "Naval Sea Systems Command",
+        "agency_abbreviation": "NAVSEA",
+        "agency_type": "Federal",
+        "path": "https://www.highergov.com/agency/naval-sea-systems-command-navsea-1031/"
+      },
+      "naics_code": {
+        "naics_code": "811310"
+      },
+      "psc_code": {
+        "psc_code": "J049"
+      },
+      "opp_type": {
+        "description": "Award Notice"
+      },
+      "vehicle": null,
+      "primary_contact_email": {
+        "contact_title": "Procurement Officer",
+        "contact_name": "Malia Hutton",
+        "contact_first_name": "Malia",
+        "contact_last_name": "Hutton",
+        "contact_email": "malia.e.hutton.civ@us.navy.mil",
+        "contact_phone": null
+      },
+      "secondary_contact_email": {
+        "contact_title": "Contracting Officer",
+        "contact_name": "Evangeline Calaustro",
+        "contact_first_name": "Evangeline",
+        "contact_last_name": "Calaustro",
+        "contact_email": "evangeline.b.calaustro.civ@us.navy.mil",
+        "contact_phone": "80847380006572"
+      },
+      "set_aside": "8AN",
+      "nsn": null,
+      "val_est_low": null,
+      "val_est_high": null,
+      "pop_country": "USA",
+      "pop_state": "HI",
+      "pop_city": "JBPHH",
+      "pop_zip": "96860",
+      "opp_key": "541873fabc015ba29635202a1730a7e6",
+      "version_key": "12592fe3bbf9449e824f6935e9010a19",
+      "source_type": "sam",
+      "sole_source_flag": false,
+      "product_service": "S",
+      "dibbs_status": null,
+      "dibbs_quantity": null,
+      "dibbs_days_to_deliver": null,
+      "dibbs_fast_award_flag": null,
+      "dibbs_aidc_flag": null,
+      "dibbs_tech_docs_flag": null,
+      "dibbs_delivery_fob": null,
+      "path": "https://www.highergov.com/contract-opportunity/g-l-horizontal-borin-n32253-26-p-0027-award-n32253-26-p-0027-fives-machining-systems-inc-10a19",
+      "source_path": "https://sam.gov/opp/12592fe3bbf9449e824f6935e9010a19/view",
+      "document_path": "https://www.highergov.com/api-external/document/?api_key=REDACTED&page_size=10&related_key=12592fe3bbf9449e824f6935e9010a19"
+    },
+    {
+      "opp_cat": "Federal Contract Opportunity",
+      "title": "Multiple Award Construction Contract for Inspection, Repair, and Renovation Construction Services for Petroleum, Oil, and Lubricant Fuel Systems at Various Locations Worldwide",
+      "description_text": "PCI BHATE JV LLC - Selected as one of ten prime awardees on the Global Petroleum, Oils, and Lubricants (GPOL) Indefinite Delivery Indefinite Quantity (IDIQ) Multiple Award Construction Contract (MACC). Administered by the Naval Facilities Engineering and Expeditionary Warfare Center (NAVFAC EXWC) in Port Hueneme, California, under the NAVFAC GPOL program, this vehicle carries a maximum cumulative value of $997,000,000 over a 60-month ordering period. The primary purpose of the GPOL MACC is to deliver global engineering and construction services, specifically performing inspection, testing, design, and construction (primarily maintenance and repair) for critical pipelines, fuel storage tanks, and associated POL-related equipment at various locations worldwide.",
+      "ai_summary": null,
+      "source_id": "N3943025R2001",
+      "source_id_version": "564e90ad69fa40c08ba945dab28fd98b",
+      "captured_date": "2026-08-22",
+      "posted_date": "2026-08-22",
+      "due_date": null,
+      "agency": {
+        "agency_key": 3137,
+        "agency_name": "NAVFAC Engineering and Expeditionary Warfare Center",
+        "agency_abbreviation": "EXWC",
+        "agency_type": "Federal",
+        "path": "https://www.highergov.com/agency/navfac-engineering-and-expeditionary-warfare-center-exwc-3137/"
+      },
+      "naics_code": {
+        "naics_code": "237120"
+      },
+      "psc_code": {
+        "psc_code": "Z2NA"
+      },
+      "opp_type": {
+        "description": "Award Notice"
+      },
+      "vehicle": null,
+      "primary_contact_email": {
+        "contact_title": "Procurement Officer",
+        "contact_name": "Analaura Montalvo",
+        "contact_first_name": "Analaura",
+        "contact_last_name": "Montalvo",
+        "contact_email": "analaura.montalvo.civ@us.navy.mil",
+        "contact_phone": "8059825605"
+      },
+      "secondary_contact_email": {
+        "contact_title": "Contracting Officer",
+        "contact_name": "Crystal S. Brooks",
+        "contact_first_name": "Crystal",
+        "contact_last_name": "S.",
+        "contact_email": "crystal.s.brooks2.civ@us.navy.mil",
+        "contact_phone": "8059823993"
+      },
+      "set_aside": null,
+      "nsn": null,
+      "val_est_low": null,
+      "val_est_high": null,
+      "pop_country": null,
+      "pop_state": null,
+      "pop_city": null,
+      "pop_zip": null,
+      "opp_key": "eabb59c536aa5c96b23ccd96dffb366c",
+      "version_key": "564e90ad69fa40c08ba945dab28fd98b",
+      "source_type": "sam",
+      "sole_source_flag": false,
+      "product_service": "S",
+      "dibbs_status": null,
+      "dibbs_quantity": null,
+      "dibbs_days_to_deliver": null,
+      "dibbs_fast_award_flag": null,
+      "dibbs_aidc_flag": null,
+      "dibbs_tech_docs_flag": null,
+      "dibbs_delivery_fob": null,
+      "path": "https://www.highergov.com/contract-opportunity/multiple-award-const-n3943025r2001-award-n3943026d2007-pci-bhate-jv-llc-fd98b",
+      "source_path": "https://sam.gov/opp/564e90ad69fa40c08ba945dab28fd98b/view",
+      "document_path": "https://www.highergov.com/api-external/document/?api_key=REDACTED&page_size=10&related_key=564e90ad69fa40c08ba945dab28fd98b"
+    }
+  ],
+  "meta": {
+    "pagination": {
+      "page": 1,
+      "pages": 21,
+      "count": 104
+    }
+  },
+  "links": {
+    "first": "https://www.highergov.com/api-external/opportunity/?api_key=REDACTED&page_number=1&page_size=5&posted_date=2026-08-22&source_type=sam",
+    "last": "https://www.highergov.com/api-external/opportunity/?api_key=REDACTED&page_number=21&page_size=5&posted_date=2026-08-22&source_type=sam",
+    "next": "https://www.highergov.com/api-external/opportunity/?api_key=REDACTED&page_number=2&page_size=5&posted_date=2026-08-22&source_type=sam",
+    "prev": null
+  }
+}

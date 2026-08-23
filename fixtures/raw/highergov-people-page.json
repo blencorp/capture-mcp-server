@@ -1,0 +1,57 @@
+{
+  "results": [
+    {
+      "last_seen": "2027-01-01",
+      "contact_first_name": "Robert",
+      "contact_last_name": "Steel",
+      "contact_name": "Robert Steel",
+      "contact_title": "Procurement Officer",
+      "contact_email": "robert.steel@noaa.gov",
+      "contact_phone": null,
+      "contact_ext": null,
+      "contact_fax": null,
+      "agency": {
+        "agency_key": 315,
+        "agency_name": "National Oceanic and Atmospheric Administration",
+        "agency_abbreviation": "NOAA",
+        "agency_type": "Federal",
+        "path": "https://www.highergov.com/agency/national-oceanic-and-atmospheric-administration-noaa-315/"
+      },
+      "contact_type": "federal",
+      "path": "https://www.highergov.com/people/robert-dot-steel-noaa-dot-gov/"
+    },
+    {
+      "last_seen": "2027-01-01",
+      "contact_first_name": "Jessica",
+      "contact_last_name": "Lipsky",
+      "contact_name": "Jessica Lipsky",
+      "contact_title": "Procurement Officer",
+      "contact_email": "jessica.lipsky@noaa.gov",
+      "contact_phone": null,
+      "contact_ext": null,
+      "contact_fax": null,
+      "agency": {
+        "agency_key": 315,
+        "agency_name": "National Oceanic and Atmospheric Administration",
+        "agency_abbreviation": "NOAA",
+        "agency_type": "Federal",
+        "path": "https://www.highergov.com/agency/national-oceanic-and-atmospheric-administration-noaa-315/"
+      },
+      "contact_type": "federal",
+      "path": "https://www.highergov.com/people/jessica-dot-lipsky-noaa-dot-gov/"
+    }
+  ],
+  "meta": {
+    "pagination": {
+      "page": 1,
+      "pages": 50000,
+      "count": 100000
+    }
+  },
+  "links": {
+    "first": "https://www.highergov.com/api-external/people/?api_key=REDACTED&page_number=1&page_size=2",
+    "last": "https://www.highergov.com/api-external/people/?api_key=REDACTED&page_number=50000&page_size=2",
+    "next": "https://www.highergov.com/api-external/people/?api_key=REDACTED&page_number=2&page_size=2",
+    "prev": null
+  }
+}
