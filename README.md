@@ -282,7 +282,23 @@ Open your MCP configuration file and add the Capture MCP Server configuration. C
 }
 ```
 
-**Configuration D: All API Keys (All 34 tools)**
+**Configuration D: HigherGov API Key Only (16 tools)**
+
+```json
+{
+  "mcpServers": {
+    "capture-mcp-server": {
+      "command": "node",
+      "args": ["/ABSOLUTE/PATH/TO/capture-mcp-server/dist/server.js"],
+      "env": {
+        "HIGHERGOV_API_KEY": "your-highergov-api-key-here"
+      }
+    }
+  }
+}
+```
+
+**Configuration E: All API Keys (All 34 tools)**
 
 ```json
 {
@@ -292,7 +308,8 @@ Open your MCP configuration file and add the Capture MCP Server configuration. C
       "args": ["/ABSOLUTE/PATH/TO/capture-mcp-server/dist/server.js"],
       "env": {
         "SAM_GOV_API_KEY": "your-sam-api-key-here",
-        "TANGO_API_KEY": "your-tango-api-key-here"
+        "TANGO_API_KEY": "your-tango-api-key-here",
+        "HIGHERGOV_API_KEY": "your-highergov-api-key-here"
       }
     }
   }
