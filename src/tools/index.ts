@@ -8,11 +8,8 @@ import { tangoTools } from './tango-tools.js';
 import { highergovTools } from './highergov-tools.js';
 import { referenceTools } from './reference-tools.js';
 
-// Tool registry
-const toolRegistry = new Map<string, (args: any) => Promise<any>>();
 type ApiKeyName = 'samKey' | 'tangoKey' | 'higherGovKey';
-const toolApiKeyRegistry = new Map<string, ApiKeyName | null>();
-const toolSchemaRegistry = new Map<string, Tool>();
+type ToolFunction = (args: any) => Promise<any>;
 
 // Design convention: reject unknown or mistyped parameters with a structured
 // bad_request instead of accepting-and-ignoring them. A silently dropped
@@ -71,13 +68,28 @@ export interface ApiKeyConfig {
   higherGovApiKey?: string;
 }
 
-export async function initializeTools(config: ApiKeyConfig): Promise<Tool[]> {
+export interface CaptureToolRegistry {
+  readonly tools: Tool[];
+  callTool(
+    name: string,
+    args: any,
+    apiKeyOverrides?: { samKey?: string; tangoKey?: string; higherGovKey?: string },
+  ): Promise<any>;
+}
+
+/**
+ * Build an isolated tool registry for one MCP server instance.
+ *
+ * HTTP creates a fresh Server for every request. Keeping these maps local is
+ * therefore a correctness requirement: module-global maps let overlapping
+ * requests clear or extend one another's callable tool set.
+ */
+export async function initializeTools(config: ApiKeyConfig): Promise<CaptureToolRegistry> {
   const allTools: Tool[] = [];
   const enabledToolSets: string[] = [];
-
-  toolRegistry.clear();
-  toolApiKeyRegistry.clear();
-  toolSchemaRegistry.clear();
+  const toolRegistry = new Map<string, ToolFunction>();
+  const toolApiKeyRegistry = new Map<string, ApiKeyName | null>();
+  const toolSchemaRegistry = new Map<string, Tool>();
 
   // Always register reference tools (static lookups, no API key or network)
   const referenceToolList = await referenceTools.getTools();
@@ -151,53 +163,38 @@ export async function initializeTools(config: ApiKeyConfig): Promise<Tool[]> {
     console.error(`Total tools available: ${allTools.length}`);
   }
 
-  return allTools;
-}
+  return {
+    tools: Object.freeze([...allTools]) as Tool[],
+    async callTool(name, args, apiKeyOverrides) {
+      const toolFunction = toolRegistry.get(name);
 
-/**
- * Determines which API key to use for a given tool
- */
-function getApiKeyForTool(toolName: string, keys: { samKey?: string, tangoKey?: string, higherGovKey?: string }): string | undefined {
-  const keyName = toolApiKeyRegistry.get(toolName);
-  return keyName ? keys[keyName] : undefined;
-}
-
-/**
- * Call a tool by name with arguments
- * @param name Tool name
- * @param args Tool arguments
- * @param apiKeyOverrides Optional API keys from HTTP headers to inject into args
- */
-export async function callTool(
-  name: string, 
-  args: any, 
-  apiKeyOverrides?: { samKey?: string, tangoKey?: string, higherGovKey?: string }
-): Promise<any> {
-  const toolFunction = toolRegistry.get(name);
-  
-  if (!toolFunction) {
-    throw new Error(`Tool "${name}" not found`);
-  }
-
-  const schema = toolSchemaRegistry.get(name);
-  if (schema) {
-    const validationError = validateToolArgs(schema, args);
-    if (validationError) {
-      return { error: { code: 'bad_request', message: validationError } };
-    }
-  }
-
-  // Inject API key from headers if not already provided in args
-  let argsWithKey = args;
-  if (apiKeyOverrides) {
-    const keyForTool = getApiKeyForTool(name, apiKeyOverrides);
-    if (keyForTool && !args?.api_key) {
-      argsWithKey = { ...args, api_key: keyForTool };
-      if (process.env.DEBUG) {
-        console.error(`[${name}] Injecting API key from header`);
+      if (!toolFunction) {
+        throw new Error(`Tool "${name}" not found`);
       }
-    }
-  }
 
-  return await toolFunction(argsWithKey);
+      const schema = toolSchemaRegistry.get(name);
+      if (schema) {
+        const validationError = validateToolArgs(schema, args);
+        if (validationError) {
+          return { error: { code: 'bad_request', message: validationError } };
+        }
+      }
+
+      // Inject the key resolved for this request, never one held by another
+      // registry or request.
+      let argsWithKey = args;
+      if (apiKeyOverrides) {
+        const keyName = toolApiKeyRegistry.get(name);
+        const keyForTool = keyName ? apiKeyOverrides[keyName] : undefined;
+        if (keyForTool && !args?.api_key) {
+          argsWithKey = { ...args, api_key: keyForTool };
+          if (process.env.DEBUG) {
+            console.error(`[${name}] Injecting API key from header`);
+          }
+        }
+      }
+
+      return await toolFunction(argsWithKey);
+    }
+  };
 }

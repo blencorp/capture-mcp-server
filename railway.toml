@@ -3,7 +3,9 @@
 # Auth note: set MCP_REQUIRE_OAUTH=true for remote MCP connector auth.
 
 [build]
-builder = "NIXPACKS"
+# Railpack resolves the explicit Node 24 engine from package.json. The legacy
+# Nixpacks Node provider does not list Node 24 as a supported major.
+builder = "RAILPACK"
 buildCommand = "npm run build"
 
 [deploy]

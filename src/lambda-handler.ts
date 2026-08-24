@@ -11,11 +11,13 @@
  * - API_KEY_PREFIX: S3 object key prefix (default: "api-keys/")
  * - SAM_GOV_API_KEY: Default SAM.gov API key (optional)
  * - TANGO_API_KEY: Default Tango API key (optional)
+ * - HIGHERGOV_API_KEY: Default HigherGov API key (optional)
  *
  * Headers:
  * - X-Api-Key: Server access API key (required when API_KEY_BUCKET is configured)
  * - X-Sam-Api-Key: SAM.gov API key for tool access
  * - X-Tango-Api-Key: Tango API key for tool access
+ * - X-Highergov-Api-Key: HigherGov API key for tool access
  */
 
 import { Logger } from '@aws-lambda-powertools/logger';
@@ -79,7 +81,17 @@ function createApp(): express.Application {
   // 2025-era legacy path (JSON responses only — API Gateway +
   // serverless-express cannot stream SSE).
   const handleMcp = createCaptureMcpHandler({
+    // API Gateway's buffered Lambda integration cannot carry an unbounded
+    // subscriptions/listen SSE response. Zero uses the SDK's bounded,
+    // JSON-RPC "Subscription limit reached" response for that method while
+    // ordinary modern calls remain single-response JSON.
+    maxSubscriptions: 0,
+    responseMode: 'json',
     onerror: (error) => {
+      if (error.message === 'subscriptions/listen refused: subscription limit reached (0)') {
+        logger.info('Subscription stream refused on request/response-only Lambda deployment');
+        return;
+      }
       logger.error('Error handling MCP request', { error });
       metrics.addMetric('MCPRequestError', MetricUnit.Count, 1);
     },

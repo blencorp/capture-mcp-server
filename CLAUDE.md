@@ -95,9 +95,12 @@ The server automatically registers only the tools for which API keys are availab
 When `MCP_TRANSPORT=http` and `MCP_REQUIRE_OAUTH=true`:
 - `src/auth/mcp-oauth.ts` implements an OAuth 2.1 server with PKCE, dynamic client registration, and AES-256-GCM sealed access/refresh tokens. Each token carries a `keys: { sam?, tango?, highergov? }` map sealed against `OAUTH_TOKEN_SECRET`.
 - `src/auth/oauth-endpoints.ts` provides the authorization-server HTTP endpoints (`/authorize`, `/token`, `/register`, `/revoke`) and the `.well-known` discovery documents — SDK v2 only ships resource-server helpers, so these are in-repo. Per the 2026-07-28 hardening: PKCE `S256` is mandatory, authorization responses carry `iss` (RFC 9207), and DCR stores `application_type`.
+- Client ID Metadata Documents are not implemented yet. The hosted compatibility path remains DCR; do not describe this release as complete CIMD adoption or remove DCR without a separately tested client migration.
+- `src/auth/oauth-state-store.ts` persists DCR clients, pending authorizations, one-use codes, and revocations. Production OAuth requires Redis 6.2+ via `OAUTH_REDIS_URL` (or `REDIS_URL`) and fails startup without it; local/test mode may use the isolated in-memory implementation.
 - `GET/POST /oauth/authorize` renders a multi-provider authorization page; users pick checkboxes per provider and supply only the keys they have.
 - `POST /mcp` is gated by `requireBearerAuth` (from `@modelcontextprotocol/express`) UNLESS the caller presents an `X-Sam-Api-Key` / `X-Tango-Api-Key` / `X-Highergov-Api-Key` header. Header presence bypasses OAuth for programmatic clients — the key itself is the trust anchor.
 - Precedence per request: OAuth-sealed key → header → env var.
+- Railway can serve 2026-07-28 `subscriptions/listen` over SSE. Lambda/API Gateway is request/response-only and configures `maxSubscriptions: 0`, returning the SDK's bounded JSON-RPC subscription-limit error rather than attempting an undeliverable stream.
 
 ### MCP Integration
 

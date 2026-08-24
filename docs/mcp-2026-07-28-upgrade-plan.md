@@ -32,7 +32,9 @@ The 2026-07-28 revision makes MCP stateless at the transport layer:
   (SEP-2577). Tasks became a first-class extension with a new lifecycle.
 - **Authorization hardening:** RFC 9207 `iss` parameter on authorization
   responses, `application_type` in Dynamic Client Registration, credential
-  binding to issuer identity, `.well-known` discovery clarifications.
+  binding to issuer identity, `.well-known` discovery clarifications. Client
+  ID Metadata Documents (CIMD) are now preferred; Dynamic Client Registration
+  remains available for compatibility but is deprecated.
 
 ## 2. Why this server is well-positioned
 
@@ -79,13 +81,14 @@ transitively), `@modelcontextprotocol/express`, `@modelcontextprotocol/node`
 
 ### HTTP (Railway + Lambda)
 
-`createMcpHandler(factory, { legacy: 'stateless', responseMode: 'json' })`
-returns a fetch-shaped handler that:
+`createCaptureMcpHandler` composes a strict v2 `createMcpHandler` modern leg
+with an explicitly hand-wired `NodeStreamableHTTPServerTransport` legacy leg.
+It:
 
 - serves **2026-07-28 clients** on the modern per-request envelope path, and
-- serves **2025-era clients** through the built-in *stateless legacy
-  fallback*: each legacy request gets a fresh instance, exactly the idiom we
-  hand-wired in v1. GET/DELETE answer 405, as today.
+- classifies and serves **2025-era clients** through a stateless JSON legacy
+  transport: each request gets a fresh instance. GET/DELETE answer 405, as
+  today.
 
 This is the backward-compatibility keystone: **existing remote clients
 (Claude connector, `mcp-remote` users, curl scripts) keep working without
@@ -99,9 +102,15 @@ precedence as before) and only the matching tools are registered.
 Express `(req, res, parsedBody)` and forwards `req.auth` (set by
 `requireBearerAuth`) as `authInfo`.
 
-`responseMode: 'json'` pins single-JSON-body responses — required behind
-API Gateway + `@codegenie/serverless-express`, which cannot stream SSE, and
-matches v1's `enableJsonResponse: true`.
+Railway keeps the SDK's adaptive `responseMode: 'auto'`: ordinary calls return
+one JSON body, while a call that actually emits related notifications can
+upgrade to SSE. API Gateway + Lambda use `responseMode: 'json'` because the
+current `serverless-express` integration is buffered. That setting does **not**
+disable the new `subscriptions/listen` method, which the SDK always serves as
+SSE, so Lambda also sets `maxSubscriptions: 0` and returns the SDK's bounded
+JSON-RPC `-32603` subscription-limit response instead of opening a stream.
+Railway keeps subscriptions enabled. The server advertises no list-change
+capability, so current tool consumers lose no advertised behavior on Lambda.
 
 ### stdio (Claude Desktop, `.mcpb`)
 
@@ -123,16 +132,30 @@ keep working.
 What stays: `McpOAuthProvider`'s AES-256-GCM sealed-token design, the
 multi-provider credential page, the header-bypass gate, and the token wire
 format (`capmcp.v1.` prefix). **Existing user tokens keep verifying after
-the deploy** — no re-authorization wave.
+the deploy only when they already carry the canonical `/mcp` resource.** A
+legacy token issued without an RFC 8707 audience is rejected and that client
+must authorize once more; accepting an audience-less token would violate the
+current MCP authorization contract.
+
+What changes operationally: OAuth protocol state is no longer process-local.
+`OAuthStateStore` has an in-memory implementation for local/tests and a Redis
+implementation for production. DCR registrations, pending authorization
+requests, single-use authorization codes, and token revocations are shared
+across replicas with TTLs and atomic `GETDEL` consumption. Production startup
+fails closed unless `OAUTH_REDIS_URL` (or `REDIS_URL`) points to Redis 6.2+.
+The AES token secret remains the trust root and must remain stable across
+deploys.
 
 What moves in-repo (new `src/auth/oauth-endpoints.ts`), since SDK v2 no
 longer ships an authorization server:
 
 - `GET /authorize` — validates `response_type=code`, `client_id`,
   `redirect_uri`, PKCE `code_challenge` (+`method=S256`), `scope`, `state`,
-  `resource`; hands off to the provider's pending-authorization flow.
+  and the required canonical `resource`; hands off to the provider's
+  pending-authorization flow.
 - `POST /token` — `authorization_code` grant with **PKCE S256 verification**
-  and `refresh_token` grant.
+  and `refresh_token` grant. Both require the same canonical RFC 8707 resource,
+  and bearer verification rejects tokens minted for another resource.
 - `POST /register` — RFC 7591 Dynamic Client Registration, now accepting and
   storing **`application_type`** per the 2026-07-28 hardening.
 - `POST /revoke` — RFC 7009.
@@ -147,45 +170,73 @@ The bearer gate uses v2 `requireBearerAuth` with the provider as
 `OAuthTokenVerifier`; provider errors are v2 `OAuthError`s so 401 challenges
 render the correct `WWW-Authenticate` + `resource_metadata` URL.
 
+This release intentionally retains Dynamic Client Registration because it is
+the registration mechanism used by the currently deployed clients. It does
+**not** implement Client ID Metadata Documents yet. CIMD-capable clients must
+continue to use DCR with this server until that follow-up lands; this is a
+known compatibility gap, not a claim of complete adoption of every optional
+2026-07-28 authorization feature.
+
 ## 6. Deployment implications (hosted)
 
 ### Railway (`railway.toml`)
 
-- **No config change.** Same build/start commands, same `/health`, same
-  `/mcp`, same env vars (`MCP_TRANSPORT=http`, `MCP_REQUIRE_OAUTH`,
-  `OAUTH_TOKEN_SECRET`, `MCP_PUBLIC_BASE_URL`, provider keys).
-- Rolling deploys are safe: both protocol eras are served statelessly, so
-  in-flight clients on the old instance and new clients on the new instance
-  never share state. In-memory DCR registrations and pending authorization
-  requests are lost on restart — a pre-existing property, unchanged; clients
-  simply re-register/re-authorize.
+- Build/start commands, `/health`, and `/mcp` stay the same. The required
+  runtime changes are Node 24 and a linked Redis 6.2+ service exposed as
+  `OAUTH_REDIS_URL` or `REDIS_URL`.
+- `railway.toml` moves from the legacy Nixpacks builder to Railpack. Railpack
+  resolves the explicit Node 24 engine; the published Nixpacks Node provider
+  does not list Node 24 among its supported majors.
+- Rolling deploys and multiple replicas are safe only after Redis is linked:
+  MCP tool requests are request-local/stateless, while the deliberately
+  multi-request OAuth flow uses shared durable state. Authorization codes and
+  pending authorizations are atomically consumed.
+- Existing sealed access/refresh tokens with the canonical resource continue
+  to verify if `OAUTH_TOKEN_SECRET` is unchanged. Tokens without that audience,
+  and dynamic registrations held only in the old release's memory, require a
+  one-time authorization/registration after the major rollout; new records
+  persist.
 
 ### AWS Lambda / CDK (`infrastructure/`)
 
-- **No infrastructure diff.** Same handler entry (`lambda-handler.handler`),
-  same API Gateway routes, same S3 API-key middleware. Runtime
-  `NODEJS_20_X` satisfies v2's `node >= 20` engines requirement.
+- The handler entry (`lambda-handler.handler`), API Gateway routes, and S3
+  API-key middleware stay the same. The runtime moves to `NODEJS_24_X` because
+  Node 20 reached end-of-life on 2026-04-30; Node 24 is supported by Lambda
+  through April 2028 and exceeds v2's `node >= 20` minimum.
 - `npm run build:lambda` (`npm ci --omit=dev` inside `dist/`) picks up the
-  new dependency set from the refreshed `package-lock.json`; bundle grows by
-  roughly the size of `zod@4` + `hono` (~2 MB unpacked) — negligible against
-  the 250 MB Lambda limit, cold-start impact minimal.
-- `responseMode: 'json'` guarantees no SSE through
-  API Gateway/serverless-express.
+  lockfile-pinned v2 and Redis clients. Bundle size is measured locally before
+  release rather than assumed.
+- Powertools remains a lockfile-pinned production dependency inside the Lambda
+  artifact. The redundant hard-coded Powertools layer is removed, avoiding a
+  layer/runtime/region compatibility dependency during the Node 24 rollout.
+- Ordinary calls are JSON-only. `subscriptions/listen` is explicitly refused
+  as described above; full subscription support would require a streaming
+  Lambda/API Gateway architecture and is not implied by this release.
+- CORS permits `MCP-Protocol-Version`, `Mcp-Method`, `Mcp-Name`,
+  `Authorization`, `X-Api-Key`, and all three provider headers, including
+  `X-Highergov-Api-Key`.
 
 ### Rollout / rollback
 
-1. Merge with a `feat!:` conventional commit — the release workflow bumps
-   the package to 2.0.0 and tags on merge to main.
-2. Deploy Railway first (it hosts the OAuth surface), verify:
-   `/health`; a **2025-style probe** (`initialize` POST → expect a normal
-   InitializeResult from the legacy fallback); a **2026-style probe**
-   (`tools/list` POST with `MCP-Protocol-Version: 2026-07-28` and `_meta`
-   client info); an OAuth round-trip (register → authorize → token → tools
-   call) plus an existing sealed token replay.
-3. `npm run cdk:deploy` for Lambda; probe with an `X-Api-Key` +
-   `X-Tango-Api-Key` request in both styles.
-4. Rollback is redeploy-previous-build: no data migration, no session
-   state, token format unchanged in both directions.
+1. Provision/link Redis and set the production variables before merging. Back
+   up the current Railway variable set and record the last good deployment.
+2. Merge with a `feat!:` conventional commit. The release workflow computes
+   2.0.0, writes package/lock/manifests, reruns the suite with real Redis,
+   commits and tags without rebasing any untested newer commit, then publishes
+   the GitHub release.
+3. A dependent release job checks out that immutable tag, deploys it to
+   Railway, and runs `verify:deployment`. The gate checks health body version
+   and protocol—not just HTTP 200—then exercises modern `tools/list`, legacy
+   initialization, and absence of session IDs.
+4. Manually complete one OAuth browser flow and prove registration/code/token
+   continuity across a service restart or second replica before increasing
+   traffic. Replay a pre-upgrade sealed token if one is available.
+5. Build/synthesize and deploy Lambda, then run the same verifier with a valid
+   `--server-api-key`; also assert `subscriptions/listen` returns the bounded
+   JSON error rather than an SSE response.
+6. Rollback by redeploying the prior immutable tag while retaining Redis and
+   the unchanged `OAUTH_TOKEN_SECRET`. There is no MCP session/data migration;
+   Redis records are backward-neutral to the prior code, which ignores them.
 
 ## 7. Testing
 
@@ -196,8 +247,23 @@ render the correct `WWW-Authenticate` + `resource_metadata` URL.
   `application_type` persistence, token-endpoint error mapping.
 - New `oauth-endpoints` tests drive the Express router with `node:test` and
   a fake provider.
-- Manual: `npm run smoke` (live keys) unchanged; the two protocol probes in
-  §6 against a local `MCP_TRANSPORT=http` run.
+- `mcp-http.test.ts` drives real HTTP and proves modern routing headers,
+  concurrent request-local tool isolation, legacy initialization and
+  `tools/list`, 415, no session header, and Lambda's bounded subscription
+  response.
+- `stdio.test.ts` starts the built server as a child process and proves both a
+  modern claim-bearing request without initialization and a pinned legacy
+  initialized connection.
+- OAuth tests run an end-to-end flow across two independent providers and two
+  Redis clients, including single-use code replay rejection, refresh, and
+  cross-instance revocation. CI starts Redis 7 so this gate cannot silently
+  skip.
+- `scripts/run-tests.sh` prunes `dist/node_modules`; tests still run correctly
+  after `build:lambda` installs a production dependency tree inside `dist`.
+- `npm run verify:deployment` is both the automated post-deploy gate and the
+  bounded manual hosted check; it exercises modern and legacy `tools/list`,
+  not only health and negotiation. `npm run smoke` remains the optional live
+  upstream-provider test.
 
 ## 8. Risks and mitigations
 
@@ -205,6 +271,10 @@ render the correct `WWW-Authenticate` + `resource_metadata` URL.
 |---|---|
 | A legacy client depends on session semantics (GET SSE stream, `Mcp-Session-Id`) | Hosted mode never issued session IDs (stateless since day one); GET was already 405. No observable change. |
 | Hand-rolled AS endpoints regress vs. the SDK router | Endpoints are a thin HTTP shim over the already-tested `McpOAuthProvider`; new unit tests cover PKCE, grants, DCR, revocation, metadata. |
+| A client requires Client ID Metadata Documents and will not fall back to DCR | CIMD is a documented follow-up; retain and test DCR compatibility during this rollout rather than silently representing it as implemented. |
+| OAuth flow crosses a restart or replica | Redis-backed store with TTLs and atomic consume; production refuses to boot with only process memory; real-Redis cross-instance test is mandatory in CI. |
+| A Lambda client opens `subscriptions/listen` | Lambda sets `maxSubscriptions: 0` and returns a bounded JSON-RPC error; Railway remains the streaming-capable hosted target. |
+| Release and deploy workflows race different SHAs | Release refuses a non-fast-forward push, tags only tested/versioned content, and deploys that immutable tag in the same workflow. |
 | Strict 415 Content-Type rejects a lax client | Release note; error is explicit and self-diagnosing. |
 | `zod@4`/`hono` transitive additions bloat or conflict | No direct zod usage in-repo (tools stay JSON Schema); lockfile pins; Lambda bundle size checked in CI build. |
 | v2 validates `tools/call` results server-side | Our results are `{ content: [text], structuredContent?, isError? }` — spec-conformant; compile + tests confirm. |
@@ -219,3 +289,8 @@ render the correct `WWW-Authenticate` + `resource_metadata` URL.
   `lookup_reference_code` (static data), not required for the upgrade.
 - **Replacing the in-repo AS with an external IdP** — the sealed-provider-key
   design is a product feature, not incidental architecture.
+- **Client ID Metadata Documents** — the final specification prefers CIMD and
+  deprecates DCR, but the deployed client path currently depends on DCR. Add
+  CIMD as a separately tested compatibility feature before removing DCR.
+- **Streaming Lambda subscriptions** — requires a different deployment
+  integration; the current Lambda surface explicitly reports the limitation.
