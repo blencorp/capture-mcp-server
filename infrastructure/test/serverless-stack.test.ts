@@ -74,9 +74,9 @@ describe('ServerlessStack', () => {
       });
     });
 
-    it('uses Node.js 20 runtime', () => {
+    it('uses Node.js 24 runtime', () => {
       template.hasResourceProperties('AWS::Lambda::Function', {
-        Runtime: 'nodejs20.x',
+        Runtime: 'nodejs24.x',
       });
     });
 
@@ -126,11 +126,9 @@ describe('ServerlessStack', () => {
       });
     });
 
-    it('has Powertools layer attached', () => {
+    it('bundles Powertools rather than depending on a runtime-specific layer', () => {
       template.hasResourceProperties('AWS::Lambda::Function', {
-        Layers: Match.arrayWith([
-          Match.stringLikeRegexp('arn:aws:lambda:us-east-1:094274105915:layer:AWSLambdaPowertoolsTypeScriptV2:'),
-        ]),
+        Layers: Match.absent(),
       });
     });
   });
@@ -198,9 +196,14 @@ describe('ServerlessStack', () => {
           AllowHeaders: Match.arrayWith([
             'Content-Type',
             'Accept',
+            'MCP-Protocol-Version',
+            'Mcp-Method',
+            'Mcp-Name',
+            'Authorization',
             'X-Api-Key',
             'X-Sam-Api-Key',
             'X-Tango-Api-Key',
+            'X-Highergov-Api-Key',
           ]),
           AllowMethods: ['POST', 'GET', 'OPTIONS'],
           AllowOrigins: ['*'],

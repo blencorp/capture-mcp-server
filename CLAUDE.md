@@ -22,9 +22,10 @@ This is a Model Context Protocol (MCP) server that captures federal procurement 
 ### Core Components
 
 **Server (`src/server.ts`)**
-- MCP server using `@modelcontextprotocol/sdk`
-- Uses stdio transport for Claude Desktop integration
-- Handles tool registration and execution through centralized registry
+- MCP server on the TypeScript SDK v2 (`@modelcontextprotocol/server`, `@modelcontextprotocol/node`, `@modelcontextprotocol/express`), implementing MCP spec **2026-07-28** (stateless protocol). Both protocol eras are served: 2026-07-28 natively, 2025-era clients through a stateless legacy path with JSON responses (see `src/mcp-http.ts`); stdio mode uses `serveStdio`, which pins 2025-handshake connections to a legacy-era instance.
+- `src/mcp-factory.ts` builds a fresh `Server` per request/connection and resolves provider keys per request (OAuth-sealed → header → env). `src/mcp-http.ts` is the shared HTTP composition used by both `server.ts` (Railway) and `lambda-handler.ts` (AWS). POST bodies must be `application/json` (415 otherwise); GET/DELETE on `/mcp` answer 405.
+- Handles tool registration and execution through centralized registry (34 static JSON-Schema tool definitions, registered via the low-level `setRequestHandler('tools/list' | 'tools/call')` API)
+- Upgrade details and deployment rollout: `docs/mcp-2026-07-28-upgrade-plan.md`
 
 **Tool Architecture (`src/tools/`)**
 - Modular tool system with six categories:
@@ -93,9 +94,13 @@ The server automatically registers only the tools for which API keys are availab
 
 When `MCP_TRANSPORT=http` and `MCP_REQUIRE_OAUTH=true`:
 - `src/auth/mcp-oauth.ts` implements an OAuth 2.1 server with PKCE, dynamic client registration, and AES-256-GCM sealed access/refresh tokens. Each token carries a `keys: { sam?, tango?, highergov? }` map sealed against `OAUTH_TOKEN_SECRET`.
+- `src/auth/oauth-endpoints.ts` provides the authorization-server HTTP endpoints (`/authorize`, `/token`, `/register`, `/revoke`) and the `.well-known` discovery documents — SDK v2 only ships resource-server helpers, so these are in-repo. Per the 2026-07-28 hardening: PKCE `S256` is mandatory, authorization responses carry `iss` (RFC 9207), and DCR stores `application_type`.
+- Client ID Metadata Documents are not implemented yet. The hosted compatibility path remains DCR; do not describe this release as complete CIMD adoption or remove DCR without a separately tested client migration.
+- `src/auth/oauth-state-store.ts` persists DCR clients, pending authorizations, one-use codes, and revocations. Production OAuth requires Redis 6.2+ via `OAUTH_REDIS_URL` (or `REDIS_URL`) and fails startup without it; local/test mode may use the isolated in-memory implementation.
 - `GET/POST /oauth/authorize` renders a multi-provider authorization page; users pick checkboxes per provider and supply only the keys they have.
-- `POST /mcp` is gated by `requireBearerAuth` UNLESS the caller presents an `X-Sam-Api-Key` / `X-Tango-Api-Key` / `X-Highergov-Api-Key` header. Header presence bypasses OAuth for programmatic clients — the key itself is the trust anchor.
+- `POST /mcp` is gated by `requireBearerAuth` (from `@modelcontextprotocol/express`) UNLESS the caller presents an `X-Sam-Api-Key` / `X-Tango-Api-Key` / `X-Highergov-Api-Key` header. Header presence bypasses OAuth for programmatic clients — the key itself is the trust anchor.
 - Precedence per request: OAuth-sealed key → header → env var.
+- Railway can serve 2026-07-28 `subscriptions/listen` over SSE. Lambda/API Gateway is request/response-only and configures `maxSubscriptions: 0`, returning the SDK's bounded JSON-RPC subscription-limit error rather than attempting an undeliverable stream.
 
 ### MCP Integration
 

@@ -1,4 +1,4 @@
-import { Code, Function, LayerVersion, Runtime } from 'aws-cdk-lib/aws-lambda';
+import { Code, Function, Runtime } from 'aws-cdk-lib/aws-lambda';
 import { HttpLambdaIntegration } from 'aws-cdk-lib/aws-apigatewayv2-integrations';
 import { Construct } from 'constructs';
 import * as path from 'path';
@@ -86,24 +86,15 @@ export class ServerlessStack extends Stack {
       removalPolicy: isDev ? RemovalPolicy.DESTROY : RemovalPolicy.RETAIN,
     });
 
-    // AWS Lambda Powertools for TypeScript layer
-    // https://docs.aws.amazon.com/powertools/typescript/latest/getting-started/lambda-layers/
-    const powertoolsLayer = LayerVersion.fromLayerVersionArn(
-      this,
-      'PowertoolsLayer',
-      `arn:aws:lambda:${this.region}:094274105915:layer:AWSLambdaPowertoolsTypeScriptV2:41`
-    );
-
     this.lambdaFunction = new Function(this, 'McpHandler', {
       functionName: 'capture-mcp-server',
       description: 'Capture MCP Server - Federal procurement data access via MCP protocol',
-      runtime: Runtime.NODEJS_20_X,
+      runtime: Runtime.NODEJS_24_X,
       handler: 'lambda-handler.handler',
       code: Code.fromAsset(lambdaCodePath),
       memorySize: 512,
       timeout: Duration.seconds(30),
       logGroup,
-      layers: [powertoolsLayer],
       environment: {
         // Powertools configuration
         POWERTOOLS_SERVICE_NAME: 'capture-mcp-server',
@@ -139,9 +130,14 @@ export class ServerlessStack extends Stack {
         allowHeaders: [
           'Content-Type',
           'Accept',
+          'MCP-Protocol-Version',
+          'Mcp-Method',
+          'Mcp-Name',
+          'Authorization',
           'X-Api-Key',
           'X-Sam-Api-Key',
           'X-Tango-Api-Key',
+          'X-Highergov-Api-Key',
         ],
         maxAge: Duration.hours(1),
       },

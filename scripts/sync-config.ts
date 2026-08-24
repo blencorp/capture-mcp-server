@@ -45,13 +45,20 @@ interface CaptureConfig {
  * Uses mcp-remote as a proxy to bridge HTTP MCP servers to stdio-based clients like Claude Desktop.
  */
 function generateHostedManifest(mcpEndpoint: string): void {
+  const packageVersion = JSON.parse(
+    readFileSync(join(process.cwd(), 'package.json'), 'utf8'),
+  ).version as string;
+  const desktopManifest = JSON.parse(
+    readFileSync(join(process.cwd(), 'manifest.json'), 'utf8'),
+  ) as { tools?: Array<{ name: string; description: string }> };
+
   const hostedManifest = {
     manifest_version: "0.3",
     name: "capture-mcp-server-hosted",
     display_name: "Capture MCP Server (Hosted)",
-    version: "1.0.0",
+    version: packageVersion,
     description: "Federal procurement and spending data capture - Hosted version",
-    long_description: "Capture MCP Server empowers users to capture and query federal entity, opportunity, and spending data through natural language queries. This hosted version connects to a remote server. Works with 4 USASpending.gov tools out-of-the-box. Optional SAM.gov and Tango API keys unlock additional tools.",
+    long_description: "Capture MCP Server provides 34 federal procurement and spending tools through a hosted MCP endpoint. Seven reference and USASpending.gov tools work without a provider key; optional SAM.gov, Tango, and HigherGov keys enable the remaining provider and join tools.",
     author: {
       name: "Mike Endale from BLEN, Inc.",
       url: "https://www.blencorp.com"
@@ -80,46 +87,33 @@ function generateHostedManifest(mcpEndpoint: string): void {
       claude_desktop: ">=0.10.0",
       platforms: ["darwin", "win32", "linux"],
       runtimes: {
-        node: ">=18.0.0"
+        node: ">=24.0.0"
       }
     },
-    tools: [
-      { name: "search_sam_entities", description: "Search for federal entities/businesses registered in SAM.gov" },
-      { name: "get_sam_opportunities", description: "Fetch federal contract opportunities from SAM.gov" },
-      { name: "get_sam_entity_details", description: "Get comprehensive details for a specific entity by UEI" },
-      { name: "check_sam_exclusions", description: "Check if an entity is excluded from federal contracting" },
-      { name: "get_usaspending_awards", description: "Get federal awards data for a specific agency" },
-      { name: "get_usaspending_spending_by_category", description: "Get spending breakdown by award category" },
-      { name: "get_usaspending_budgetary_resources", description: "Get budgetary resources and obligations for an agency" },
-      { name: "search_usaspending_awards_by_recipient", description: "Search for federal awards by recipient name" },
-      { name: "get_entity_and_awards", description: "Combine SAM entity data with USASpending award history" },
-      { name: "get_opportunity_spending_context", description: "Link opportunities with historical spending context" },
-      { name: "search_tango_contracts", description: "Search federal contracts through Tango's unified API" },
-      { name: "search_tango_grants", description: "Search federal grants and financial assistance" },
-      { name: "get_tango_vendor_profile", description: "Get comprehensive vendor profiles with history" },
-      { name: "search_tango_opportunities", description: "Search federal contract opportunities with forecasts" },
-      { name: "get_tango_spending_summary", description: "Get spending summaries and analytics" }
-    ],
+    tools: desktopManifest.tools ?? [],
     server: {
       type: "node",
-      entry_point: "mcp-remote@0.1.31",
+      entry_point: "mcp-remote@0.1.49",
       mcp_config: {
         command: "npx",
         args: [
           "-y",
-          "mcp-remote@0.1.31",
+          "mcp-remote@0.1.49",
           mcpEndpoint,
           "--header",
           "X-Api-Key:${API_KEY}",
           "--header",
           "X-Sam-Api-Key:${SAM_GOV_API_KEY}",
           "--header",
-          "X-Tango-Api-Key:${TANGO_API_KEY}"
+          "X-Tango-Api-Key:${TANGO_API_KEY}",
+          "--header",
+          "X-Highergov-Api-Key:${HIGHERGOV_API_KEY}"
         ],
         env: {
           "API_KEY": "${user_config.API_KEY}",
           "SAM_GOV_API_KEY": "${user_config.SAM_GOV_API_KEY}",
-          "TANGO_API_KEY": "${user_config.TANGO_API_KEY}"
+          "TANGO_API_KEY": "${user_config.TANGO_API_KEY}",
+          "HIGHERGOV_API_KEY": "${user_config.HIGHERGOV_API_KEY}"
         }
       }
     },
@@ -143,6 +137,14 @@ function generateHostedManifest(mcpEndpoint: string): void {
         type: "string",
         title: "Tango API Key",
         description: "Optional API key from tango.makegov.com. Enables Tango tools: contracts, grants, vendor profiles, opportunities, and spending summaries.",
+        required: false,
+        sensitive: true,
+        default: ""
+      },
+      HIGHERGOV_API_KEY: {
+        type: "string",
+        title: "HigherGov API Key",
+        description: "Optional API key from HigherGov. Enables forecast, opportunity, contract, people, saved-search, and document tools.",
         required: false,
         sensitive: true,
         default: ""
@@ -351,4 +353,3 @@ syncConfig(stackName, region).catch((error) => {
   console.error('Unexpected error:', error);
   process.exit(1);
 });
-

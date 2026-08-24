@@ -33,28 +33,49 @@ jobs:
   release:
     name: Tag and release
     runs-on: ubuntu-latest
-    timeout-minutes: 15
+    timeout-minutes: 20
+    outputs:
+      tag: ${{ steps.version.outputs.tag }}
+      version: ${{ steps.version.outputs.next }}
+    env:
+      TEST_REDIS_URL: redis://localhost:6379
+    services:
+      redis:
+        image: redis:7-alpine
+        ports:
+          - 6379:6379
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 2s
+          --health-timeout 2s
+          --health-retries 15
     # Belt and braces: the bump commit is pushed with GITHUB_TOKEN, which
     # GitHub already excludes from triggering workflows, and carries [skip ci].
     if: "!contains(github.event.head_commit.message, '[skip release]')"
     steps:
       - name: Check out repository
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
         with:
           # Full history and tags: the version decision reads both.
           fetch-depth: 0
 
       - name: Set up Node
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@v7
         with:
-          node-version: 20
+          node-version: 24
           cache: npm
 
       - name: Install dependencies
         run: npm ci
 
+      - name: Install infrastructure dependencies
+        run: npm ci --prefix infrastructure
+
       - name: Run test suite
         run: npm test
+
+      - name: Run CDK assertions
+        run: npm run cdk:test
 
       - name: Decide the next version
         id: version
@@ -86,6 +107,9 @@ jobs:
           npm version "${{ steps.version.outputs.next }}" --no-git-tag-version
           npm run --silent release-version -- --write "${{ steps.version.outputs.next }}"
 
+      - name: Verify the versioned artifact
+        run: npm test
+
       - name: Commit the version bump and tag the release
         run: |
           git config user.name "github-actions[bot]"
@@ -94,11 +118,16 @@ jobs:
           # Nothing to commit on a seeded first release: the files already match.
           if git diff --quiet; then
             echo "No version files changed; tagging the current commit."
+            git fetch origin main
+            if [ "$(git rev-parse HEAD)" != "$(git rev-parse origin/main)" ]; then
+              echo "::error::main advanced while this release was tested; the queued newer release will retry from that commit."
+              exit 1
+            fi
           else
             git commit -am "chore(release): ${{ steps.version.outputs.tag }} [skip ci]"
-            # Another merge may have landed while the tests ran; rebase onto it
-            # rather than failing the release on a rejected push.
-            git pull --rebase origin main
+            # Never rebase untested commits into a release. If main advanced,
+            # this push fails and the queued newer release starts from the new
+            # head, runs the full suite, and owns the eventual tag.
             git push origin HEAD:main
           fi
 
@@ -114,3 +143,47 @@ jobs:
             --generate-notes \
             --verify-tag \
             --latest
+
+  deploy:
+    name: Deploy released tag to Railway
+    needs: release
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    concurrency:
+      group: railway-deploy
+      cancel-in-progress: false
+    permissions:
+      contents: read
+    steps:
+      - name: Check out immutable release tag
+        uses: actions/checkout@v7
+        with:
+          ref: ${{ needs.release.outputs.tag }}
+
+      - name: Set up Node
+        uses: actions/setup-node@v7
+        with:
+          node-version: 24
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Install Railway CLI
+        run: npm install -g @railway/cli@5.43.1
+
+      - name: Deploy exact release artifact
+        env:
+          RAILWAY_TOKEN: ${{ secrets.RAILWAY_TOKEN }}
+        run: |
+          if [ -z "$RAILWAY_TOKEN" ]; then
+            echo "::error::RAILWAY_TOKEN secret is not configured. See README's Railway deploy section."
+            exit 1
+          fi
+          railway up --service capture-mcp-server --ci
+
+      - name: Verify artifact identity and both protocol eras
+        run: >-
+          npm run verify:deployment --
+          --base-url https://capture.mcp.blencorp.com
+          --expected-version ${{ needs.release.outputs.version }}

@@ -9,20 +9,38 @@ jobs:
     name: Build and test
     runs-on: ubuntu-latest
     timeout-minutes: 10
+    env:
+      TEST_REDIS_URL: redis://localhost:6379
+    services:
+      redis:
+        image: redis:7-alpine
+        ports:
+          - 6379:6379
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 2s
+          --health-timeout 2s
+          --health-retries 15
     permissions:
       contents: read
     steps:
       - name: Check out repository
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
 
       - name: Set up Node
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@v7
         with:
-          node-version: 20
+          node-version: 24
           cache: npm
 
       - name: Install dependencies
         run: npm ci
 
+      - name: Install infrastructure dependencies
+        run: npm ci --prefix infrastructure
+
       - name: Run test suite
         run: npm test
+
+      - name: Run CDK assertions
+        run: npm run cdk:test

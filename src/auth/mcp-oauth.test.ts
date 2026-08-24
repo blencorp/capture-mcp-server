@@ -1,14 +1,19 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
+import { randomUUID } from 'node:crypto';
 import type { Response } from 'express';
-import type { OAuthClientInformationFull } from '@modelcontextprotocol/sdk/shared/auth.js';
-import type { AuthorizationParams } from '@modelcontextprotocol/sdk/server/auth/provider.js';
+import type { OAuthClientInformationFull } from '@modelcontextprotocol/server';
 import {
   DEFAULT_CLIENT_SCOPE,
-  InMemoryOAuthClientsStore,
   McpOAuthProvider,
   getProviderKeysFromAuth,
+  type AuthorizationParams,
 } from './mcp-oauth.js';
+import {
+  InMemoryOAuthStateStore,
+  RedisOAuthStateStore,
+  type OAuthStateStore,
+} from './oauth-state-store.js';
 
 function makeClient(): OAuthClientInformationFull {
   return {
@@ -70,6 +75,60 @@ async function runFullFlow(
   );
 }
 
+async function proveCrossInstanceFlow(
+  firstStore: OAuthStateStore,
+  secondStore: OAuthStateStore,
+): Promise<void> {
+  const options = {
+    baseUrl: new URL('https://capture.mcp.blencorp.com'),
+    tokenSecret: 'shared-deployment-secret',
+  };
+  const first = new McpOAuthProvider({ ...options, stateStore: firstStore });
+  const second = new McpOAuthProvider({ ...options, stateStore: secondStore });
+  const client = await first.registerClient(makeClient());
+  assert.equal((await second.getClient(client.client_id))?.client_name, client.client_name);
+
+  const { response, redirects } = makeRedirectCapture();
+  await first.authorize(client, makeAuthorizationParams(), response);
+  const requestId = new URL(redirects[0]).searchParams.get('request_id');
+  assert.ok(requestId);
+
+  const redirect = await second.completeAuthorization(requestId, { sam: 'shared-sam-key' });
+  const code = new URL(redirect).searchParams.get('code');
+  assert.ok(code);
+  assert.equal(await first.challengeForAuthorizationCode(client, code), 'challenge-123');
+
+  const tokens = await second.exchangeAuthorizationCode(
+    client,
+    code,
+    undefined,
+    'https://claude.ai/api/mcp/auth_callback',
+    new URL('https://capture.mcp.blencorp.com/mcp'),
+  );
+  await assert.rejects(
+    () => first.exchangeAuthorizationCode(client, code),
+    /Invalid authorization code/,
+    'authorization codes are atomically single-use across instances',
+  );
+
+  assert.ok(tokens.refresh_token);
+  const refreshed = await first.exchangeRefreshToken(
+    client,
+    tokens.refresh_token!,
+    undefined,
+    new URL('https://capture.mcp.blencorp.com/mcp'),
+  );
+  const authInfo = await second.verifyAccessToken(refreshed.access_token);
+  assert.deepEqual(getProviderKeysFromAuth(authInfo), { sam: 'shared-sam-key' });
+
+  await first.revokeToken(client, { token: refreshed.access_token });
+  await assert.rejects(
+    () => second.verifyAccessToken(refreshed.access_token),
+    /Token has been revoked/,
+    'revocation is shared across instances',
+  );
+}
+
 test('OAuth flow issues a bearer token that carries all provider keys', async () => {
   const provider = new McpOAuthProvider({
     baseUrl: new URL('https://capture.mcp.blencorp.com'),
@@ -78,7 +137,7 @@ test('OAuth flow issues a bearer token that carries all provider keys', async ()
     refreshTokenTtlSeconds: 7200,
   });
   const client = makeClient();
-  await provider.clientsStore.registerClient?.(client);
+  await provider.registerClient(client);
 
   const { response, redirects } = makeRedirectCapture();
   await provider.authorize(client, makeAuthorizationParams(), response);
@@ -126,7 +185,7 @@ test('partial provider selection only seals the chosen keys', async () => {
     tokenSecret: 'test-secret',
   });
   const client = makeClient();
-  await provider.clientsStore.registerClient?.(client);
+  await provider.registerClient(client);
 
   const tokens = await runFullFlow(provider, client, { highergov: 'hg_only' });
   const authInfo = await provider.verifyAccessToken(tokens.access_token);
@@ -139,11 +198,16 @@ test('refresh token preserves the original provider keys', async () => {
     tokenSecret: 'test-secret',
   });
   const client = makeClient();
-  await provider.clientsStore.registerClient?.(client);
+  await provider.registerClient(client);
 
   const tokens = await runFullFlow(provider, client, { sam: 'sam_key', tango: 'tango_key' });
   assert.ok(tokens.refresh_token);
-  const refreshed = await provider.exchangeRefreshToken(client, tokens.refresh_token!);
+  const refreshed = await provider.exchangeRefreshToken(
+    client,
+    tokens.refresh_token!,
+    undefined,
+    new URL('https://capture.mcp.blencorp.com/mcp'),
+  );
   const authInfo = await provider.verifyAccessToken(refreshed.access_token);
   assert.deepEqual(getProviderKeysFromAuth(authInfo), { sam: 'sam_key', tango: 'tango_key' });
 });
@@ -158,7 +222,7 @@ test('sealed access tokens cannot be verified with a different token secret', as
     tokenSecret: 'second-secret',
   });
   const client = makeClient();
-  await provider.clientsStore.registerClient?.(client);
+  await provider.registerClient(client);
 
   const tokens = await runFullFlow(provider, client, { highergov: 'hg_key' });
 
@@ -168,13 +232,52 @@ test('sealed access tokens cannot be verified with a different token secret', as
   );
 });
 
+test('authorization and tokens are bound to the canonical MCP resource', async () => {
+  const provider = new McpOAuthProvider({
+    baseUrl: new URL('https://capture.mcp.blencorp.com'),
+    tokenSecret: 'resource-test-secret',
+  });
+  const client = makeClient();
+  await provider.registerClient(client);
+  const { response } = makeRedirectCapture();
+
+  await assert.rejects(
+    () => provider.authorize(client, { ...makeAuthorizationParams(), resource: undefined }, response),
+    /resource must identify this MCP server/,
+  );
+  await assert.rejects(
+    () => provider.authorize(
+      client,
+      { ...makeAuthorizationParams(), resource: new URL('https://other.example/mcp') },
+      response,
+    ),
+    /resource must identify this MCP server/,
+  );
+
+  const tokens = await runFullFlow(provider, client, { sam: 'resource-bound-key' });
+  assert.ok(tokens.refresh_token);
+  await assert.rejects(
+    () => provider.exchangeRefreshToken(client, tokens.refresh_token!),
+    /resource does not match/,
+  );
+  await assert.rejects(
+    () => provider.exchangeRefreshToken(
+      client,
+      tokens.refresh_token!,
+      undefined,
+      new URL('https://other.example/mcp'),
+    ),
+    /resource does not match/,
+  );
+});
+
 test('completeAuthorization rejects an empty key set', async () => {
   const provider = new McpOAuthProvider({
     baseUrl: new URL('https://capture.mcp.blencorp.com'),
     tokenSecret: 'test-secret',
   });
   const client = makeClient();
-  await provider.clientsStore.registerClient?.(client);
+  await provider.registerClient(client);
 
   const { response, redirects } = makeRedirectCapture();
   await provider.authorize(client, makeAuthorizationParams(), response);
@@ -193,7 +296,7 @@ test('completeAuthorization trims whitespace-only keys and rejects if none remai
     tokenSecret: 'test-secret',
   });
   const client = makeClient();
-  await provider.clientsStore.registerClient?.(client);
+  await provider.registerClient(client);
 
   const { response, redirects } = makeRedirectCapture();
   await provider.authorize(client, makeAuthorizationParams(), response);
@@ -206,24 +309,33 @@ test('completeAuthorization trims whitespace-only keys and rejects if none remai
   );
 });
 
-test('registerClient defaults a missing scope to mcp:tools', () => {
-  const store = new InMemoryOAuthClientsStore();
+test('registerClient defaults a missing scope to mcp:tools', async () => {
+  const provider = new McpOAuthProvider({
+    baseUrl: new URL('https://capture.mcp.blencorp.com'),
+    tokenSecret: 'test-secret',
+  });
   const { scope: _omitted, client_id: _id, client_id_issued_at: _issuedAt, ...metadata } = makeClient();
 
-  const registered = store.registerClient(metadata);
+  const registered = await provider.registerClient(metadata);
   assert.equal(registered.scope, DEFAULT_CLIENT_SCOPE);
-  assert.equal(store.getClient(registered.client_id)?.scope, DEFAULT_CLIENT_SCOPE);
+  assert.equal((await provider.getClient(registered.client_id))?.scope, DEFAULT_CLIENT_SCOPE);
 });
 
-test('registerClient defaults a blank scope to mcp:tools', () => {
-  const store = new InMemoryOAuthClientsStore();
-  const registered = store.registerClient({ ...makeClient(), scope: '   ' });
+test('registerClient defaults a blank scope to mcp:tools', async () => {
+  const provider = new McpOAuthProvider({
+    baseUrl: new URL('https://capture.mcp.blencorp.com'),
+    tokenSecret: 'test-secret',
+  });
+  const registered = await provider.registerClient({ ...makeClient(), scope: '   ' });
   assert.equal(registered.scope, DEFAULT_CLIENT_SCOPE);
 });
 
-test('registerClient preserves an explicitly requested scope', () => {
-  const store = new InMemoryOAuthClientsStore();
-  const registered = store.registerClient({ ...makeClient(), scope: 'custom:scope' });
+test('registerClient preserves an explicitly requested scope', async () => {
+  const provider = new McpOAuthProvider({
+    baseUrl: new URL('https://capture.mcp.blencorp.com'),
+    tokenSecret: 'test-secret',
+  });
+  const registered = await provider.registerClient({ ...makeClient(), scope: 'custom:scope' });
   assert.equal(registered.scope, 'custom:scope');
 });
 
@@ -235,3 +347,23 @@ test('getProviderKeysFromAuth returns empty object for missing/invalid extras', 
     { highergov: 'x' }
   );
 });
+
+test('OAuth transactions and refresh survive provider recreation through a shared store', async () => {
+  const store = new InMemoryOAuthStateStore();
+  await proveCrossInstanceFlow(store, store);
+});
+
+test(
+  'Redis OAuth state survives independent provider and store instances',
+  { skip: process.env.TEST_REDIS_URL ? false : 'TEST_REDIS_URL is not configured' },
+  async () => {
+    const prefix = `capture-mcp:test:${randomUUID()}`;
+    const firstStore = await RedisOAuthStateStore.connect(process.env.TEST_REDIS_URL!, prefix);
+    const secondStore = await RedisOAuthStateStore.connect(process.env.TEST_REDIS_URL!, prefix);
+    try {
+      await proveCrossInstanceFlow(firstStore, secondStore);
+    } finally {
+      await Promise.all([firstStore.close(), secondStore.close()]);
+    }
+  },
+);
