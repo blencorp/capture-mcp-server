@@ -187,7 +187,8 @@
       ],
       "env": {
         "SAM_GOV_API_KEY": "${user_config.SAM_GOV_API_KEY}",
-        "TANGO_API_KEY": "${user_config.TANGO_API_KEY}"
+        "TANGO_API_KEY": "${user_config.TANGO_API_KEY}",
+        "HIGHERGOV_API_KEY": "${user_config.HIGHERGOV_API_KEY}"
       }
     }
   },
@@ -203,7 +204,15 @@
     "TANGO_API_KEY": {
       "type": "string",
       "title": "Tango API Key",
-      "description": "Optional API key from tango.makegov.com. Enables 5 Tango tools: contracts, grants, vendor profiles, opportunities, and spending summaries.",
+      "description": "Optional API key from tango.makegov.com. Enables 12 Tango tools for contracts, grants, vendors, opportunities, spending, protests, IDVs, vehicles, OTAs, and entity metrics.",
+      "required": false,
+      "sensitive": true,
+      "default": ""
+    },
+    "HIGHERGOV_API_KEY": {
+      "type": "string",
+      "title": "HigherGov API Key",
+      "description": "Optional API key from HigherGov. Enables 9 tools for forecasts, opportunities, contracts, people, saved searches, and solicitation documents.",
       "required": false,
       "sensitive": true,
       "default": ""
