@@ -1,6 +1,6 @@
 import { readFileSync } from 'node:fs';
 import { Server, type McpRequestContext } from '@modelcontextprotocol/server';
-import { initializeTools, callTool, type ApiKeyConfig } from './tools/index.js';
+import { initializeTools, type ApiKeyConfig } from './tools/index.js';
 import { getProviderKeysFromAuth } from './auth/mcp-oauth.js';
 
 /**
@@ -93,10 +93,10 @@ export async function buildServer(options: BuildServerOptions): Promise<Server> 
     { capabilities: { tools: {} } },
   );
 
-  const tools = await initializeTools(config);
+  const registry = await initializeTools(config);
 
   server.setRequestHandler('tools/list', async () => {
-    return { tools };
+    return { tools: registry.tools };
   });
 
   server.setRequestHandler('tools/call', async (request) => {
@@ -104,7 +104,7 @@ export async function buildServer(options: BuildServerOptions): Promise<Server> 
     onToolCall?.(name);
 
     try {
-      const result = await callTool(name, args ?? {}, apiKeyOverrides);
+      const result = await registry.callTool(name, args ?? {}, apiKeyOverrides);
       const structured =
         result !== null && typeof result === 'object' && !Array.isArray(result) ? result : undefined;
       const textPayload =

@@ -9,6 +9,12 @@ import {
   type OAuthTokenVerifier,
   type OAuthTokens,
 } from '@modelcontextprotocol/server';
+import {
+  InMemoryOAuthStateStore,
+  type AuthorizationCodeRecord,
+  type OAuthStateStore,
+  type PendingAuthorizationRecord,
+} from './oauth-state-store.js';
 
 // SDK v2 dropped the built-in OAuth authorization server (servers are expected
 // to be pure resource servers), but sealing user-supplied provider keys into
@@ -21,11 +27,6 @@ export type AuthorizationParams = {
   state?: string;
   resource?: URL;
 };
-
-export interface OAuthRegisteredClientsStore {
-  getClient(clientId: string): OAuthClientInformationFull | undefined;
-  registerClient(client: ClientRegistrationInput): OAuthClientInformationFull;
-}
 
 const TOKEN_PREFIX = 'capmcp.v1';
 const TOKEN_AAD = Buffer.from('capture-mcp-oauth-v1');
@@ -47,23 +48,6 @@ export const PROVIDER_LABELS: Record<ProviderId, string> = {
 
 type TokenKind = 'access' | 'refresh';
 
-type PendingAuthorization = {
-  client: OAuthClientInformationFull;
-  params: AuthorizationParams;
-  expiresAtMs: number;
-};
-
-type AuthorizationCodeRecord = {
-  clientId: string;
-  redirectUri: string;
-  codeChallenge: string;
-  scopes: string[];
-  resource?: string;
-  state?: string;
-  keys: ProviderKeys;
-  expiresAtMs: number;
-};
-
 type SealedTokenPayload = {
   version: 1;
   kind: TokenKind;
@@ -76,60 +60,32 @@ type SealedTokenPayload = {
   exp: number;
 };
 
-type ClientRegistrationInput =
+export type ClientRegistrationInput =
   Omit<OAuthClientInformationFull, 'client_id' | 'client_id_issued_at'> &
   Partial<Pick<OAuthClientInformationFull, 'client_id' | 'client_id_issued_at'>>;
 
-export class InMemoryOAuthClientsStore implements OAuthRegisteredClientsStore {
-  private readonly clients = new Map<string, OAuthClientInformationFull>();
-
-  constructor(initialClients: OAuthClientInformationFull[] = []) {
-    for (const client of initialClients) {
-      this.clients.set(client.client_id, client);
-    }
-  }
-
-  getClient(clientId: string): OAuthClientInformationFull | undefined {
-    return this.clients.get(clientId);
-  }
-
-  registerClient(client: ClientRegistrationInput): OAuthClientInformationFull {
-    const nowSeconds = Math.floor(Date.now() / 1000);
-    const fullClient = {
-      ...client,
-      client_id: client.client_id ?? randomUUID(),
-      client_id_issued_at: client.client_id_issued_at ?? nowSeconds,
-      // Clients registering without a scope would later fail authorization
-      // when they request the advertised mcp:tools scope.
-      scope: client.scope?.trim() ? client.scope : DEFAULT_CLIENT_SCOPE,
-    } as OAuthClientInformationFull;
-
-    this.clients.set(fullClient.client_id, fullClient);
-    return fullClient;
-  }
-}
-
 export type McpOAuthProviderOptions = {
   baseUrl: URL;
+  /** Canonical RFC 8707 audience. Defaults to /mcp on baseUrl. */
+  resourceUrl?: URL;
   tokenSecret: string;
   accessTokenTtlSeconds?: number;
   refreshTokenTtlSeconds?: number;
   authorizationTtlMs?: number;
   now?: () => number;
+  stateStore?: OAuthStateStore;
 };
 
 export class McpOAuthProvider implements OAuthTokenVerifier {
-  readonly clientsStore: OAuthRegisteredClientsStore;
+  readonly stateStore: OAuthStateStore;
 
   private readonly baseUrl: URL;
+  private readonly expectedResource: string;
   private readonly encryptionKey: Buffer;
   private readonly accessTokenTtlSeconds: number;
   private readonly refreshTokenTtlSeconds: number;
   private readonly authorizationTtlMs: number;
   private readonly now: () => number;
-  private readonly pendingAuthorizations = new Map<string, PendingAuthorization>();
-  private readonly authorizationCodes = new Map<string, AuthorizationCodeRecord>();
-  private readonly revokedTokenIds = new Set<string>();
 
   constructor(options: McpOAuthProviderOptions) {
     if (!options.tokenSecret.trim()) {
@@ -137,26 +93,52 @@ export class McpOAuthProvider implements OAuthTokenVerifier {
     }
 
     this.baseUrl = options.baseUrl;
+    this.expectedResource = (options.resourceUrl ?? new URL('/mcp', options.baseUrl)).href;
     this.encryptionKey = createHash('sha256').update(options.tokenSecret).digest();
     this.accessTokenTtlSeconds = options.accessTokenTtlSeconds ?? DEFAULT_ACCESS_TOKEN_TTL_SECONDS;
     this.refreshTokenTtlSeconds = options.refreshTokenTtlSeconds ?? DEFAULT_REFRESH_TOKEN_TTL_SECONDS;
     this.authorizationTtlMs = options.authorizationTtlMs ?? DEFAULT_AUTHORIZATION_TTL_MS;
     this.now = options.now ?? (() => Date.now());
-    this.clientsStore = new InMemoryOAuthClientsStore();
+    this.stateStore = options.stateStore ?? new InMemoryOAuthStateStore([], this.now);
+  }
+
+  async getClient(clientId: string): Promise<OAuthClientInformationFull | undefined> {
+    return this.stateStore.getClient(clientId);
+  }
+
+  async registerClient(client: ClientRegistrationInput): Promise<OAuthClientInformationFull> {
+    const nowSeconds = Math.floor(this.now() / 1000);
+    const fullClient = {
+      ...client,
+      client_id: client.client_id ?? randomUUID(),
+      client_id_issued_at: client.client_id_issued_at ?? nowSeconds,
+      scope: client.scope?.trim() ? client.scope : DEFAULT_CLIENT_SCOPE,
+    } as OAuthClientInformationFull;
+    await this.stateStore.putClient(fullClient);
+    return fullClient;
   }
 
   async authorize(client: OAuthClientInformationFull, params: AuthorizationParams, res: Response): Promise<void> {
     if (!client.redirect_uris.includes(params.redirectUri)) {
       throw new OAuthError(OAuthErrorCode.InvalidRequest, 'Unregistered redirect_uri');
     }
+    if (!params.resource || params.resource.href !== this.expectedResource) {
+      throw new OAuthError(
+        OAuthErrorCode.InvalidTarget,
+        `resource must identify this MCP server (${this.expectedResource})`,
+      );
+    }
 
-    this.cleanupExpired();
     const requestId = randomUUID();
-    this.pendingAuthorizations.set(requestId, {
+    const pending: PendingAuthorizationRecord = {
       client,
-      params,
+      params: {
+        ...params,
+        resource: params.resource?.href,
+      },
       expiresAtMs: this.now() + this.authorizationTtlMs,
-    });
+    };
+    await this.stateStore.putPendingAuthorization(requestId, pending, this.authorizationTtlMs);
 
     const credentialUrl = new URL('/oauth/authorize', this.baseUrl);
     credentialUrl.searchParams.set('request_id', requestId);
@@ -164,29 +146,28 @@ export class McpOAuthProvider implements OAuthTokenVerifier {
   }
 
   async completeAuthorization(requestId: string, rawKeys: ProviderKeys): Promise<string> {
-    this.cleanupExpired();
-    const pending = this.pendingAuthorizations.get(requestId);
-    if (!pending) {
-      throw new OAuthError(OAuthErrorCode.InvalidRequest, 'Authorization request expired or was not found');
-    }
-
     const keys = normalizeProviderKeys(rawKeys);
     if (Object.keys(keys).length === 0) {
       throw new OAuthError(OAuthErrorCode.InvalidRequest, 'Provide at least one provider API key');
     }
 
-    this.pendingAuthorizations.delete(requestId);
+    const pending = await this.stateStore.takePendingAuthorization(requestId);
+    if (!pending) {
+      throw new OAuthError(OAuthErrorCode.InvalidRequest, 'Authorization request expired or was not found');
+    }
+
     const code = randomUUID();
-    this.authorizationCodes.set(code, {
+    const codeRecord: AuthorizationCodeRecord = {
       clientId: pending.client.client_id,
       redirectUri: pending.params.redirectUri,
       codeChallenge: pending.params.codeChallenge,
       scopes: pending.params.scopes ?? [],
-      resource: pending.params.resource?.href,
+      resource: pending.params.resource,
       state: pending.params.state,
       keys,
       expiresAtMs: this.now() + this.authorizationTtlMs,
-    });
+    };
+    await this.stateStore.putAuthorizationCode(code, codeRecord, this.authorizationTtlMs);
 
     const targetUrl = new URL(pending.params.redirectUri);
     targetUrl.searchParams.set('code', code);
@@ -209,8 +190,7 @@ export class McpOAuthProvider implements OAuthTokenVerifier {
     client: OAuthClientInformationFull,
     authorizationCode: string
   ): Promise<string> {
-    this.cleanupExpired();
-    const codeRecord = this.authorizationCodes.get(authorizationCode);
+    const codeRecord = await this.stateStore.getAuthorizationCode(authorizationCode);
     if (!codeRecord || codeRecord.clientId !== client.client_id) {
       throw new OAuthError(OAuthErrorCode.InvalidGrant, 'Invalid authorization code');
     }
@@ -225,8 +205,7 @@ export class McpOAuthProvider implements OAuthTokenVerifier {
     redirectUri?: string,
     resource?: URL
   ): Promise<OAuthTokens> {
-    this.cleanupExpired();
-    const codeRecord = this.authorizationCodes.get(authorizationCode);
+    const codeRecord = await this.stateStore.getAuthorizationCode(authorizationCode);
     if (!codeRecord) {
       throw new OAuthError(OAuthErrorCode.InvalidGrant, 'Invalid authorization code');
     }
@@ -237,20 +216,23 @@ export class McpOAuthProvider implements OAuthTokenVerifier {
     if (redirectUri !== undefined && redirectUri !== codeRecord.redirectUri) {
       throw new OAuthError(OAuthErrorCode.InvalidGrant, 'redirect_uri does not match the authorization request');
     }
-    if (resource !== undefined && codeRecord.resource !== undefined && resource.href !== codeRecord.resource) {
-      throw new OAuthError(OAuthErrorCode.InvalidGrant, 'resource does not match the authorization request');
+    if (!resource || resource.href !== this.expectedResource || resource.href !== codeRecord.resource) {
+      throw new OAuthError(OAuthErrorCode.InvalidTarget, 'resource does not match this server and the authorization request');
     }
 
-    this.authorizationCodes.delete(authorizationCode);
-    const accessToken = this.issueToken('access', codeRecord);
-    const refreshToken = this.issueToken('refresh', codeRecord);
+    const consumedRecord = await this.stateStore.takeAuthorizationCode(authorizationCode);
+    if (!consumedRecord) {
+      throw new OAuthError(OAuthErrorCode.InvalidGrant, 'Invalid authorization code');
+    }
+    const accessToken = this.issueToken('access', consumedRecord);
+    const refreshToken = this.issueToken('refresh', consumedRecord);
 
     return {
       access_token: accessToken,
       token_type: 'bearer',
       expires_in: this.accessTokenTtlSeconds,
       refresh_token: refreshToken,
-      scope: codeRecord.scopes.join(' '),
+      scope: consumedRecord.scopes.join(' '),
     };
   }
 
@@ -260,12 +242,12 @@ export class McpOAuthProvider implements OAuthTokenVerifier {
     scopes?: string[],
     resource?: URL
   ): Promise<OAuthTokens> {
-    const payload = this.verifySealedToken(refreshToken, 'refresh');
+    const payload = await this.verifySealedToken(refreshToken, 'refresh');
     if (payload.clientId !== client.client_id) {
       throw new OAuthError(OAuthErrorCode.InvalidGrant, 'Refresh token was issued to a different client');
     }
-    if (resource !== undefined && payload.resource !== undefined && resource.href !== payload.resource) {
-      throw new OAuthError(OAuthErrorCode.InvalidGrant, 'resource does not match the refresh token');
+    if (!resource || resource.href !== this.expectedResource || resource.href !== payload.resource) {
+      throw new OAuthError(OAuthErrorCode.InvalidTarget, 'resource does not match this server and the refresh token');
     }
 
     const requestedScopes = scopes ?? payload.scopes;
@@ -294,7 +276,10 @@ export class McpOAuthProvider implements OAuthTokenVerifier {
   }
 
   async verifyAccessToken(token: string): Promise<AuthInfo> {
-    const payload = this.verifySealedToken(token, 'access');
+    const payload = await this.verifySealedToken(token, 'access');
+    if (payload.resource !== this.expectedResource) {
+      throw new OAuthError(OAuthErrorCode.InvalidToken, 'Access token was not issued for this MCP server');
+    }
     return {
       token,
       clientId: payload.clientId,
@@ -308,12 +293,15 @@ export class McpOAuthProvider implements OAuthTokenVerifier {
   }
 
   async revokeToken(_client: OAuthClientInformationFull, request: OAuthTokenRevocationRequest): Promise<void> {
+    let payload: SealedTokenPayload;
     try {
-      const payload = this.unsealToken(request.token);
-      this.revokedTokenIds.add(payload.jti);
+      payload = this.unsealToken(request.token);
     } catch {
       // RFC 7009 treats unknown tokens as successfully revoked.
+      return;
     }
+    const ttlMs = Math.max(0, payload.exp * 1000 - this.now());
+    await this.stateStore.revokeToken(payload.jti, ttlMs);
   }
 
   private issueToken(
@@ -335,7 +323,7 @@ export class McpOAuthProvider implements OAuthTokenVerifier {
     });
   }
 
-  private verifySealedToken(token: string, expectedKind: TokenKind): SealedTokenPayload {
+  private async verifySealedToken(token: string, expectedKind: TokenKind): Promise<SealedTokenPayload> {
     let payload: SealedTokenPayload;
     try {
       payload = this.unsealToken(token);
@@ -346,10 +334,10 @@ export class McpOAuthProvider implements OAuthTokenVerifier {
     if (payload.kind !== expectedKind) {
       throw new OAuthError(OAuthErrorCode.InvalidToken, `Invalid ${expectedKind} token`);
     }
-    if (this.revokedTokenIds.has(payload.jti)) {
+    if (await this.stateStore.isTokenRevoked(payload.jti)) {
       throw new OAuthError(OAuthErrorCode.InvalidToken, 'Token has been revoked');
     }
-    if (payload.exp < Math.floor(this.now() / 1000)) {
+    if (payload.exp <= Math.floor(this.now() / 1000)) {
       throw new OAuthError(OAuthErrorCode.InvalidToken, 'Token has expired');
     }
 
@@ -400,19 +388,6 @@ export class McpOAuthProvider implements OAuthTokenVerifier {
     return payload;
   }
 
-  private cleanupExpired(): void {
-    const now = this.now();
-    for (const [requestId, pending] of this.pendingAuthorizations.entries()) {
-      if (pending.expiresAtMs < now) {
-        this.pendingAuthorizations.delete(requestId);
-      }
-    }
-    for (const [code, record] of this.authorizationCodes.entries()) {
-      if (record.expiresAtMs < now) {
-        this.authorizationCodes.delete(code);
-      }
-    }
-  }
 }
 
 function normalizeProviderKeys(rawKeys: ProviderKeys): ProviderKeys {

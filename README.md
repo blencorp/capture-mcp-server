@@ -102,7 +102,7 @@ The server automatically enables tools based on which API keys you provide:
 ## Quick Start
 
 ### Prerequisites
-- **Node.js 18+** (included with Claude Desktop for .mcpb installation)
+- **Node.js 24+** (the supported LTS runtime for this major release)
 - **Claude Desktop** or **ChatGPT Desktop** (Pro/Plus/Business/Enterprise/Education)
 - **API Keys** (Optional - see [API Keys](#api-keys) section):
   - None required: 7 tools (reference + USASpending.gov) work immediately
@@ -347,7 +347,7 @@ Deploy a shared Capture MCP service on AWS for your organization. You deploy onc
 
 - **AWS Account** with permissions for Lambda, API Gateway, S3, CloudFormation, and IAM
 - **AWS CLI** installed and configured ([installation guide](https://docs.aws.amazon.com/cli/latest/userguide/getting-started-install.html))
-- **Node.js 20.x** or later
+- **Node.js 24.x** or later
 - **AWS CDK CLI**: `npm install -g aws-cdk`
 
 ### AWS Credentials Setup
@@ -458,7 +458,7 @@ This creates `capture-mcp-server-hosted.mcpb` containing:
 Send users the `capture-mcp-server-hosted.mcpb` file along with their API key. They install by:
 1. Double-clicking the `.mcpb` file to open in Claude Desktop
 2. Entering their API key (`cap_xxx...`) when prompted
-3. Optionally entering their own SAM.gov or Tango API keys for additional tools
+3. Optionally entering their own SAM.gov, Tango, or HigherGov API keys for additional tools
 4. Clicking Install
 
 **Option B: Manual Configuration**
@@ -476,7 +476,7 @@ They add this to their Claude Desktop config (`~/Library/Application Support/Cla
       "command": "npx",
       "args": [
         "-y",
-        "mcp-remote@0.1.31",
+        "mcp-remote@0.1.49",
         "https://YOUR-MCP-ENDPOINT/mcp",
         "--header",
         "X-Api-Key:cap_xxx..."
@@ -486,7 +486,8 @@ They add this to their Claude Desktop config (`~/Library/Application Support/Cla
 }
 ```
 
-Users can add their own SAM.gov/Tango keys with additional `--header` arguments.
+Users can add their own SAM.gov, Tango, and HigherGov keys with additional
+`--header` arguments.
 
 ### Cost Estimation
 
@@ -596,9 +597,11 @@ npm run cdk:destroy:yolo
 
 This server is designed with flexibility in mind:
 - **USASpending.gov** provides a public API that requires no authentication
-- **SAM.gov** and **Tango** require API keys for access to their data
+- **SAM.gov**, **Tango**, and **HigherGov** require API keys for access to their data
 
-You can start using the server immediately with 4 USASpending.gov tools, then add API keys later to unlock additional capabilities.
+You can start using the server immediately with seven reference and
+USASpending.gov tools, then add provider keys later to unlock the remaining
+capabilities.
 
 ### How to Get API Keys
 
@@ -797,7 +800,7 @@ The Inspector is especially useful for:
    - Verify keys are active (SAM.gov keys take 24 hours to activate)
 
 2. **Confirm Minimum Tool Set**:
-   - Without ANY keys, you should see 4 USASpending.gov tools
+   - Without ANY keys, you should see 7 reference + USASpending.gov tools
    - If you see 0 tools, the server isn't loading correctly
 
 3. **Test with Inspector**:
@@ -1081,7 +1084,8 @@ Common error types:
 
 The server runs in HTTP mode (StreamableHTTP transport) when `MCP_TRANSPORT=http`. Railway is the simplest host.
 
-1. Create a new Railway service from this repo (Nixpacks auto-detects Node).
+1. Create a new Railway service from this repo. `railway.toml` selects
+   Railpack, which resolves Node 24 from `package.json`.
 2. Set environment variables in the Railway dashboard:
    - `MCP_TRANSPORT=http` (required — switches from stdio)
    - `NODE_ENV=production`
@@ -1089,20 +1093,47 @@ The server runs in HTTP mode (StreamableHTTP transport) when `MCP_TRANSPORT=http
    - `MCP_REQUIRE_OAUTH=true` (enables the per-user authorization flow for Claude remote-connector users)
    - `MCP_PUBLIC_BASE_URL=https://<your-domain>` (for example, `https://capture.mcp.blencorp.com`)
    - `OAUTH_TOKEN_SECRET=<random secret>` (protects encrypted per-user provider credentials — generate with `openssl rand -base64 48`)
+   - `OAUTH_REDIS_URL=<Redis connection URL>` (required for production OAuth; `REDIS_URL` is accepted as a fallback). Provision and link a Railway Redis service using Redis 6.2 or newer. This persists dynamic client registrations, pending authorization/code exchanges, and token revocations across rolling deploys and multiple replicas.
+   - `OAUTH_REDIS_PREFIX=capture-mcp:oauth` is optional if the Redis database is shared with another application.
    - `SAM_GOV_API_KEY`, `TANGO_API_KEY`, and/or `HIGHERGOV_API_KEY` only if you want server-wide access to those tools as a fallback. Usually unset for shared deployments; each user supplies their own keys during OAuth authorization.
    - **Do not set `PORT`** — Railway injects it.
-3. Deploy. Nixpacks installs dependencies, `railway.toml` runs `npm run build`, and the service starts via `node dist/server.js`, with healthcheck on `GET /health`.
+3. Deploy. Railpack installs dependencies, `railway.toml` runs `npm run build`,
+   and the service starts via `node dist/server.js`, with healthcheck on
+   `GET /health`.
 4. Add a custom domain in Settings → Domains (e.g. `capture.mcp.blencorp.com`) and point a CNAME at the value Railway shows.
 
 ### CI deploys via GitHub Actions
 
-`.github/workflows/deploy-railway.yml` deploys to Railway on every push to `main` (and is also runnable manually from the **Actions** tab). One-time setup:
+The Release workflow deploys the immutable version tag after its tests and
+GitHub release succeed. `.github/workflows/deploy-railway.yml` is a manual,
+break-glass workflow that requires an explicit branch, tag, or SHA. One-time
+setup:
 
 1. In Railway, generate a project token: **Account → Tokens → Create New Token** (or `railway login --browserless` from a workstation). Copy the token value.
 2. In GitHub, add it as a repo secret: **Settings → Secrets and variables → Actions → New repository secret** named `RAILWAY_TOKEN`.
 3. If Railway's built-in GitHub integration is also enabled (Service → Settings → Source), **disable auto-deploys there** to avoid two parallel builds racing on every push. The Action becomes the single source of truth.
 
-The workflow installs the Railway CLI, runs `railway up --service capture-mcp-server --ci`, and then polls `/health` for up to 5 minutes to confirm the new build is serving traffic.
+The workflow installs the Railway CLI, runs
+`railway up --service capture-mcp-server --ci`, and then verifies the reported
+version/protocol plus real 2026-07-28 `tools/list` and legacy 2025 initialization
+requests. A 200-only health response is not treated as proof of the deployed
+artifact.
+
+Production startup fails closed when OAuth is enabled without Redis. This is
+intentional: process-local OAuth state would lose registrations and in-flight
+authorization codes during a restart or route a multi-step flow to the wrong
+replica. Local development and tests may omit Redis and use the in-memory
+store.
+
+OAuth authorization and token requests must include the canonical MCP
+`resource` URL (for example,
+`https://capture.mcp.blencorp.com/mcp`). Tokens are validated against that
+audience on every bearer request. Clients using an older token that was issued
+without a resource must complete authorization once after this major upgrade.
+The authorization server currently retains Dynamic Client Registration for
+deployed-client compatibility. Client ID Metadata Documents, preferred by the
+2026-07-28 specification, are not implemented in this release; clients must be
+able to use DCR.
 
 ### Auth posture
 
@@ -1115,6 +1146,15 @@ The hosted server accepts two parallel auth modes when `MCP_REQUIRE_OAUTH=true`:
 If `MCP_REQUIRE_OAUTH` is not set, HTTP mode runs unauthenticated: public USASpending tools are visible without any credential, and keyed tools light up from server env vars or request headers.
 
 ### Smoke test after deploy
+
+The release workflow runs the same bounded verifier automatically. It can also
+be run manually:
+
+```bash
+npm run verify:deployment -- \
+  --base-url https://<your-domain> \
+  --expected-version 2.0.0
+```
 
 ```bash
 curl -sf https://<your-domain>/health

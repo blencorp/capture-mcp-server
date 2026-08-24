@@ -17,6 +17,7 @@ import {
   type FormFieldErrors,
 } from './auth/mcp-oauth.js';
 import { oauthEndpointsRouter } from './auth/oauth-endpoints.js';
+import { createOAuthStateStoreFromEnv, type OAuthStateStore } from './auth/oauth-state-store.js';
 
 // Transport mode: 'stdio' (default) or 'http'
 const TRANSPORT_MODE = process.env.MCP_TRANSPORT || 'stdio';
@@ -54,8 +55,8 @@ async function runStdioMode(): Promise<void> {
   const config = envKeyConfig();
 
   if (process.env.DEBUG) {
-    const tools = await initializeTools(config);
-    logStartupInfo(config, tools.length);
+    const registry = await initializeTools(config);
+    logStartupInfo(config, registry.tools.length);
   }
 
   serveStdio(() => buildServer({ config }), {
@@ -90,15 +91,25 @@ async function runHttpMode(): Promise<void> {
   });
 
   let oauthProvider: McpOAuthProvider | undefined;
+  let oauthStateStore: OAuthStateStore | undefined;
 
   if (REQUIRE_OAUTH) {
     const publicBaseUrl = getOAuthPublicBaseUrl(HTTP_PORT);
     const mcpResourceUrl = new URL('/mcp', publicBaseUrl);
+    const tokenSecret = process.env.OAUTH_TOKEN_SECRET || '';
+    // Validate before opening Redis so a bad startup configuration cannot
+    // leave a reconnecting client behind while main() unwinds.
+    if (!tokenSecret.trim()) {
+      throw new Error('OAUTH_TOKEN_SECRET is required when MCP_REQUIRE_OAUTH=true');
+    }
+    oauthStateStore = await createOAuthStateStoreFromEnv();
     oauthProvider = new McpOAuthProvider({
       baseUrl: publicBaseUrl,
-      tokenSecret: process.env.OAUTH_TOKEN_SECRET || '',
+      resourceUrl: mcpResourceUrl,
+      tokenSecret,
       accessTokenTtlSeconds: parsePositiveInt(process.env.OAUTH_ACCESS_TOKEN_TTL_SECONDS),
       refreshTokenTtlSeconds: parsePositiveInt(process.env.OAUTH_REFRESH_TOKEN_TTL_SECONDS),
+      stateStore: oauthStateStore,
     });
 
     app.get('/oauth/authorize', (req: Request, res: Response) => {
@@ -187,7 +198,7 @@ async function runHttpMode(): Promise<void> {
   });
 
   // Start the HTTP server
-  app.listen(HTTP_PORT, () => {
+  const httpServer = app.listen(HTTP_PORT, () => {
     console.log(`Capture MCP Server running in HTTP mode on port ${HTTP_PORT}`);
     console.log(`MCP endpoint: http://localhost:${HTTP_PORT}/mcp`);
     console.log(`Health check: http://localhost:${HTTP_PORT}/health`);
@@ -204,6 +215,23 @@ async function runHttpMode(): Promise<void> {
     console.error('Server error:', error);
     process.exit(1);
   });
+
+  let shuttingDown = false;
+  const shutdown = (signal: string) => {
+    if (shuttingDown) return;
+    shuttingDown = true;
+    console.log(`Received ${signal}; stopping HTTP server`);
+
+    void handleMcp.close()
+      .catch(error => console.error('Failed to close MCP exchanges:', error))
+      .finally(() => {
+        httpServer.close(() => {
+          void oauthStateStore?.close?.().finally(() => process.exit(0));
+        });
+      });
+  };
+  process.once('SIGTERM', () => shutdown('SIGTERM'));
+  process.once('SIGINT', () => shutdown('SIGINT'));
 }
 
 function hasProviderHeader(req: Request): boolean {

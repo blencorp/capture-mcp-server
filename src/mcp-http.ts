@@ -12,8 +12,8 @@ import { buildServer, resolveRequestKeys, type BuildServerOptions, type Resolved
  * The stateless HTTP composition shared by the Railway server and the Lambda
  * handler. Two protocol eras are served side by side:
  *
- * - 2026-07-28 requests go through `createMcpHandler` (`legacy: 'reject'`,
- *   `responseMode: 'json'`).
+ * - 2026-07-28 requests go through `createMcpHandler` (`legacy: 'reject'`).
+ *   Railway keeps the SDK's adaptive response mode; Lambda pins JSON.
  * - 2025-era requests are routed by `isLegacyRequest` to a hand-wired
  *   stateless transport with `enableJsonResponse: true` — byte-for-byte the
  *   serving existing hosted clients were validated against, rather than the
@@ -26,6 +26,15 @@ import { buildServer, resolveRequestKeys, type BuildServerOptions, type Resolved
 export type McpRequest = IncomingMessage & { auth?: AuthInfo; body?: unknown };
 
 export interface CaptureMcpHandlerOptions {
+  /** Modern exchange response shaping. Railway uses auto; Lambda uses json. */
+  responseMode?: 'auto' | 'json' | 'sse';
+  /**
+   * Maximum concurrent 2026-07-28 subscription streams. Set to zero on
+   * request/response-only hosts (notably API Gateway + Lambda) so a listen
+   * request receives a bounded JSON-RPC error instead of opening an SSE body
+   * the host cannot deliver.
+   */
+  maxSubscriptions?: number;
   onerror?: (error: Error) => void;
   /** Observability hook: which key sources served this request. */
   onKeysResolved?: (resolved: ResolvedKeys, era: 'legacy' | 'modern') => void;
@@ -33,8 +42,14 @@ export interface CaptureMcpHandlerOptions {
   onToolResult?: BuildServerOptions['onToolResult'];
 }
 
+export type CaptureMcpHandler = {
+  (req: McpRequest, res: ServerResponse): Promise<void>;
+  /** Close active modern exchanges and subscription streams. */
+  close(): Promise<void>;
+};
+
 export function createCaptureMcpHandler(options: CaptureMcpHandlerOptions = {}) {
-  const { onerror, onKeysResolved, onToolCall, onToolResult } = options;
+  const { maxSubscriptions, responseMode, onerror, onKeysResolved, onToolCall, onToolResult } = options;
 
   const buildForRequest = async (
     era: 'legacy' | 'modern',
@@ -53,11 +68,11 @@ export function createCaptureMcpHandler(options: CaptureMcpHandlerOptions = {}) 
 
   const modernHandler = createMcpHandler(
     ctx => buildForRequest('modern', ctx.authInfo, ctx.requestInfo),
-    { legacy: 'reject', responseMode: 'json', onerror },
+    { legacy: 'reject', responseMode, maxSubscriptions, onerror },
   );
   const modernNodeHandler = toNodeHandler(modernHandler, { onerror });
 
-  return async function handleMcpRequest(req: McpRequest, res: ServerResponse): Promise<void> {
+  const handleMcpRequest = async (req: McpRequest, res: ServerResponse): Promise<void> => {
     try {
       if (!isJsonContentType(req.headers['content-type'])) {
         res.writeHead(415, { 'Content-Type': 'application/json' });
@@ -100,4 +115,6 @@ export function createCaptureMcpHandler(options: CaptureMcpHandlerOptions = {}) 
       }
     }
   };
+  handleMcpRequest.close = () => modernHandler.close();
+  return handleMcpRequest as CaptureMcpHandler;
 }

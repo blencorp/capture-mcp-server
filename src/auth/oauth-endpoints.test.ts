@@ -97,6 +97,15 @@ test('dynamic client registration stores application_type and rejects bad metada
     const secretClient = await registerClient(h.base, { token_endpoint_auth_method: 'client_secret_post' });
     assert.ok(secretClient.client_secret, 'confidential clients get a generated secret');
 
+    const serverAssigned = await registerClient(h.base, {
+      client_id: client.client_id,
+      client_secret: 'attacker-selected-secret',
+      client_id_issued_at: 1,
+    });
+    assert.notEqual(serverAssigned.client_id, client.client_id);
+    assert.equal(serverAssigned.client_secret, undefined);
+    assert.notEqual(serverAssigned.client_id_issued_at, 1);
+
     const missingUris = await fetch(`${h.base}/register`, {
       method: 'POST',
       headers: { 'content-type': 'application/json' },
@@ -111,6 +120,20 @@ test('dynamic client registration stores application_type and rejects bad metada
       body: JSON.stringify({ redirect_uris: ['http://localhost:9999/callback'], application_type: 'hologram' }),
     });
     assert.equal(badType.status, 400);
+
+    for (const badMetadata of [
+      { grant_types: ['password'] },
+      { response_types: ['token'] },
+      { scope: 'mcp:tools admin' },
+    ]) {
+      const response = await fetch(`${h.base}/register`, {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ redirect_uris: ['http://localhost:9999/callback'], ...badMetadata }),
+      });
+      assert.equal(response.status, 400);
+      assert.equal((await response.json()).error, 'invalid_client_metadata');
+    }
   } finally {
     await h.close();
   }
@@ -143,6 +166,25 @@ test('authorize enforces PKCE S256 and delivers errors by redirect with iss', as
     badRedirect.searchParams.set('redirect_uri', 'http://evil.example/steal');
     const badRedirectRes = await fetch(badRedirect, { redirect: 'manual' });
     assert.equal(badRedirectRes.status, 400, 'unregistered redirect_uri is refused, not redirected');
+
+    const noResource = new URL(noChallenge);
+    noResource.searchParams.set('code_challenge', 'valid-looking-challenge');
+    noResource.searchParams.set('code_challenge_method', 'S256');
+    const noResourceRes = await fetch(noResource, { redirect: 'manual' });
+    assert.equal(noResourceRes.status, 302);
+    assert.equal(
+      new URL(noResourceRes.headers.get('location')!).searchParams.get('error'),
+      'invalid_target',
+    );
+
+    const wrongResource = new URL(noResource);
+    wrongResource.searchParams.set('resource', 'https://other.example/mcp');
+    const wrongResourceRes = await fetch(wrongResource, { redirect: 'manual' });
+    assert.equal(wrongResourceRes.status, 302);
+    assert.equal(
+      new URL(wrongResourceRes.headers.get('location')!).searchParams.get('error'),
+      'invalid_target',
+    );
   } finally {
     await h.close();
   }
@@ -161,6 +203,7 @@ test('full code flow: PKCE verification gates the token endpoint, success carrie
     authUrl.searchParams.set('redirect_uri', 'http://localhost:9999/callback');
     authUrl.searchParams.set('code_challenge', challenge);
     authUrl.searchParams.set('code_challenge_method', 'S256');
+    authUrl.searchParams.set('resource', `${h.base}/mcp`);
     authUrl.searchParams.set('state', 'flow-state');
     const authRes = await fetch(authUrl, { redirect: 'manual' });
     assert.equal(authRes.status, 302);
@@ -183,6 +226,7 @@ test('full code flow: PKCE verification gates the token endpoint, success carrie
         client_id: client.client_id,
         code,
         code_verifier: 'not-the-right-verifier-not-the-right-verifier',
+        resource: `${h.base}/mcp`,
       }),
     });
     assert.equal(wrongVerifier.status, 400);
@@ -197,6 +241,7 @@ test('full code flow: PKCE verification gates the token endpoint, success carrie
         code,
         code_verifier: verifier,
         redirect_uri: 'http://localhost:9999/callback',
+        resource: `${h.base}/mcp`,
       }),
     });
     assert.equal(tokenRes.status, 200);
@@ -215,6 +260,7 @@ test('full code flow: PKCE verification gates the token endpoint, success carrie
         grant_type: 'refresh_token',
         client_id: client.client_id,
         refresh_token: tokens.refresh_token,
+        resource: `${h.base}/mcp`,
       }),
     });
     assert.equal(refreshRes.status, 200);
@@ -250,6 +296,32 @@ test('token endpoint rejects unknown clients and grant types', async () => {
     });
     assert.equal(badGrant.status, 400);
     assert.equal((await badGrant.json()).error, 'unsupported_grant_type');
+
+    const basicClient = await registerClient(h.base, { token_endpoint_auth_method: 'client_secret_basic' });
+    const wrongMethod = await fetch(`${h.base}/token`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/x-www-form-urlencoded' },
+      body: new URLSearchParams({
+        grant_type: 'password',
+        client_id: basicClient.client_id,
+        client_secret: basicClient.client_secret,
+      }),
+    });
+    assert.equal(wrongMethod.status, 401);
+
+    const encodedCredentials = Buffer.from(
+      `${encodeURIComponent(basicClient.client_id)}:${encodeURIComponent(basicClient.client_secret)}`,
+    ).toString('base64');
+    const correctMethod = await fetch(`${h.base}/token`, {
+      method: 'POST',
+      headers: {
+        'content-type': 'application/x-www-form-urlencoded',
+        authorization: `Basic ${encodedCredentials}`,
+      },
+      body: new URLSearchParams({ grant_type: 'password' }),
+    });
+    assert.equal(correctMethod.status, 400);
+    assert.equal((await correctMethod.json()).error, 'unsupported_grant_type');
   } finally {
     await h.close();
   }

@@ -61,7 +61,12 @@ export function oauthEndpointsRouter(options: OAuthEndpointOptions): Router {
     if (!clientId) {
       return sendError(res, 400, OAuthErrorCode.InvalidRequest, 'client_id is required');
     }
-    const client = provider.clientsStore.getClient(clientId);
+    let client: OAuthClientInformationFull | undefined;
+    try {
+      client = await provider.getClient(clientId);
+    } catch (error) {
+      return sendOAuthError(res, error);
+    }
     if (!client) {
       return sendError(res, 400, OAuthErrorCode.InvalidClient, 'Unknown client_id');
     }
@@ -109,14 +114,18 @@ export function oauthEndpointsRouter(options: OAuthEndpointOptions): Router {
       return redirectError(OAuthErrorCode.InvalidScope, `Client was not registered with scope ${unknownScope}`);
     }
 
-    let resource: URL | undefined;
+    let resource: URL;
     const rawResource = str(q.resource);
-    if (rawResource !== undefined) {
-      try {
-        resource = new URL(rawResource);
-      } catch {
-        return redirectError(OAuthErrorCode.InvalidRequest, 'resource must be a valid URL');
-      }
+    if (rawResource === undefined) {
+      return redirectError(OAuthErrorCode.InvalidTarget, 'resource is required');
+    }
+    try {
+      resource = new URL(rawResource);
+    } catch {
+      return redirectError(OAuthErrorCode.InvalidTarget, 'resource must be a valid URL');
+    }
+    if (resource.href !== mcpResourceUrl.href) {
+      return redirectError(OAuthErrorCode.InvalidTarget, `resource must be ${mcpResourceUrl.href}`);
     }
 
     const params: AuthorizationParams = { redirectUri, codeChallenge, scopes, state, resource };
@@ -133,7 +142,7 @@ export function oauthEndpointsRouter(options: OAuthEndpointOptions): Router {
   router.post('/token', form, async (req: Request, res: Response) => {
     let client: OAuthClientInformationFull;
     try {
-      client = authenticateClient(provider, req);
+      client = await authenticateClient(provider, req);
     } catch (error) {
       return sendOAuthError(res, error);
     }
@@ -161,7 +170,7 @@ export function oauthEndpointsRouter(options: OAuthEndpointOptions): Router {
           code,
           codeVerifier,
           str(req.body?.redirect_uri),
-          parseResource(req.body?.resource),
+          parseRequiredResource(req.body?.resource),
         );
         return sendTokens(res, tokens);
       }
@@ -176,7 +185,7 @@ export function oauthEndpointsRouter(options: OAuthEndpointOptions): Router {
           client,
           refreshToken,
           scope === undefined ? undefined : scope.split(' ').filter(Boolean),
-          parseResource(req.body?.resource),
+          parseRequiredResource(req.body?.resource),
         );
         return sendTokens(res, tokens);
       }
@@ -190,7 +199,7 @@ export function oauthEndpointsRouter(options: OAuthEndpointOptions): Router {
     }
   });
 
-  router.post('/register', json, (req: Request, res: Response) => {
+  router.post('/register', json, async (req: Request, res: Response) => {
     const body = req.body;
     if (!body || typeof body !== 'object') {
       return sendError(res, 400, 'invalid_client_metadata', 'Request body must be a JSON object');
@@ -214,35 +223,65 @@ export function oauthEndpointsRouter(options: OAuthEndpointOptions): Router {
       return sendError(res, 400, 'invalid_client_metadata', `Unsupported application_type: ${applicationType}`);
     }
 
-    const nowSeconds = Math.floor(Date.now() / 1000);
+    const grantTypes = body.grant_types === undefined
+      ? ['authorization_code', 'refresh_token']
+      : body.grant_types;
+    if (!Array.isArray(grantTypes) || grantTypes.length === 0 ||
+        !grantTypes.every((grant: unknown) =>
+          typeof grant === 'string' && ['authorization_code', 'refresh_token'].includes(grant))) {
+      return sendError(res, 400, 'invalid_client_metadata', 'grant_types contains an unsupported grant');
+    }
+
+    const responseTypes = body.response_types === undefined ? ['code'] : body.response_types;
+    if (!Array.isArray(responseTypes) || responseTypes.length === 0 ||
+        !responseTypes.every((responseType: unknown) => responseType === 'code')) {
+      return sendError(res, 400, 'invalid_client_metadata', 'response_types may contain only code');
+    }
+
+    if (body.scope !== undefined) {
+      if (typeof body.scope !== 'string' ||
+          body.scope.split(' ').filter(Boolean).some((scope: string) => scope !== DEFAULT_CLIENT_SCOPE)) {
+        return sendError(res, 400, 'invalid_client_metadata', `scope may contain only ${DEFAULT_CLIENT_SCOPE}`);
+      }
+    }
+
+    // DCR assigns all credential fields. Never let submitted metadata select
+    // an existing client id or smuggle a prechosen secret into the store.
+    const {
+      client_id: _clientId,
+      client_id_issued_at: _clientIdIssuedAt,
+      client_secret: _clientSecret,
+      client_secret_expires_at: _clientSecretExpiresAt,
+      ...clientMetadata
+    } = body;
     const registration: Record<string, unknown> = {
-      ...body,
+      ...clientMetadata,
       redirect_uris: redirectUris,
       token_endpoint_auth_method: authMethod,
       // 2026-07-28 authorization hardening: application_type is part of the
       // stored registration, not silently dropped.
       application_type: applicationType,
-      grant_types: Array.isArray(body.grant_types) && body.grant_types.length > 0
-        ? body.grant_types
-        : ['authorization_code', 'refresh_token'],
-      response_types: Array.isArray(body.response_types) && body.response_types.length > 0
-        ? body.response_types
-        : ['code'],
+      grant_types: grantTypes,
+      response_types: responseTypes,
     };
     if (authMethod !== 'none') {
       registration.client_secret = randomBytes(32).toString('base64url');
       registration.client_secret_expires_at = 0;
     }
 
-    const client = provider.clientsStore.registerClient(
-      registration as Omit<OAuthClientInformationFull, 'client_id' | 'client_id_issued_at'>,
-    );
-    res.status(201).json(client);
+    try {
+      const client = await provider.registerClient(
+        registration as Omit<OAuthClientInformationFull, 'client_id' | 'client_id_issued_at'>,
+      );
+      res.status(201).json(client);
+    } catch (error) {
+      return sendOAuthError(res, error);
+    }
   });
 
   router.post('/revoke', form, async (req: Request, res: Response) => {
     try {
-      const client = authenticateClient(provider, req);
+      const client = await authenticateClient(provider, req);
       const token = str(req.body?.token);
       if (!token) {
         throw new OAuthError(OAuthErrorCode.InvalidRequest, 'token is required');
@@ -260,12 +299,14 @@ export function oauthEndpointsRouter(options: OAuthEndpointOptions): Router {
   return router;
 }
 
-function authenticateClient(provider: McpOAuthProvider, req: Request): OAuthClientInformationFull {
+async function authenticateClient(provider: McpOAuthProvider, req: Request): Promise<OAuthClientInformationFull> {
   let clientId = str(req.body?.client_id);
   let clientSecret = str(req.body?.client_secret);
+  let usedBasicAuth = false;
 
   const authHeader = req.get('authorization');
   if (authHeader?.toLowerCase().startsWith('basic ')) {
+    usedBasicAuth = true;
     const decoded = Buffer.from(authHeader.slice('basic '.length), 'base64').toString('utf8');
     const separator = decoded.indexOf(':');
     if (separator >= 0) {
@@ -277,12 +318,21 @@ function authenticateClient(provider: McpOAuthProvider, req: Request): OAuthClie
   if (!clientId) {
     throw new OAuthError(OAuthErrorCode.InvalidClient, 'client_id is required');
   }
-  const client = provider.clientsStore.getClient(clientId);
+  const client = await provider.getClient(clientId);
   if (!client) {
     throw new OAuthError(OAuthErrorCode.InvalidClient, 'Unknown client_id');
   }
 
   const authMethod = client.token_endpoint_auth_method ?? 'none';
+  if (authMethod === 'client_secret_basic' && !usedBasicAuth) {
+    throw new OAuthError(OAuthErrorCode.InvalidClient, 'Client must authenticate with client_secret_basic');
+  }
+  if (authMethod === 'client_secret_post' && usedBasicAuth) {
+    throw new OAuthError(OAuthErrorCode.InvalidClient, 'Client must authenticate with client_secret_post');
+  }
+  if (authMethod === 'none' && usedBasicAuth) {
+    throw new OAuthError(OAuthErrorCode.InvalidClient, 'Public client must not use client secret authentication');
+  }
   if (authMethod !== 'none') {
     if (!clientSecret || !client.client_secret || !constantTimeEquals(client.client_secret, clientSecret)) {
       throw new OAuthError(OAuthErrorCode.InvalidClient, 'Invalid client credentials');
@@ -322,13 +372,15 @@ function constantTimeEquals(a: string, b: string): boolean {
   return timingSafeEqual(bufA, bufB);
 }
 
-function parseResource(raw: unknown): URL | undefined {
+function parseRequiredResource(raw: unknown): URL {
   const value = typeof raw === 'string' ? raw : undefined;
-  if (value === undefined) return undefined;
+  if (value === undefined) {
+    throw new OAuthError(OAuthErrorCode.InvalidTarget, 'resource is required');
+  }
   try {
     return new URL(value);
   } catch {
-    throw new OAuthError(OAuthErrorCode.InvalidRequest, 'resource must be a valid URL');
+    throw new OAuthError(OAuthErrorCode.InvalidTarget, 'resource must be a valid URL');
   }
 }
 
