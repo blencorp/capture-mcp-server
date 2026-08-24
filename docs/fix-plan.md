@@ -20,8 +20,9 @@
 > mappings and parameter names are spec-verified and corrected; a live-key
 > `capture-fixtures` run then confirmed the mappings against real payloads and
 > the HigherGov smoke checks pass — see docs/upstream-api-notes.md. The Tango
-> smoke run is still outstanding (the account's small daily rate limit was
-> exhausted during capture).
+> smoke ran 2026-08-24 after the daily rate limit reset: all ten checks pass
+> live (8A/8AN disjoint, honest totals, amount-filter echo, duplicate-free
+> cursor walk past 100 rows, agency name rejected / code binds).
 
 **Scope.** Capture MCP is a Model Context Protocol server exposing federal procurement and
 spending data (SAM.gov, USASpending.gov, Tango, HigherGov) as 21 typed tools so a BD agent
