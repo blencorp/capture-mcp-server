@@ -110,7 +110,8 @@ Server designed for Claude Desktop integration via MCP configuration:
       "args": ["/path/to/capture-mcp-server/dist/server.js"],
       "env": {
         "SAM_GOV_API_KEY": "your-sam-api-key",
-        "TANGO_API_KEY": "your-tango-api-key"
+        "TANGO_API_KEY": "your-tango-api-key",
+        "HIGHERGOV_API_KEY": "your-highergov-api-key"
       }
     }
   }

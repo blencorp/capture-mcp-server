@@ -42,6 +42,7 @@ Enhancement suggestions are tracked as GitHub issues. Before creating enhancemen
    ```bash
    export SAM_GOV_API_KEY=your-sam-api-key   # Enables SAM.gov + join tools
    export TANGO_API_KEY=your-tango-api-key   # Enables Tango tools
+   export HIGHERGOV_API_KEY=your-highergov-api-key # Enables HigherGov tools
    ```
 
 4. Build the project:
