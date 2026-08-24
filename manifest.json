@@ -147,6 +147,34 @@
     {
       "name": "get_opportunity_documents",
       "description": "List solicitation documents and amendments for one opportunity with fetchable URLs"
+    },
+    {
+      "name": "search_tango_protests",
+      "description": "Search GAO bid protests by agency, protester, outcome, and dates for pre-bid risk scoring"
+    },
+    {
+      "name": "get_tango_protest",
+      "description": "Get one GAO bid protest record by case number"
+    },
+    {
+      "name": "search_tango_idvs",
+      "description": "Search IDIQ/BPA/FSS indefinite-delivery vehicles that issue task orders"
+    },
+    {
+      "name": "get_tango_idv_children",
+      "description": "Get child IDVs, task orders, and transactions under one IDV"
+    },
+    {
+      "name": "search_tango_vehicles",
+      "description": "Search the federal contract-vehicle catalog (GWACs, MAS, BPAs)"
+    },
+    {
+      "name": "search_tango_otas",
+      "description": "Search Other Transaction Authority (OTA) awards"
+    },
+    {
+      "name": "get_tango_entity_metrics",
+      "description": "Time-series obligations for one UEI bucketed by month, quarter, or year"
     }
   ],
   "server": {
