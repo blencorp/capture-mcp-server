@@ -39,6 +39,12 @@ Open items:
   daily ceiling is small; budget probes accordingly. The captured page
   (`fixtures/raw/tango-contracts-page.json`) shows the current default list
   response DOES include `set_aside` per row.
+- **Smoke verdict (2026-08-24, live)**: all ten `npm run smoke` Tango checks
+  pass — 8A/8AN pages disjoint with exact per-row codes, set-aside totals
+  suppressed, `award_amount_min` echoed client-side with the unfiltered total
+  preserved, a 3-page cursor walk enumerated >100 rows with no duplicates,
+  agency names rejected with guidance, and agency code `2100` returned only
+  Army rows.
 - `count` is documented as "the total number of contracts matching the query" (award-level); whether modifications/transactions ever roll up separately is unverified.
 - Unscoped totals diverge from agency-scoped sums (unscoped 8AN = 1,331 vs Army alone = 510 + GSA 107, while USAspending grand total = 1,928). Reported per P0-4; until resolved, set-aside-filtered totals are surfaced as `total_upstream_unverified`.
 - Contract detail endpoint `GET /api/contracts/{key}/` is documented (transactions + subawards_summary) — a candidate backend for future mod-history work.
