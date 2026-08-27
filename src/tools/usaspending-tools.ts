@@ -1,9 +1,59 @@
 import { Tool } from "@modelcontextprotocol/sdk/types.js";
 import { ApiClient } from '../utils/api-client.js';
 import { describeSetAside, validateSetAsideCodes, lookupReferenceCode } from '../utils/fpds-codes.js';
+import { listEnvelope } from '../utils/envelope.js';
+import { pageNumberFromCursor } from '../utils/pagination.js';
 
 // Contract prime-award type codes (see lookup_reference_code domain award_type).
 const CONTRACT_AWARD_TYPE_CODES = ['A', 'B', 'C', 'D'];
+const IDV_AWARD_TYPE_CODES = ['IDV_A', 'IDV_B', 'IDV_B_A', 'IDV_B_B', 'IDV_B_C', 'IDV_C', 'IDV_D', 'IDV_E'];
+const USASPENDING_AWARD_TYPE_GROUPS: Record<string, string[]> = {
+  contracts: CONTRACT_AWARD_TYPE_CODES,
+  idvs: IDV_AWARD_TYPE_CODES,
+  loans: ['07', '08', 'F003', 'F004'],
+  grants: ['02', '03', '04', '05', 'F001', 'F002'],
+  other_financial_assistance: ['06', '10', 'F006', 'F007'],
+  direct_payments: ['09', '11', '-1', 'F005', 'F008', 'F009', 'F010'],
+};
+
+// USASpending rejects spending_by_award requests that mix award-type groups.
+const PIID_AWARD_TYPE_GROUPS = [
+  { name: 'contracts', codes: CONTRACT_AWARD_TYPE_CODES },
+  { name: 'idvs', codes: IDV_AWARD_TYPE_CODES },
+];
+const AWARD_RESOLUTION_PAGE_SIZE = 100;
+const MAX_AWARD_RESOLUTION_PAGES = 3;
+const MAX_AWARD_CANDIDATES = 10;
+
+function validateAwardTypeGroup(input: unknown): { codes: string[]; group: string } {
+  if (input !== undefined && !Array.isArray(input)) {
+    throw new Error('award_types must be an array of USASpending award type codes');
+  }
+  if (Array.isArray(input) && input.length === 0) {
+    throw new Error('award_types must contain at least one USASpending award type code');
+  }
+  const rawCodes = Array.isArray(input) ? input : CONTRACT_AWARD_TYPE_CODES;
+  const codes = [...new Set(rawCodes.map((code) => String(code).trim().toUpperCase()).filter(Boolean))];
+  const groupByCode = new Map<string, string>();
+  for (const [group, groupCodes] of Object.entries(USASPENDING_AWARD_TYPE_GROUPS)) {
+    for (const code of groupCodes) groupByCode.set(code, group);
+  }
+
+  const unknown = codes.filter((code) => !groupByCode.has(code));
+  if (unknown.length > 0) {
+    throw new Error(
+      `Unknown USASpending award type code(s): ${unknown.join(', ')}. Valid codes: ${[...groupByCode.keys()].join(', ')}`
+    );
+  }
+
+  const groups = [...new Set(codes.map((code) => groupByCode.get(code)!))];
+  if (groups.length !== 1) {
+    throw new Error(
+      `award_types must contain codes from exactly one USASpending group; received ${groups.join(', ')}. Search each group separately.`
+    );
+  }
+  return { codes, group: groups[0] };
+}
 
 const GROUP_BY_CATEGORY: Record<string, string> = {
   awarding_agency: 'awarding_agency',
@@ -86,7 +136,7 @@ export const usaspendingTools = {
             },
             fiscal_year: {
               type: "number",
-              description: "Fiscal year to search (e.g., 2024)"
+              description: "Fiscal year to search by award action date (e.g., 2024)"
             },
             min_amount: {
               type: "number",
@@ -99,11 +149,15 @@ export const usaspendingTools = {
             award_types: {
               type: "array",
               items: { type: "string" },
-              description: "Award type codes to filter (e.g., ['10'] for contracts)"
+              description: "Award type codes from one USASpending group only (default ['A','B','C','D'] for contract prime awards). Search contracts, IDVs, grants, loans, and other assistance groups separately."
             },
             limit: {
               type: "number",
               description: "Number of results (default: 10, max: 100)"
+            },
+            cursor: {
+              type: "string",
+              description: "Page number from the prior response's next_cursor. Reuse the same filters and limit when paging."
             }
           },
           required: ["recipient_name"]
@@ -112,13 +166,13 @@ export const usaspendingTools = {
       {
         name: "get_award_detail",
         description:
-          "Get the full FPDS record for a single award from USASpending — the verification primitive: type_set_aside with description, extent_competed, number_of_offers_received, and other_than_full_and_open competition authority. Use it to confirm that a filtered search actually returned what it claimed before a number goes in a memo. Accepts a USASpending generated award ID (CONT_AWD_..., the contract_id Tango returns) or a bare PIID (resolved via award search first).",
+          "Get the full FPDS record for a single procurement award from USASpending — the verification primitive: type_set_aside with description, extent_competed, number_of_offers_received, other_than_full_and_open competition authority, and current vs ultimate completion dates. Use it to confirm that a filtered search actually returned what it claimed before a number goes in a memo. Accepts a procurement generated award ID (CONT_AWD_... or CONT_IDV_...) or a bare PIID (resolved via award search first). Assistance IDs (ASST_...) are rejected because they do not carry FPDS competition fields.",
         inputSchema: {
           type: "object",
           properties: {
             award_id: {
               type: "string",
-              description: "USASpending generated_unique_award_id (e.g. 'CONT_AWD_36C10B21D0042_3600_-NONE-_-NONE-') or a bare PIID (e.g. '36C10B21D0042')"
+              description: "USASpending procurement generated_unique_award_id (e.g. 'CONT_AWD_36C10B26F0223_3600_47QRCA24DV006_4732') or a bare PIID (e.g. '36C10B26F0223')"
             }
           },
           required: ["award_id"]
@@ -222,39 +276,114 @@ export const usaspendingTools = {
     if (!awardIdInput) {
       return { error: { code: 'bad_request', message: 'award_id is required' } };
     }
+    if (/^ASST_/.test(awardIdInput)) {
+      return {
+        error: {
+          code: 'bad_request',
+          message:
+            'get_award_detail supports procurement awards only (CONT_AWD_..., CONT_IDV_..., or a bare PIID). ASST_* assistance awards do not contain FPDS competition fields.',
+        },
+      };
+    }
 
     // A bare PIID needs resolving to USASpending's generated award ID first.
     let generatedId = awardIdInput;
-    const warnings: string[] = [];
-    if (!/^(CONT|ASST)_/.test(awardIdInput)) {
-      const search = await ApiClient.usaspendingPost('/search/spending_by_award/', {
-        filters: {
-          award_ids: [awardIdInput],
-          award_type_codes: [...CONTRACT_AWARD_TYPE_CODES, 'IDV_A', 'IDV_B', 'IDV_B_A', 'IDV_B_B', 'IDV_B_C', 'IDV_C', 'IDV_D', 'IDV_E'],
-        },
-        fields: ['Award ID', 'generated_internal_id'],
-        limit: 5,
-      });
-      if (!search.success) {
-        return { error: search.error };
+    if (!/^CONT_(AWD|IDV)_/.test(awardIdInput)) {
+      const candidates: any[] = [];
+      const candidateIds = new Set<string>();
+      let resolutionIncomplete = false;
+      let candidatesTruncated = false;
+
+      for (const [groupIndex, awardTypeGroup] of PIID_AWARD_TYPE_GROUPS.entries()) {
+        let page = 1;
+        let hasNext = false;
+
+        do {
+          const search = await ApiClient.usaspendingPost('/search/spending_by_award/', {
+            filters: {
+              award_ids: [awardIdInput],
+              award_type_codes: awardTypeGroup.codes,
+            },
+            fields: [
+              'Award ID',
+              'generated_internal_id',
+              'Award Type',
+              'Awarding Agency',
+              'Recipient Name',
+            ],
+            limit: AWARD_RESOLUTION_PAGE_SIZE,
+            page,
+          });
+          if (!search.success) {
+            return { error: search.error };
+          }
+
+          // award_ids is a fuzzy full-text filter unless callers add quotes.
+          // Keep only exact PIID matches and fail closed if the identifier is
+          // not globally unique across contract and IDV award groups.
+          for (const result of search.data.results ?? []) {
+            if (
+              result.generated_internal_id &&
+              String(result['Award ID'] ?? '').toUpperCase() === awardIdInput.toUpperCase() &&
+              !candidateIds.has(result.generated_internal_id)
+            ) {
+              candidateIds.add(result.generated_internal_id);
+              if (candidates.length < MAX_AWARD_CANDIDATES) {
+                candidates.push({
+                  generated_unique_award_id: result.generated_internal_id,
+                  piid: result['Award ID'],
+                  award_type_group: awardTypeGroup.name,
+                  award_type: result['Award Type'] ?? null,
+                  awarding_agency: result['Awarding Agency'] ?? null,
+                  recipient: result['Recipient Name'] ?? null,
+                });
+              } else {
+                candidatesTruncated = true;
+              }
+            }
+          }
+
+          hasNext = Boolean(search.data.page_metadata?.hasNext);
+          if (candidateIds.size > 1) {
+            // We stop as soon as ambiguity is established. Mark the candidate
+            // list as non-exhaustive when pages or award groups remain.
+            if (hasNext || groupIndex < PIID_AWARD_TYPE_GROUPS.length - 1) candidatesTruncated = true;
+            break;
+          }
+
+          page += 1;
+        } while (hasNext && page <= MAX_AWARD_RESOLUTION_PAGES);
+
+        if (candidateIds.size > 1) break;
+        if (hasNext) {
+          resolutionIncomplete = true;
+          break;
+        }
       }
-      const matches = (search.data.results ?? []).filter((r: any) => r.generated_internal_id);
-      if (matches.length === 0) {
+
+      if (candidateIds.size > 1 || resolutionIncomplete) {
         return {
           error: {
-            code: 'not_found',
-            message: `No award found for PIID "${awardIdInput}". Pass a USASpending generated award ID (CONT_AWD_...) if you have one.`,
+            code: 'ambiguous_award_id',
+            message: resolutionIncomplete
+              ? `Could not establish a unique award for PIID "${awardIdInput}" within ${MAX_AWARD_RESOLUTION_PAGES * AWARD_RESOLUTION_PAGE_SIZE} search results. Pass a USASpending generated award ID from the candidates or recipient search.`
+              : `PIID "${awardIdInput}" matches multiple awards. Pass one of the generated_unique_award_id candidate values instead.`,
+            candidate_count_at_least: candidateIds.size,
+            candidates_truncated: candidatesTruncated,
+            candidates,
           },
         };
       }
-      if (matches.length > 1) {
-        warnings.push(
-          `PIID "${awardIdInput}" matched ${matches.length} awards; returning the first. All matches: ${matches
-            .map((m: any) => m.generated_internal_id)
-            .join(', ')}`
-        );
+
+      if (candidates.length === 0) {
+        return {
+          error: {
+            code: 'not_found',
+            message: `No procurement award found for PIID "${awardIdInput}". Pass a USASpending generated award ID (CONT_AWD_... or CONT_IDV_...) if you have one.`,
+          },
+        };
       }
-      generatedId = matches[0].generated_internal_id;
+      generatedId = candidates[0].generated_unique_award_id;
     }
 
     const response = await ApiClient.usaspendingGet(`/awards/${encodeURIComponent(generatedId)}/`);
@@ -265,6 +394,8 @@ export const usaspendingTools = {
     const award = response.data;
     const contractData = award.latest_transaction_contract_data ?? {};
     const setAsideCode = contractData.type_set_aside ?? null;
+    const otherThanFullAndOpenCode =
+      contractData.other_than_full_and_open ?? contractData.other_than_full_and_open_competition ?? null;
 
     return {
       generated_unique_award_id: award.generated_unique_award_id ?? generatedId,
@@ -287,7 +418,9 @@ export const usaspendingTools = {
       period_of_performance: {
         start_date: award.period_of_performance?.start_date ?? null,
         end_date: award.period_of_performance?.end_date ?? null,
+        current_end_date: award.period_of_performance?.end_date ?? null,
         potential_end_date: award.period_of_performance?.potential_end_date ?? null,
+        ultimate_end_date: award.period_of_performance?.potential_end_date ?? null,
       },
       // The competition block — the fields that verify what a filter claimed.
       competition: {
@@ -313,8 +446,12 @@ export const usaspendingTools = {
                 null,
             }
           : null,
-        other_than_full_and_open_competition:
-          contractData.other_than_full_and_open ?? contractData.other_than_full_and_open_competition ?? null,
+        other_than_full_and_open_competition: otherThanFullAndOpenCode,
+        other_than_full_and_open_competition_description: otherThanFullAndOpenCode
+          ? lookupReferenceCode('competition', String(otherThanFullAndOpenCode))?.description ??
+            contractData.other_than_full_and_open_description ??
+            null
+          : null,
       },
       naics: {
         code: contractData.naics ?? null,
@@ -325,7 +462,6 @@ export const usaspendingTools = {
         description: contractData.product_or_service_description ?? contractData.product_or_service_co_desc ?? null,
       },
       source: 'USASpending /awards/ (FPDS latest transaction)',
-      ...(warnings.length ? { warnings } : {}),
     };
   },
 
@@ -593,17 +729,67 @@ export const usaspendingTools = {
       min_amount, 
       max_amount, 
       award_types, 
-      limit = 10 
+      limit = 10,
+      cursor,
     } = args;
     
-    if (!recipient_name) {
-      throw new Error("Recipient name is required");
+    const recipientName = String(recipient_name ?? '').trim();
+    if (!recipientName) {
+      return { error: { code: 'bad_request', message: 'recipient_name is required' } };
+    }
+
+    let typeSelection: { codes: string[]; group: string };
+    try {
+      typeSelection = validateAwardTypeGroup(award_types);
+    } catch (error) {
+      return {
+        error: {
+          code: 'bad_request',
+          message: error instanceof Error ? error.message : String(error),
+        },
+      };
+    }
+
+    const pageToken = pageNumberFromCursor(cursor);
+    const page = pageToken === null ? 1 : Number(pageToken);
+    if (!Number.isInteger(page) || page < 1) {
+      return { error: { code: 'bad_request', message: 'cursor must be a positive page number from next_cursor' } };
+    }
+    const numericLimit = Number(limit);
+    if (!Number.isFinite(numericLimit)) {
+      return { error: { code: 'bad_request', message: 'limit must be a finite number' } };
+    }
+    const pageSize = Math.min(Math.max(Math.floor(numericLimit), 1), 100);
+
+    const normalizedFiscalYear = fiscal_year === undefined ? undefined : Number(fiscal_year);
+    if (
+      normalizedFiscalYear !== undefined &&
+      (!Number.isInteger(normalizedFiscalYear) || normalizedFiscalYear < 2001)
+    ) {
+      return { error: { code: 'bad_request', message: 'fiscal_year must be an integer greater than or equal to 2001' } };
+    }
+
+    const normalizedMinAmount = min_amount === undefined ? undefined : Number(min_amount);
+    const normalizedMaxAmount = max_amount === undefined ? undefined : Number(max_amount);
+    if (normalizedMinAmount !== undefined && !Number.isFinite(normalizedMinAmount)) {
+      return { error: { code: 'bad_request', message: 'min_amount must be a finite number' } };
+    }
+    if (normalizedMaxAmount !== undefined && !Number.isFinite(normalizedMaxAmount)) {
+      return { error: { code: 'bad_request', message: 'max_amount must be a finite number' } };
+    }
+    if (
+      normalizedMinAmount !== undefined &&
+      normalizedMaxAmount !== undefined &&
+      normalizedMinAmount > normalizedMaxAmount
+    ) {
+      return { error: { code: 'bad_request', message: 'min_amount must be less than or equal to max_amount' } };
     }
 
     // Build the search request for USASpending API
     const searchRequest: any = {
       filters: {
-        recipient_search_text: [recipient_name]
+        recipient_search_text: [recipientName],
+        award_type_codes: typeSelection.codes,
       },
       fields: [
         "Award ID",
@@ -614,32 +800,30 @@ export const usaspendingTools = {
         "Award Type",
         "Start Date",
         "End Date",
-        "Description"
+        "Description",
+        "generated_internal_id"
       ],
       sort: "Award Amount",
       order: "desc",
-      limit: Math.min(limit, 100)
+      limit: pageSize,
+      page,
     };
 
     // Add time period filter if fiscal year specified
-    if (fiscal_year) {
+    if (normalizedFiscalYear !== undefined) {
       searchRequest.filters.time_period = [{
-        start_date: `${fiscal_year - 1}-10-01`, // FY starts Oct 1
-        end_date: `${fiscal_year}-09-30`        // FY ends Sep 30
+        start_date: `${normalizedFiscalYear - 1}-10-01`, // FY starts Oct 1
+        end_date: `${normalizedFiscalYear}-09-30`,       // FY ends Sep 30
+        date_type: 'action_date',
       }];
     }
 
     // Add award amount filters
-    if (min_amount || max_amount) {
+    if (min_amount !== undefined || max_amount !== undefined) {
       searchRequest.filters.award_amounts = [{
-        lower_bound: min_amount || 0,
-        upper_bound: max_amount || 999999999999
+        lower_bound: normalizedMinAmount ?? 0,
+        upper_bound: normalizedMaxAmount ?? 999999999999
       }];
-    }
-
-    // Add award type filters
-    if (award_types && Array.isArray(award_types)) {
-      searchRequest.filters.award_type_codes = award_types;
     }
 
     const response = await ApiClient.usaspendingPost('/search/spending_by_award/', searchRequest);
@@ -650,6 +834,7 @@ export const usaspendingTools = {
 
     const awards = response.data.results?.map((award: any) => ({
       id: award["Award ID"],
+      generated_unique_award_id: award.generated_internal_id ?? null,
       recipient: award["Recipient Name"],
       amount: award["Award Amount"],
       awarding_agency: award["Awarding Agency"],
@@ -660,16 +845,35 @@ export const usaspendingTools = {
       description: award["Description"]
     })) || [];
 
+    const pageAmount = awards.reduce((sum: number, award: any) => sum + (Number(award.amount) || 0), 0);
+    const hasNext = Boolean(response.data.page_metadata?.hasNext);
+    const envelope = listEnvelope({
+      resourceKey: 'awards',
+      rows: awards,
+      upstreamTotal: null,
+      countUnit: 'prime awards on this USASpending result page',
+      dateField: normalizedFiscalYear !== undefined ? 'action_date' : undefined,
+      filters: { upstream: searchRequest.filters, client_side: {} },
+      warnings: [
+        'USASpending spending_by_award does not provide a trustworthy population total; total and total_results are null. Page through next_cursor to enumerate results.',
+      ],
+      nextCursor: hasNext ? String(page + 1) : null,
+    });
+
     return {
-      recipient_name,
-      fiscal_year,
-      total_results: response.data.page_metadata?.total || 0,
-      awards,
+      recipient_name: recipientName,
+      fiscal_year: normalizedFiscalYear,
+      total_results: null,
+      ...envelope,
       search_summary: {
-        total_amount: awards.reduce((sum: number, award: any) => sum + (award.amount || 0), 0),
+        total_amount: null,
+        page_amount: pageAmount,
         award_count: awards.length,
-        amount_range: { min: min_amount, max: max_amount },
-        award_types: award_types
+        award_count_scope: 'returned page',
+        amount_range: { min: normalizedMinAmount, max: normalizedMaxAmount },
+        award_types: typeSelection.codes,
+        award_type_group: typeSelection.group,
+        get_award_detail_compatible: ['contracts', 'idvs'].includes(typeSelection.group),
       }
     };
   }
