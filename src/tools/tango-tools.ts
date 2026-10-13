@@ -122,6 +122,69 @@ function resolveListRequest(
   return { endpoint: parsed.endpoint, params: parsed.params };
 }
 
+// Budget endpoints (beta): https://docs.makegov.com/api-reference/budget.md
+// Each row is one federal account x fiscal year. Agency codes on this surface
+// are 3-digit CGAC codes (075 = HHS), not the 4-digit FPDS codes the award
+// endpoints take (7500 = HHS) — passing one for the other silently matches
+// nothing, so the format is checked up front.
+const COMMON_CGAC_CODES =
+  '075=HHS, 080=NASA, 097=DoD (agency-wide), 021=Army, 017=Navy, 057=Air Force, 036=VA, 070=DHS, 047=GSA, 089=Energy';
+const BUDGET_ACCOUNT_CATEGORIES = ['budgetary', 'credit_financing', 'request_only', 'proposed'];
+// Tango rejects any other ordering field with a 400.
+const BUDGET_ORDERING_FIELDS = [
+  'fiscal_year',
+  'agency_code',
+  'federal_account_symbol',
+  'enacted_ba',
+  'obligated_total',
+  'outlayed_total',
+  'contract_obligated',
+  'contract_share_of_obligated_capped',
+  'obligated_to_apportioned_pct_capped',
+  'obligated_to_enacted_pct_capped',
+  'ba_growth_next_year_pct',
+  'actual_vs_requested_contract_capped',
+  'enacted_ba_yoy_pct',
+  'enacted_ba_5yr_cagr',
+  'modified',
+];
+const BUDGET_ACCOUNT_COUNT_UNIT = 'federal account-years matching the query (Tango /budget/accounts/ count)';
+const BUDGET_RECIPIENT_COUNT_UNIT = 'funding office x recipient rows for this account-year (contract side)';
+const BUDGET_QUARTER_COUNT_UNIT = 'Treasury Account Symbol x quarter x period rows for this account-year';
+const BUDGET_FLOW_COUNT_UNIT = 'federal account x funding office rows that paid this UEI (contract side)';
+
+// Budget account ids are integers and end up in the URL path, so anything
+// else is rejected rather than interpolated.
+function parseBudgetAccountId(value: unknown): { id?: string; error?: string } {
+  const text = String(value ?? '').trim();
+  if (/^\d+$/.test(text)) return { id: text };
+  return {
+    error:
+      'account_id must be the numeric `account_id` of a search_tango_budget_accounts result ' +
+      "(not a federal account symbol like '075-0512' — search with federal_account_symbol to find its id).",
+  };
+}
+
+// Caveats Tango documents for budget rows that change how the numbers can be
+// read: partial (year-to-date) fiscal years, and source anomalies where Tango
+// capped or flagged a value.
+function budgetRowWarnings(rows: any[]): string[] {
+  const warnings: string[] = [];
+  const partial = rows.filter(r => typeof r?.data_through_period === 'number' && r.data_through_period < 12);
+  if (partial.length > 0) {
+    warnings.push(
+      `${partial.length} row(s) are partial fiscal years (data_through_period < 12); year-to-date figures are not comparable with closed years. Use complete_years_only to exclude them.`
+    );
+  }
+  const anomalous = rows.filter(r => Array.isArray(r?.source_anomalies) && r.source_anomalies.length > 0);
+  if (anomalous.length > 0) {
+    warnings.push(
+      `${anomalous.length} row(s) carry source_anomalies (values Tango capped or flagged from the source data); read them before trusting contract figures on those rows.`
+    );
+  }
+  return warnings;
+}
+
 export const tangoTools = {
   async getTools(): Promise<Tool[]> {
     return [
@@ -505,6 +568,94 @@ export const tangoTools = {
           },
           required: []
         }
+      },
+      {
+        name: "search_tango_budget_accounts",
+        description: "Search federal budget accounts through Tango's budget endpoint (beta). One row per federal account per fiscal year with the money lifecycle (requested, enacted, apportioned, obligated, outlayed), the contract-vs-assistance split of obligations, and next-year growth. Use min_contract_share to separate buying accounts from transfer programs. Paginate with `cursor`.",
+        inputSchema: {
+          type: "object",
+          properties: {
+            api_key: { type: "string", description: "Tango API key (optional if TANGO_API_KEY env var is set)" },
+            query: { type: "string", description: "Free-text search across account title, agency name, and bureau name" },
+            fiscal_year: { type: "number", description: "Exact fiscal year (lifecycle data covers FY2017-FY2026)" },
+            fiscal_year_from: { type: "number", description: "Fiscal year on or after" },
+            fiscal_year_to: { type: "number", description: "Fiscal year on or before" },
+            agency_code: { type: "string", description: `3-digit CGAC agency code, e.g. ${COMMON_CGAC_CODES}. Not the 4-digit FPDS code used by search_tango_contracts.` },
+            federal_account_symbol: { type: "string", description: "Exact federal account symbol, {CGAC}-{account}, e.g. '075-0512' (NIH) or '080-0124' (NASA Deep Space Exploration)" },
+            bureau_name: { type: "string", description: "Bureau / sub-agency name (case-insensitive substring match)" },
+            account_title: { type: "string", description: "Account title (case-insensitive substring match)" },
+            bea_category: { type: "string", description: "BEA budget enforcement category, e.g. 'Defense', 'Nondefense', 'Mandatory'" },
+            subfunction_code: { type: "string", description: "OMB budget subfunction code, e.g. '051' (national defense), '551' (health care services)" },
+            account_category: { type: "string", description: `Account category: ${BUDGET_ACCOUNT_CATEGORIES.join(', ')}. Use 'budgetary' when summing obligations or enacted budget authority.` },
+            complete_years_only: { type: "boolean", description: "Only return closed fiscal years (data through period 12). The latest year is year-to-date and not comparable to closed years." },
+            min_contract_share: { type: "number", description: "Minimum share of obligations that went to contracts, as a fraction 0-1 (0.5 = 50%)" },
+            min_obligated: { type: "number", description: "Minimum total obligated (USD)" },
+            min_enacted_ba: { type: "number", description: "Minimum enacted budget authority (USD)" },
+            ordering: { type: "string", description: `Sort field, prefix '-' for descending (e.g. '-obligated_total'). One of: ${BUDGET_ORDERING_FIELDS.join(', ')}. Default: latest fiscal year, largest enacted budget authority first.` },
+            limit: { type: "number", description: "Number of results to return (default: 10, max: 100)" },
+            cursor: { type: "string", description: "Opaque next_cursor from a previous response. Replays the same query for the next page; do not combine with other filters." }
+          },
+          required: []
+        }
+      },
+      {
+        name: "get_tango_budget_account",
+        description: "Get the full record for one federal budget account-year (beta), by the `account_id` from search_tango_budget_accounts. Optionally include the President's Budget Appendix object-class breakdown and the narrative / appropriations text.",
+        inputSchema: {
+          type: "object",
+          properties: {
+            api_key: { type: "string", description: "Tango API key (optional if TANGO_API_KEY env var is set)" },
+            account_id: { anyOf: [{ type: "number" }, { type: "string" }], description: "Budget account id (the `account_id` of a search_tango_budget_accounts result) — required" },
+            include_appendix: { type: "boolean", description: "Include the Appendix object-class breakdown (personnel, travel, contractual services, grants, ...). Default: false" },
+            include_narratives: { type: "boolean", description: "Include Appendix narrative and appropriations text (can be several KB). Default: false" }
+          },
+          required: ["account_id"]
+        }
+      },
+      {
+        name: "get_tango_budget_account_recipients",
+        description: "Get who was paid out of one federal budget account-year (beta): one row per funding office x recipient on the contract side, largest first, with the contracts behind each. Use after search_tango_budget_accounts to map an account to its vendors. Paginate with `cursor`.",
+        inputSchema: {
+          type: "object",
+          properties: {
+            api_key: { type: "string", description: "Tango API key (optional if TANGO_API_KEY env var is set)" },
+            account_id: { anyOf: [{ type: "number" }, { type: "string" }], description: "Budget account id (the `account_id` of a search_tango_budget_accounts result) — required" },
+            funding_organization_id: { type: "string", description: "Narrow to one funding office (Tango organization UUID from a previous result's funding_organization_id)" },
+            limit: { type: "number", description: "Number of results to return (default: 10, max: 100)" },
+            cursor: { type: "string", description: "Opaque next_cursor from a previous response" }
+          },
+          required: ["account_id"]
+        }
+      },
+      {
+        name: "get_tango_budget_account_quarters",
+        description: "Get quarterly obligation and outlay flow (SF-133) for one federal budget account-year, per Treasury Account Symbol (beta). Coverage FY2021+; earlier years return no rows. Paginate with `cursor`.",
+        inputSchema: {
+          type: "object",
+          properties: {
+            api_key: { type: "string", description: "Tango API key (optional if TANGO_API_KEY env var is set)" },
+            account_id: { anyOf: [{ type: "number" }, { type: "string" }], description: "Budget account id (the `account_id` of a search_tango_budget_accounts result) — required" },
+            tas: { type: "string", description: "Narrow to one Treasury Account Symbol, e.g. '075-2024-2024-0512'" },
+            limit: { type: "number", description: "Number of results to return (default: 10, max: 100)" },
+            cursor: { type: "string", description: "Opaque next_cursor from a previous response" }
+          },
+          required: ["account_id"]
+        }
+      },
+      {
+        name: "get_tango_entity_budget_flows",
+        description: "Get the federal budget accounts that paid a given vendor (beta), by UEI — the reverse of get_tango_budget_account_recipients. Contract-side only; grants are not included. Paginate with `cursor`.",
+        inputSchema: {
+          type: "object",
+          properties: {
+            api_key: { type: "string", description: "Tango API key (optional if TANGO_API_KEY env var is set)" },
+            uei: { type: "string", description: "Unique Entity Identifier (UEI) — required" },
+            fiscal_year: { type: "number", description: "Restrict to one fiscal year (omit for all years)" },
+            limit: { type: "number", description: "Number of results to return (default: 10, max: 100)" },
+            cursor: { type: "string", description: "Opaque next_cursor from a previous response" }
+          },
+          required: ["uei"]
+        }
       }
     ];
   },
@@ -537,6 +688,16 @@ export const tangoTools = {
         return await this.searchOtas(sanitizedArgs);
       case "get_tango_entity_metrics":
         return await this.getEntityMetrics(sanitizedArgs);
+      case "search_tango_budget_accounts":
+        return await this.searchBudgetAccounts(sanitizedArgs);
+      case "get_tango_budget_account":
+        return await this.getBudgetAccount(sanitizedArgs);
+      case "get_tango_budget_account_recipients":
+        return await this.getBudgetAccountRecipients(sanitizedArgs);
+      case "get_tango_budget_account_quarters":
+        return await this.getBudgetAccountQuarters(sanitizedArgs);
+      case "get_tango_entity_budget_flows":
+        return await this.getEntityBudgetFlows(sanitizedArgs);
       default:
         throw new Error(`Unknown Tango tool: ${name}`);
     }
@@ -1494,6 +1655,220 @@ export const tangoTools = {
       period_grouping,
       group_by: group_by || null,
       metrics: response.data
+    };
+  },
+
+  async searchBudgetAccounts(args: any): Promise<any> {
+    const {
+      api_key, query, fiscal_year, fiscal_year_from, fiscal_year_to, agency_code,
+      federal_account_symbol, bureau_name, account_title, bea_category, subfunction_code,
+      account_category, complete_years_only, min_contract_share, min_obligated, min_enacted_ba,
+      ordering, limit = 10, cursor
+    } = args;
+
+    const tangoApiKey = this.requireKey(api_key);
+
+    const params: Record<string, any> = { limit: Math.min(Number(limit) || 10, 100) };
+    if (query) params.search = query;
+    if (fiscal_year !== undefined && fiscal_year !== null) params.fiscal_year = fiscal_year;
+    if (fiscal_year_from !== undefined && fiscal_year_from !== null) params.fiscal_year__gte = fiscal_year_from;
+    if (fiscal_year_to !== undefined && fiscal_year_to !== null) params.fiscal_year__lte = fiscal_year_to;
+    if (agency_code) {
+      const code = String(agency_code).trim();
+      if (!/^\d{3}$/.test(code)) {
+        return bad(
+          `agency_code must be a 3-digit CGAC code (got '${code}'). Common codes: ${COMMON_CGAC_CODES}. ` +
+          `The 4-digit FPDS codes used by the award tools (e.g. 7500) do not match budget accounts.`
+        );
+      }
+      params.agency_code = code;
+    }
+    if (federal_account_symbol) params.federal_account_symbol = federal_account_symbol;
+    if (bureau_name) params.bureau_name__icontains = bureau_name;
+    if (account_title) params.account_title__icontains = account_title;
+    if (bea_category) params.bea_category = bea_category;
+    if (subfunction_code) params.subfunction_code = subfunction_code;
+    if (account_category) {
+      const category = String(account_category).trim().toLowerCase();
+      if (!BUDGET_ACCOUNT_CATEGORIES.includes(category)) {
+        return bad(`account_category must be one of: ${BUDGET_ACCOUNT_CATEGORIES.join(', ')}`);
+      }
+      params.account_category = category;
+    }
+    if (complete_years_only === true) params.data_through_period = 12;
+    if (min_contract_share !== undefined && min_contract_share !== null) {
+      if (min_contract_share < 0 || min_contract_share > 1) {
+        return bad('min_contract_share is a fraction between 0 and 1 (0.5 = 50% of obligations went to contracts)');
+      }
+      params.contract_share_of_obligated_capped__gte = min_contract_share;
+    }
+    if (min_obligated !== undefined && min_obligated !== null) params.obligated_total__gte = min_obligated;
+    if (min_enacted_ba !== undefined && min_enacted_ba !== null) params.enacted_ba__gte = min_enacted_ba;
+    if (ordering) {
+      const order = String(ordering).trim();
+      if (!BUDGET_ORDERING_FIELDS.includes(order.replace(/^-/, ''))) {
+        return bad(`ordering must be one of (prefix '-' for descending): ${BUDGET_ORDERING_FIELDS.join(', ')}`);
+      }
+      params.ordering = order;
+    }
+
+    let request;
+    try {
+      request = resolveListRequest('/budget/accounts/', params, cursor);
+    } catch (err) {
+      return bad(err instanceof Error ? err.message : String(err));
+    }
+
+    const response = await ApiClient.tangoGet(request.endpoint, request.params, tangoApiKey);
+    if (!response.success) return { error: response.error };
+
+    const rows = response.data.results || [];
+    // Surface Tango's integer primary key under an explicit name: it is what
+    // the detail / recipients / quarters tools take, and is easy to confuse
+    // with federal_account_symbol.
+    const accounts = rows.map(({ id, ...rest }: any) => ({ account_id: id ?? null, ...rest }));
+
+    return listEnvelope({
+      resourceKey: 'accounts',
+      rows: accounts,
+      upstreamTotal: upstreamTotal(response.data),
+      countUnit: BUDGET_ACCOUNT_COUNT_UNIT,
+      filters: { upstream: request.params, client_side: {} },
+      warnings: budgetRowWarnings(rows),
+      nextCursor: tangoNextCursor(response.data),
+    });
+  },
+
+  async getBudgetAccount(args: any): Promise<any> {
+    const { api_key, account_id, include_appendix = false, include_narratives = false } = args;
+
+    const tangoApiKey = this.requireKey(api_key);
+    const parsed = parseBudgetAccountId(account_id);
+    if (parsed.error) return bad(parsed.error);
+
+    // `*` returns every field rather than the default subset; the appendix and
+    // narrative leaves are only loaded when asked for (narratives are large).
+    const shape = ['*'];
+    if (include_appendix) shape.push('appendix(*)');
+    if (include_narratives) shape.push('narratives(*)');
+
+    const response = await ApiClient.tangoGet(`/budget/accounts/${parsed.id}/`, { shape: shape.join(',') }, tangoApiKey);
+    if (!response.success) return { error: response.error };
+
+    const { id, ...rest } = response.data || {};
+    const out: Record<string, any> = { account_id: id ?? Number(parsed.id), ...rest };
+    const warnings = budgetRowWarnings([response.data]);
+    if (warnings.length) out.warnings = warnings;
+    return out;
+  },
+
+  async getBudgetAccountRecipients(args: any): Promise<any> {
+    const { api_key, account_id, funding_organization_id, limit = 10, cursor } = args;
+
+    const tangoApiKey = this.requireKey(api_key);
+    const parsed = parseBudgetAccountId(account_id);
+    if (parsed.error) return bad(parsed.error);
+
+    const params: Record<string, any> = { limit: Math.min(Number(limit) || 10, 100) };
+    if (funding_organization_id) params.funding_organization_id = funding_organization_id;
+
+    let request;
+    try {
+      request = resolveListRequest(`/budget/accounts/${parsed.id}/recipients/`, params, cursor);
+    } catch (err) {
+      return bad(err instanceof Error ? err.message : String(err));
+    }
+
+    const response = await ApiClient.tangoGet(request.endpoint, request.params, tangoApiKey);
+    if (!response.success) return { error: response.error };
+
+    return {
+      account_id: Number(parsed.id),
+      federal_account_symbol: response.data.federal_account_symbol ?? null,
+      fiscal_year: response.data.fiscal_year ?? null,
+      ...listEnvelope({
+        resourceKey: 'recipients',
+        rows: response.data.results || [],
+        upstreamTotal: upstreamTotal(response.data),
+        countUnit: BUDGET_RECIPIENT_COUNT_UNIT,
+        filters: { upstream: request.params, client_side: {} },
+        nextCursor: tangoNextCursor(response.data),
+      }),
+    };
+  },
+
+  async getBudgetAccountQuarters(args: any): Promise<any> {
+    const { api_key, account_id, tas, limit = 10, cursor } = args;
+
+    const tangoApiKey = this.requireKey(api_key);
+    const parsed = parseBudgetAccountId(account_id);
+    if (parsed.error) return bad(parsed.error);
+
+    const params: Record<string, any> = { limit: Math.min(Number(limit) || 10, 100) };
+    if (tas) params.tas = tas;
+
+    let request;
+    try {
+      request = resolveListRequest(`/budget/accounts/${parsed.id}/quarters/`, params, cursor);
+    } catch (err) {
+      return bad(err instanceof Error ? err.message : String(err));
+    }
+
+    const response = await ApiClient.tangoGet(request.endpoint, request.params, tangoApiKey);
+    if (!response.success) return { error: response.error };
+
+    const rows = response.data.results || [];
+    const warnings: string[] = [];
+    if (rows.length === 0 && !cursor) {
+      warnings.push('No quarterly rows: SF-133 quarterly coverage starts in FY2021. Use get_tango_budget_account for earlier years.');
+    }
+
+    return {
+      account_id: Number(parsed.id),
+      ...listEnvelope({
+        resourceKey: 'quarters',
+        rows,
+        upstreamTotal: upstreamTotal(response.data),
+        countUnit: BUDGET_QUARTER_COUNT_UNIT,
+        filters: { upstream: request.params, client_side: {} },
+        warnings,
+        nextCursor: tangoNextCursor(response.data),
+      }),
+    };
+  },
+
+  async getEntityBudgetFlows(args: any): Promise<any> {
+    const { api_key, uei, fiscal_year, limit = 10, cursor } = args;
+
+    const tangoApiKey = this.requireKey(api_key);
+    const normalizedUei = String(uei ?? '').trim().toUpperCase();
+    if (!/^[A-Z0-9]{12}$/.test(normalizedUei)) {
+      return bad('uei must be a 12-character Unique Entity Identifier (letters and digits)');
+    }
+
+    const params: Record<string, any> = { limit: Math.min(Number(limit) || 10, 100) };
+    if (fiscal_year !== undefined && fiscal_year !== null) params.fiscal_year = fiscal_year;
+
+    let request;
+    try {
+      request = resolveListRequest(`/entities/${normalizedUei}/budget-flows/`, params, cursor);
+    } catch (err) {
+      return bad(err instanceof Error ? err.message : String(err));
+    }
+
+    const response = await ApiClient.tangoGet(request.endpoint, request.params, tangoApiKey);
+    if (!response.success) return { error: response.error };
+
+    return {
+      uei: normalizedUei,
+      ...listEnvelope({
+        resourceKey: 'flows',
+        rows: response.data.results || [],
+        upstreamTotal: upstreamTotal(response.data),
+        countUnit: BUDGET_FLOW_COUNT_UNIT,
+        filters: { upstream: request.params, client_side: {} },
+        nextCursor: tangoNextCursor(response.data),
+      }),
     };
   }
 };

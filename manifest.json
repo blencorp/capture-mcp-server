@@ -175,6 +175,26 @@
     {
       "name": "get_tango_entity_metrics",
       "description": "Time-series obligations for one UEI bucketed by month, quarter, or year"
+    },
+    {
+      "name": "search_tango_budget_accounts",
+      "description": "Search federal budget accounts by fiscal year with the requested-to-outlayed lifecycle and contract share"
+    },
+    {
+      "name": "get_tango_budget_account",
+      "description": "Get one federal budget account-year, optionally with Appendix breakdown and narratives"
+    },
+    {
+      "name": "get_tango_budget_account_recipients",
+      "description": "Funding offices and recipients paid from one federal budget account-year"
+    },
+    {
+      "name": "get_tango_budget_account_quarters",
+      "description": "Quarterly SF-133 obligation and outlay flow for one federal budget account-year"
+    },
+    {
+      "name": "get_tango_entity_budget_flows",
+      "description": "Federal budget accounts that paid a given vendor (UEI)"
     }
   ],
   "server": {
@@ -204,7 +224,7 @@
     "TANGO_API_KEY": {
       "type": "string",
       "title": "Tango API Key",
-      "description": "Optional API key from tango.makegov.com. Enables 12 Tango tools for contracts, grants, vendors, opportunities, spending, protests, IDVs, vehicles, OTAs, and entity metrics.",
+      "description": "Optional API key from tango.makegov.com. Enables 17 Tango tools for contracts, grants, vendors, opportunities, spending, protests, IDVs, vehicles, OTAs, entity metrics, and federal budget accounts.",
       "required": false,
       "sensitive": true,
       "default": ""

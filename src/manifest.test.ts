@@ -30,6 +30,6 @@ test('desktop manifest exposes every provider key and complete tool catalog', as
   const manifestNames = manifest.tools.map((tool: any) => tool.name).sort();
   assert.equal(new Set(runtimeNames).size, runtimeNames.length, 'runtime tool names must be unique');
   assert.equal(new Set(manifestNames).size, manifestNames.length, 'manifest tool names must be unique');
-  assert.equal(runtimeNames.length, 34);
+  assert.equal(runtimeNames.length, 39);
   assert.deepEqual(manifestNames, runtimeNames);
 });

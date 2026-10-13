@@ -78,3 +78,38 @@ test('every registered tool has a well-formed schema for the validator', async (
     }
   }
 });
+
+test('budget tools are registered with a Tango key and accept numeric or string account ids', async () => {
+  const tools = await initializeTools(CONFIG);
+  const names = tools.map(t => t.name);
+  for (const name of [
+    'search_tango_budget_accounts',
+    'get_tango_budget_account',
+    'get_tango_budget_account_recipients',
+    'get_tango_budget_account_quarters',
+    'get_tango_entity_budget_flows',
+  ]) {
+    assert.ok(names.includes(name), `${name} should be registered`);
+  }
+  const withoutTango = await initializeTools({ hasSamApiKey: false, hasTangoApiKey: false, hasHigherGovApiKey: true });
+  assert.ok(!withoutTango.some(t => t.name.includes('budget_account')));
+
+  await initializeTools(CONFIG);
+  const original = ApiClient.tangoGet;
+  const endpoints: string[] = [];
+  (ApiClient as any).tangoGet = async (endpoint: string) => {
+    endpoints.push(endpoint);
+    return { success: true, data: { id: 5, account_title: 'X' } };
+  };
+  try {
+    const numeric: any = await callTool('get_tango_budget_account', { account_id: 5 }, { tangoKey: 'k' });
+    const text: any = await callTool('get_tango_budget_account', { account_id: '5' }, { tangoKey: 'k' });
+    assert.equal(numeric.account_id, 5);
+    assert.equal(text.account_id, 5);
+    assert.deepEqual(endpoints, ['/budget/accounts/5/', '/budget/accounts/5/']);
+    const missing: any = await callTool('get_tango_budget_account', {}, { tangoKey: 'k' });
+    assert.match(missing.error.message, /Missing required parameter\(s\).*account_id/);
+  } finally {
+    (ApiClient as any).tangoGet = original;
+  }
+});

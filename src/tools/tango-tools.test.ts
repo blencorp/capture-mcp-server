@@ -281,3 +281,290 @@ test('spending summary declares partial aggregation instead of posing as populat
     stub.restore();
   }
 });
+
+// Budget endpoints (beta). Row shape modelled on a recorded
+// /api/budget/accounts/ response: integer `id` primary key, flat fields.
+function budgetAccount(over: Record<string, any> = {}) {
+  return {
+    id: 17647,
+    federal_account_symbol: '080-0124',
+    fiscal_year: 2024,
+    data_through_period: 12,
+    account_category: 'budgetary',
+    agency_code: '080',
+    agency_name: 'National Aeronautics and Space Administration',
+    bureau_name: 'National Aeronautics and Space Administration',
+    account_title: 'Exploration',
+    bea_category: 'Discretionary',
+    on_off_budget: 'On-budget',
+    subfunction_code: '252',
+    requested_ba: 7971000000,
+    enacted_ba: 7666000000,
+    apportioned: 7800000000,
+    obligated_total: 7500000000,
+    outlayed_total: 7200000000,
+    contract_obligated: 6600000000,
+    contract_share_of_obligated_capped: 0.88,
+    assistance_obligated: 90000000,
+    ba_growth_next_year_pct: 0.04,
+    source_anomalies: [],
+    ...over,
+  };
+}
+
+test('budget accounts: filters map to Tango params and rows expose account_id', async () => {
+  const nextUrl = 'https://tango.makegov.com/api/budget/accounts/?limit=10&page=2&fiscal_year=2024';
+  const stub = stubTangoGet(() => ({ success: true, data: page([budgetAccount()], { count: 312, next: nextUrl }) }));
+  try {
+    const out: any = await tangoTools.callTool('search_tango_budget_accounts', {
+      query: 'exploration',
+      fiscal_year: 2024,
+      agency_code: '080',
+      account_title: 'explor',
+      bureau_name: 'aeronautics',
+      complete_years_only: true,
+      min_contract_share: 0.5,
+      min_obligated: 1000000,
+      account_category: 'Budgetary',
+      ordering: '-obligated_total',
+    });
+    assert.equal(stub.calls.length, 1);
+    assert.equal(stub.calls[0].endpoint, '/budget/accounts/');
+    assert.deepEqual(stub.calls[0].params, {
+      limit: 10,
+      search: 'exploration',
+      fiscal_year: 2024,
+      agency_code: '080',
+      account_title__icontains: 'explor',
+      bureau_name__icontains: 'aeronautics',
+      account_category: 'budgetary',
+      data_through_period: 12,
+      contract_share_of_obligated_capped__gte: 0.5,
+      obligated_total__gte: 1000000,
+      ordering: '-obligated_total',
+    });
+    assert.equal(out.accounts.length, 1);
+    assert.equal(out.accounts[0].account_id, 17647);
+    assert.equal(out.accounts[0].id, undefined);
+    assert.equal(out.accounts[0].federal_account_symbol, '080-0124');
+    assert.equal(out.accounts[0].contract_share_of_obligated_capped, 0.88);
+    assert.equal(out.total, 312);
+    assert.match(out.count_unit, /account-years/);
+    assert.equal(out.next_cursor, nextUrl);
+    assert.equal(out.warnings, undefined);
+  } finally {
+    stub.restore();
+  }
+});
+
+test('budget accounts: fiscal year range and limit cap', async () => {
+  const stub = stubTangoGet(() => ({ success: true, data: page([]) }));
+  try {
+    await tangoTools.callTool('search_tango_budget_accounts', { fiscal_year_from: 2020, fiscal_year_to: 2024, limit: 500 });
+    assert.deepEqual(stub.calls[0].params, { limit: 100, fiscal_year__gte: 2020, fiscal_year__lte: 2024 });
+  } finally {
+    stub.restore();
+  }
+});
+
+test('budget accounts: invalid inputs are rejected before any upstream call', async () => {
+  const stub = stubTangoGet(() => {
+    throw new Error('upstream must not be called');
+  });
+  try {
+    const fpds: any = await tangoTools.callTool('search_tango_budget_accounts', { agency_code: '7500' });
+    assert.equal(fpds.error.code, 'bad_request');
+    assert.match(fpds.error.message, /3-digit CGAC/);
+    assert.match(fpds.error.message, /075=HHS/);
+
+    const order: any = await tangoTools.callTool('search_tango_budget_accounts', { ordering: '-requested_ba' });
+    assert.equal(order.error.code, 'bad_request');
+    assert.match(order.error.message, /contract_share_of_obligated_capped/);
+
+    const share: any = await tangoTools.callTool('search_tango_budget_accounts', { min_contract_share: 50 });
+    assert.equal(share.error.code, 'bad_request');
+    assert.match(share.error.message, /fraction between 0 and 1/);
+
+    const category: any = await tangoTools.callTool('search_tango_budget_accounts', { account_category: 'mandatory' });
+    assert.equal(category.error.code, 'bad_request');
+    assert.match(category.error.message, /budgetary, credit_financing, request_only, proposed/);
+
+    assert.equal(stub.calls.length, 0);
+  } finally {
+    stub.restore();
+  }
+});
+
+test('budget accounts: partial fiscal years and source anomalies are called out', async () => {
+  const stub = stubTangoGet(() => ({
+    success: true,
+    data: page([
+      budgetAccount({ id: 1, fiscal_year: 2026, data_through_period: 10 }),
+      budgetAccount({ id: 2, source_anomalies: [{ code: 'contract_exceeds_obligations', action: 'capped' }] }),
+      budgetAccount({ id: 3 }),
+    ]),
+  }));
+  try {
+    const out: any = await tangoTools.callTool('search_tango_budget_accounts', {});
+    assert.equal(out.accounts.length, 3);
+    assert.ok(out.warnings.some((w: string) => /1 row\(s\) are partial fiscal years/.test(w)));
+    assert.ok(out.warnings.some((w: string) => /1 row\(s\) carry source_anomalies/.test(w)));
+    // Warnings describe the rows; they do not distrust the upstream total.
+    assert.equal(out.total, 3);
+  } finally {
+    stub.restore();
+  }
+});
+
+test('budget accounts: cursor replays the next page and refuses cursors for other endpoints', async () => {
+  const stub = stubTangoGet(() => ({ success: true, data: page([budgetAccount()]) }));
+  try {
+    await tangoTools.callTool('search_tango_budget_accounts', {
+      cursor: 'https://tango.makegov.com/api/budget/accounts/?fiscal_year=2024&limit=10&page=2',
+    });
+    assert.equal(stub.calls[0].endpoint, '/budget/accounts/');
+    assert.deepEqual(stub.calls[0].params, { fiscal_year: '2024', limit: '10', page: '2' });
+
+    const wrong: any = await tangoTools.callTool('search_tango_budget_accounts', {
+      cursor: 'https://tango.makegov.com/api/contracts/?page=2',
+    });
+    assert.equal(wrong.error.code, 'bad_request');
+    assert.equal(stub.calls.length, 1);
+  } finally {
+    stub.restore();
+  }
+});
+
+test('budget account detail: full shape by default, appendix and narratives on request', async () => {
+  const stub = stubTangoGet(() => ({ success: true, data: budgetAccount({ appendix: { contractual_services: 1 } }) }));
+  try {
+    const out: any = await tangoTools.callTool('get_tango_budget_account', { account_id: 17647 });
+    assert.equal(stub.calls[0].endpoint, '/budget/accounts/17647/');
+    assert.deepEqual(stub.calls[0].params, { shape: '*' });
+    assert.equal(out.account_id, 17647);
+    assert.equal(out.id, undefined);
+    assert.equal(out.account_title, 'Exploration');
+
+    await tangoTools.callTool('get_tango_budget_account', {
+      account_id: '17647',
+      include_appendix: true,
+      include_narratives: true,
+    });
+    assert.equal(stub.calls[1].endpoint, '/budget/accounts/17647/');
+    assert.deepEqual(stub.calls[1].params, { shape: '*,appendix(*),narratives(*)' });
+  } finally {
+    stub.restore();
+  }
+});
+
+test('budget account tools reject a federal account symbol or path text as account_id', async () => {
+  const stub = stubTangoGet(() => {
+    throw new Error('upstream must not be called');
+  });
+  try {
+    for (const tool of ['get_tango_budget_account', 'get_tango_budget_account_recipients', 'get_tango_budget_account_quarters']) {
+      const symbol: any = await tangoTools.callTool(tool, { account_id: '075-0512' });
+      assert.equal(symbol.error.code, 'bad_request', tool);
+      assert.match(symbol.error.message, /federal_account_symbol/);
+      const traversal: any = await tangoTools.callTool(tool, { account_id: '1/../../contracts' });
+      assert.equal(traversal.error.code, 'bad_request', tool);
+    }
+    assert.equal(stub.calls.length, 0);
+  } finally {
+    stub.restore();
+  }
+});
+
+test('budget account recipients: drill-down endpoint, office filter, and account context', async () => {
+  const nextUrl = 'https://tango.makegov.com/api/budget/accounts/17647/recipients/?limit=10&page=2';
+  const recipient = {
+    funding_organization_id: '6f1c2b8e-0000-4000-8000-000000000001',
+    recipient_id: 'UEI000000001',
+    recipient: { uei: 'UEI000000001', legal_business_name: 'ACME SPACE LLC', dba_name: null },
+    contract_obligated: 1200000000,
+    n_contracts: 3,
+    contracts: [{ key: 'CONT_AWD_X', piid: 'X', naics: '336414', psc: 'AR11', obligated: 900000000, award_date: '2023-10-01' }],
+  };
+  const stub = stubTangoGet(() => ({
+    success: true,
+    data: { federal_account_symbol: '080-0124', fiscal_year: 2024, ...page([recipient], { count: 57, next: nextUrl }) },
+  }));
+  try {
+    const out: any = await tangoTools.callTool('get_tango_budget_account_recipients', {
+      account_id: 17647,
+      funding_organization_id: '6f1c2b8e-0000-4000-8000-000000000001',
+      limit: 10,
+    });
+    assert.equal(stub.calls[0].endpoint, '/budget/accounts/17647/recipients/');
+    assert.deepEqual(stub.calls[0].params, { limit: 10, funding_organization_id: '6f1c2b8e-0000-4000-8000-000000000001' });
+    assert.equal(out.account_id, 17647);
+    assert.equal(out.federal_account_symbol, '080-0124');
+    assert.equal(out.fiscal_year, 2024);
+    assert.equal(out.recipients[0].recipient.legal_business_name, 'ACME SPACE LLC');
+    assert.equal(out.recipients[0].contracts.length, 1);
+    assert.equal(out.total, 57);
+    assert.equal(out.next_cursor, nextUrl);
+
+    // The next page of one account cannot be replayed against another.
+    const other: any = await tangoTools.callTool('get_tango_budget_account_recipients', { account_id: 1, cursor: nextUrl });
+    assert.equal(other.error.code, 'bad_request');
+    await tangoTools.callTool('get_tango_budget_account_recipients', { account_id: 17647, cursor: nextUrl });
+    assert.equal(stub.calls[1].endpoint, '/budget/accounts/17647/recipients/');
+    assert.deepEqual(stub.calls[1].params, { limit: '10', page: '2' });
+  } finally {
+    stub.restore();
+  }
+});
+
+test('budget account quarters: TAS filter, and an empty pre-FY2021 result is explained', async () => {
+  const quarter = { tas: '080-2024-2024-0124', quarter: 1, period: 'quarterly', obligated_quarterly: 1, outlayed_quarterly: 1 };
+  let rows: any[] = [quarter];
+  const stub = stubTangoGet(() => ({ success: true, data: page(rows) }));
+  try {
+    const out: any = await tangoTools.callTool('get_tango_budget_account_quarters', { account_id: 17647, tas: '080-2024-2024-0124' });
+    assert.equal(stub.calls[0].endpoint, '/budget/accounts/17647/quarters/');
+    assert.deepEqual(stub.calls[0].params, { limit: 10, tas: '080-2024-2024-0124' });
+    assert.equal(out.quarters.length, 1);
+    assert.equal(out.warnings, undefined);
+
+    rows = [];
+    const empty: any = await tangoTools.callTool('get_tango_budget_account_quarters', { account_id: 99 });
+    assert.equal(empty.quarters.length, 0);
+    assert.ok(empty.warnings.some((w: string) => /FY2021/.test(w)));
+  } finally {
+    stub.restore();
+  }
+});
+
+test('entity budget flows: normalized UEI path, fiscal year filter, malformed UEI rejected', async () => {
+  const flow = { federal_account_symbol: '080-0124', account_title: 'Exploration', contract_obligated: 5, contracts: [] };
+  const stub = stubTangoGet(() => ({ success: true, data: page([flow], { count: 4 }) }));
+  try {
+    const out: any = await tangoTools.callTool('get_tango_entity_budget_flows', { uei: ' uei000000001 ', fiscal_year: 2024 });
+    assert.equal(stub.calls[0].endpoint, '/entities/UEI000000001/budget-flows/');
+    assert.deepEqual(stub.calls[0].params, { limit: 10, fiscal_year: 2024 });
+    assert.equal(out.uei, 'UEI000000001');
+    assert.equal(out.flows[0].account_title, 'Exploration');
+    assert.equal(out.total, 4);
+
+    const bad: any = await tangoTools.callTool('get_tango_entity_budget_flows', { uei: 'UEI/../x' });
+    assert.equal(bad.error.code, 'bad_request');
+    assert.equal(stub.calls.length, 1);
+  } finally {
+    stub.restore();
+  }
+});
+
+test('budget tools surface upstream errors instead of empty results', async () => {
+  const stub = stubTangoGet(() => ({ success: false, data: null, error: 'Tango API error (400): bad shape' }));
+  try {
+    const search: any = await tangoTools.callTool('search_tango_budget_accounts', {});
+    assert.equal(search.error, 'Tango API error (400): bad shape');
+    const detail: any = await tangoTools.callTool('get_tango_budget_account', { account_id: 1 });
+    assert.equal(detail.error, 'Tango API error (400): bad shape');
+    const flows: any = await tangoTools.callTool('get_tango_entity_budget_flows', { uei: 'UEI000000001' });
+    assert.equal(flows.error, 'Tango API error (400): bad shape');
+  } finally {
+    stub.restore();
+  }
+});
