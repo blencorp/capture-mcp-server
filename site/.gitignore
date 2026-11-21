@@ -1,0 +1,6 @@
+.astro/
+dist/
+node_modules/
+
+# Written by scripts/sync-reference.mjs from docs/sdk-reference.md on every dev and build run.
+src/content/docs/reference/sdk.md

@@ -1,0 +1,113 @@
+name: CI
+
+on:
+  # No push trigger: on main, release.yml and deploy-railway.yml run these gates via workflow_call
+  # before they publish.
+  pull_request:
+    branches: [main]
+  # Other workflows (release, Railway deploy) run these exact gates on the commit they publish.
+  workflow_call:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  # Only superseded pull-request runs are cancelled, never the gates of a release or deploy.
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+jobs:
+  test:
+    name: test (node ${{ matrix.node }})
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    strategy:
+      fail-fast: false
+      matrix:
+        node: ['24', '26']
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      # pnpm version is read from the "packageManager" field in package.json.
+      - uses: pnpm/action-setup@73e46992e05b19abd31f2f3c20e0e7370d762115 # v6.1.1
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: ${{ matrix.node }}
+          cache: 'pnpm'
+          cache-dependency-path: pnpm-lock.yaml
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm audit --audit-level moderate
+      # The documentation site (site/) has its own lockfile; the Docker job builds it.
+      - run: pnpm audit --audit-level moderate
+        working-directory: site
+      - run: pnpm typecheck
+      - run: pnpm lint
+      - run: pnpm build
+      # `pnpm test` builds again, because the stdio and package specs run the compiled server.
+      - run: pnpm test
+
+  accessibility:
+    # The landing, policy and docs pages in a real browser: axe-core (WCAG 2.0-2.2 A/AA) light and
+    # dark, 1280 and 320 px, plus landmark, focus and announcement checks (web/e2e). Manual checks
+    # are in docs/accessibility.md.
+    name: accessibility (landing + docs)
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: pnpm/action-setup@73e46992e05b19abd31f2f3c20e0e7370d762115 # v6.1.1
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: '26'
+          cache: 'pnpm'
+          cache-dependency-path: |
+            pnpm-lock.yaml
+            site/pnpm-lock.yaml
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm install --frozen-lockfile
+        working-directory: site
+      # The browser version is pinned by @playwright/test in the lockfile.
+      - run: pnpm exec playwright install --with-deps chromium
+      - run: pnpm test:web
+
+  docker:
+    name: docker image
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: docker/setup-buildx-action@f87e5991a6d7451dcb8d9637bfbc97413f497069 # v4.4.1
+      - uses: docker/build-push-action@c3c9e263c25d99ce0380d002d59b67737d91b0dc # v7.4.0
+        with:
+          context: .
+          push: false
+          load: true
+          tags: capture-mcp-server:ci
+      - name: Refuses to start without authentication
+        run: |
+          if docker run --rm capture-mcp-server:ci; then
+            echo "the image started without authentication" >&2
+            exit 1
+          fi
+      - name: Serves health and requires a bearer with OAuth configured
+        run: |
+          docker run -d --name capture -p 127.0.0.1:8080:8080 \
+            -e MCP_REQUIRE_OAUTH=true \
+            -e OAUTH_TOKEN_SECRET="$(openssl rand -hex 32)" \
+            -e MCP_PUBLIC_BASE_URL=http://127.0.0.1:8080 \
+            capture-mcp-server:ci
+          for _ in $(seq 1 30); do curl -fsS http://127.0.0.1:8080/health && break; sleep 1; done
+          curl -fsS http://127.0.0.1:8080/health | grep -q '"authMode":"oauth"'
+          status=$(curl -s -o /dev/null -w '%{http_code}' -X POST http://127.0.0.1:8080/mcp -H 'content-type: application/json' -d '{}')
+          test "$status" = 401
+          # The landing page, the policy text and the docs are public.
+          curl -fsS http://127.0.0.1:8080/ | grep -q 'id="root"'
+          curl -fsS http://127.0.0.1:8080/privacy-policy | grep -q 'The server does not store your keys'
+          curl -fsS http://127.0.0.1:8080/docs/ | grep -q 'Capture MCP'
+          test "$(docker inspect --format '{{.Config.User}}' capture)" = node
+          docker rm -f capture

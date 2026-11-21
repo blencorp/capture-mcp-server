@@ -3,6 +3,9 @@ import { StreamableHTTPServerTransport } from '@modelcontextprotocol/sdk/server/
 import { mcpAuthRouter, getOAuthProtectedResourceMetadataUrl } from '@modelcontextprotocol/sdk/server/auth/router.js';
 import { requireBearerAuth } from '@modelcontextprotocol/sdk/server/auth/middleware/bearerAuth.js';
 import express, { type Request, type Response } from 'express';
+import { readFile } from 'node:fs/promises';
+import { resolve } from 'node:path';
+import { fileURLToPath } from 'node:url';
 
 import {
   getOAuthPublicBaseUrl,
@@ -15,6 +18,7 @@ import {
   type FormFieldErrors,
 } from './auth/mcp-oauth.js';
 import { headerKeys, resolveRequestKeys, type KeySource } from './auth/request-keys.js';
+import { DOCS_PATH, docsHandler } from './docs.js';
 import { registerToolHandlers } from './mcp-handlers.js';
 import { SERVER_NAME, SERVER_VERSION } from './version.js';
 
@@ -33,7 +37,37 @@ export type HttpAuth =
 export type HttpAppOptions = {
   auth: HttpAuth;
   env?: NodeJS.ProcessEnv;
+  /** The built landing and policy pages (`pnpm build:web`). Default: `dist/web` in the working directory. */
+  webRoot?: string;
+  /** The built documentation site (`pnpm --dir site build`). Default: `docs-site/`, a sibling of `dist/`. */
+  docsRoot?: string;
 };
+
+/** Pages of the browser app (web/src/main.tsx), served as index.html. */
+const PORTAL_ROUTES = ['/'];
+/** Pages with their own prerendered file in dist/web (web/vite.config.ts), so their text needs no script. */
+const PRERENDERED_ROUTES: Record<string, string> = {
+  '/privacy-policy': 'privacy-policy.html',
+  '/terms': 'terms.html',
+};
+const PORTAL_CSP =
+  "default-src 'none'; script-src 'self'; style-src 'self'; img-src 'self'; connect-src 'self'; form-action 'self'; frame-ancestors 'none'; base-uri 'none'";
+const PAGE_CSP = "default-src 'none'; frame-ancestors 'none'; base-uri 'none'";
+
+/** A top-level page load in a browser (not fetch, not an API client). */
+function isNavigation(req: Request): boolean {
+  if (req.method !== 'GET' && req.method !== 'HEAD') return false;
+  const mode = req.get('sec-fetch-mode');
+  if (mode) return mode === 'navigate';
+  return req.accepts(['json', 'html']) === 'html';
+}
+
+const ERROR_PAGE = `<!doctype html>
+<html lang="en">
+<head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>Something went wrong · Capture MCP</title></head>
+<body><main><h1>Something went wrong</h1><p>This page could not be served. Go back to the <a href="/">home page</a> and try again.</p></main></body>
+</html>
+`;
 
 /**
  * The HTTP auth mode, or an error explaining why the server must not start. HTTP fails closed:
@@ -99,7 +133,7 @@ export function createMcpServer(): Server {
   return new Server({ name: SERVER_NAME, version: SERVER_VERSION }, { capabilities: { tools: {} } });
 }
 
-export function createHttpApp({ auth, env = process.env }: HttpAppOptions): express.Express {
+export function createHttpApp({ auth, env = process.env, webRoot, docsRoot }: HttpAppOptions): express.Express {
   const app = express();
   app.set('trust proxy', 1);
   app.use(express.json());
@@ -120,6 +154,52 @@ export function createHttpApp({ auth, env = process.env }: HttpAppOptions): expr
 
   app.get('/health', (_req: Request, res: Response) => {
     res.json({ status: 'healthy', transport: 'http', version: SERVER_VERSION, authMode: auth.mode });
+  });
+
+  // The landing page, the policy pages and the documentation site are public and static. They
+  // come before the OAuth and MCP routes and share nothing with them.
+  const web = webRoot ?? resolve('dist/web');
+  app.use('/assets', express.static(resolve(web, 'assets'), { immutable: true, maxAge: '1y', index: false }));
+  const docs = docsHandler(docsRoot ?? fileURLToPath(new URL('../docs-site/', import.meta.url)));
+  if (docs) {
+    app.use(
+      DOCS_PATH,
+      (req: Request, res: Response, next: express.NextFunction) => {
+        const [path = '', query] = req.originalUrl.split('?');
+        if (path !== DOCS_PATH) return docs(req, res, next);
+        if (req.method !== 'GET' && req.method !== 'HEAD') return next();
+        // `/docs` without the slash would serve the index at the wrong base.
+        res.redirect(301, `${DOCS_PATH}/${query === undefined ? '' : `?${query}`}`);
+      },
+      // A docs file that cannot be read is a server error with no file headers (see docs.ts).
+      (error: unknown, req: Request, res: Response, next: express.NextFunction) => {
+        if (res.headersSent) return next(error);
+        console.error('docs_request_failed');
+        res.status(500);
+        if (isNavigation(req)) res.set('Content-Security-Policy', PAGE_CSP).type('html').send(ERROR_PAGE);
+        else res.json({ error: 'server_error' });
+      },
+    );
+  }
+  const pages = new Map<string, Promise<string>>();
+  const sendPage = async (res: Response, status = 200, file = 'index.html') => {
+    // Outside production, reread so `pnpm dev:web` rebuilds (new asset hashes) show up.
+    if (env.NODE_ENV !== 'production') pages.delete(file);
+    let page = pages.get(file);
+    if (!page) pages.set(file, (page = readFile(resolve(web, file), 'utf8')));
+    const html = await page.catch(() => undefined);
+    if (!html) {
+      pages.delete(file);
+      res.status(503).type('text').send('The web pages are not built. Run pnpm build.');
+      return;
+    }
+    res.status(status).set('Content-Security-Policy', PORTAL_CSP).type('html').send(html);
+  };
+  app.get(Object.keys(PRERENDERED_ROUTES), async (req, res) => {
+    await sendPage(res, 200, PRERENDERED_ROUTES[req.path.toLowerCase().replace(/(?<=.)\/$/, '')]);
+  });
+  app.get(PORTAL_ROUTES, async (_req, res) => {
+    await sendPage(res);
   });
 
   let gate: express.RequestHandler[] = [];
@@ -207,10 +287,23 @@ export function createHttpApp({ auth, env = process.env }: HttpAppOptions): expr
     });
   });
 
+  // Unknown paths: a person in a browser gets the not-found page (status 404); API clients get
+  // the short text Express always sent.
+  app.use(async (req: Request, res: Response, next: express.NextFunction) => {
+    if (isNavigation(req)) return sendPage(res, 404);
+    next();
+  });
+  // A browser that hits an unhandled error gets a page; everything else keeps Express's answer.
+  app.use((error: unknown, req: Request, res: Response, next: express.NextFunction) => {
+    if (res.headersSent || !isNavigation(req)) return next(error);
+    console.error('request_failed');
+    res.status(500).set('Content-Security-Policy', PAGE_CSP).type('html').send(ERROR_PAGE);
+  });
+
   return app;
 }
 
-function parseAuthorizeForm(body: any): {
+function parseAuthorizeForm(body: Record<string, unknown> | undefined): {
   keys: ProviderKeys;
   checked: Partial<Record<ProviderId, boolean>>;
   fieldErrors: FormFieldErrors;

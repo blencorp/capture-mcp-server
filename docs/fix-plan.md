@@ -16,7 +16,7 @@
 > backlog items the plan already left unscheduled.
 >
 > **Update (2026-08-23, later session):** the official HigherGov OpenAPI spec
-> was retrieved (`fixtures/raw/highergov-openapi.json`) and the HigherGov field
+> was retrieved (it is no longer kept in the repository) and the HigherGov field
 > mappings and parameter names are spec-verified and corrected; a live-key
 > `capture-fixtures` run then confirmed the mappings against real payloads and
 > the HigherGov smoke checks pass — see docs/upstream-api-notes.md. The Tango

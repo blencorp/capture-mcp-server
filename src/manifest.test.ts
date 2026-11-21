@@ -8,7 +8,7 @@ function readJson(url: URL): any {
 }
 
 test('desktop manifest exposes every provider key and complete tool catalog', async () => {
-  const packageJson = readJson(new URL('./package.json', import.meta.url));
+  const packageJson = readJson(new URL('../package.json', import.meta.url));
   const manifest = readJson(new URL('../manifest.json', import.meta.url));
   const { tools } = await ToolCatalog.create({
     hasSamApiKey: true,

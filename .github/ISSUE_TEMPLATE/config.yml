@@ -1,0 +1,11 @@
+blank_issues_enabled: true
+contact_links:
+  - name: Report a security vulnerability
+    url: https://github.com/blencorp/capture-mcp-server/security/advisories/new
+    about: Authentication bypasses and key leaks go to a private advisory, never a public issue.
+  - name: Documentation
+    url: https://capture.mcp.blencorp.com/docs/
+    about: Connect guides, key setup, example questions and the tool reference. Check here before you open an issue.
+  - name: SAM.gov, Tango or HigherGov account or key problems
+    url: https://capture.mcp.blencorp.com/docs/keys/
+    about: Each provider issues and manages its own keys, not this project. This page says where to get each one.

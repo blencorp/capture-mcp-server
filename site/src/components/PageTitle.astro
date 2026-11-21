@@ -1,0 +1,165 @@
+---
+import Default from '@astrojs/starlight/components/PageTitle.astro';
+import { productName } from '../lib/install';
+import { markdownPath } from '../lib/pages.mjs';
+import { withBase } from '../lib/paths';
+
+const path = markdownPath(Astro.locals.starlightRoute.entry.id);
+const markdownHref = path && withBase(path);
+// The site is public, so an assistant can read the Markdown copy from its address.
+const markdownUrl = markdownHref && new URL(markdownHref, Astro.site).href;
+const prompt =
+  markdownUrl &&
+  encodeURIComponent(`Read ${markdownUrl} from the ${productName} documentation. Then help me use it.`);
+---
+
+<div class="title-row">
+  <Default><slot /></Default>
+  {
+    markdownHref && (
+      <div class="page-actions">
+        <button class="action" type="button" data-copy-page={markdownHref}>
+          <span data-label>Copy page</span>
+        </button>
+        <span class="sr-only" role="status" data-copy-status></span>
+        <details class="menu">
+          <summary class="action">Open</summary>
+          <ul>
+            <li>
+              <a href={markdownHref}>View as Markdown</a>
+            </li>
+            <li>
+              <a href={`https://chatgpt.com/?q=${prompt}`} target="_blank" rel="noopener">
+                Open in ChatGPT
+              </a>
+            </li>
+            <li>
+              <a href={`https://claude.ai/new?q=${prompt}`} target="_blank" rel="noopener">
+                Open in Claude
+              </a>
+            </li>
+          </ul>
+        </details>
+      </div>
+    )
+  }
+</div>
+
+<script>
+  for (const button of document.querySelectorAll<HTMLButtonElement>('[data-copy-page]')) {
+    const label = button.querySelector('[data-label]')!;
+    // The button text changes for sighted users; the status region announces the result.
+    const status = button.parentElement!.querySelector('[data-copy-status]')!;
+    button.addEventListener('click', async () => {
+      const text = fetch(button.dataset.copyPage!).then((response) => {
+        if (!response.ok) throw new Error(`HTTP ${response.status}`);
+        return response.text();
+      });
+      try {
+        try {
+          // Safari allows a clipboard write only inside the click, so it gets the pending text.
+          const blob = text.then((value) => new Blob([value], { type: 'text/plain' }));
+          await navigator.clipboard.write([new ClipboardItem({ 'text/plain': blob })]);
+        } catch {
+          // Browsers that refuse a pending value take the text once it has arrived.
+          await navigator.clipboard.writeText(await text);
+        }
+        label.textContent = 'Copied';
+        status.textContent = 'Page copied as Markdown';
+      } catch {
+        label.textContent = 'Copy failed';
+        status.textContent = 'Could not copy the page';
+      }
+      setTimeout(() => {
+        label.textContent = 'Copy page';
+        status.textContent = '';
+      }, 2000);
+    });
+  }
+
+  // The menu is a <details>: close it on a click outside it and on Escape.
+  const menus = document.querySelectorAll<HTMLDetailsElement>('.page-actions details');
+  document.addEventListener('click', (event) => {
+    for (const menu of menus) if (!menu.contains(event.target as Node)) menu.open = false;
+  });
+  document.addEventListener('keydown', (event) => {
+    if (event.key === 'Escape') for (const menu of menus) menu.open = false;
+  });
+</script>
+
+<style>
+  .title-row {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    justify-content: space-between;
+    gap: 0.5rem 1rem;
+  }
+  .page-actions {
+    display: flex;
+    gap: 0.5rem;
+  }
+  .action {
+    padding: 0.25rem 0.75rem;
+    border: 1px solid var(--sl-color-gray-5);
+    border-radius: 999px;
+    background: transparent;
+    font: inherit;
+    font-size: var(--sl-text-sm);
+    line-height: 1.5;
+    color: var(--sl-color-gray-2);
+    cursor: pointer;
+  }
+  .action:hover,
+  .action:focus-visible,
+  .menu[open] > summary {
+    border-color: var(--sl-color-text-accent);
+    color: var(--sl-color-text-accent);
+  }
+  .menu {
+    position: relative;
+  }
+  .menu > summary {
+    list-style: none;
+  }
+  .menu > summary::-webkit-details-marker {
+    display: none;
+  }
+  .menu > summary::after {
+    /* Decoration: the alternative text after the slash is empty, so it is not read aloud. */
+    content: ' ▾' / '';
+  }
+  .menu ul {
+    position: absolute;
+    top: calc(100% + 0.25rem);
+    right: 0;
+    z-index: 1;
+    min-width: 12rem;
+    margin: 0;
+    padding: 0.25rem;
+    list-style: none;
+    border: 1px solid var(--sl-color-gray-5);
+    border-radius: 0.5rem;
+    background: var(--sl-color-bg-nav);
+    box-shadow: var(--sl-shadow-md);
+  }
+  .menu a {
+    display: block;
+    padding: 0.375rem 0.625rem;
+    border-radius: 0.25rem;
+    font-size: var(--sl-text-sm);
+    color: var(--sl-color-white);
+    text-decoration: none;
+  }
+  .menu a:hover,
+  .menu a:focus-visible {
+    background: var(--sl-color-gray-6);
+    color: var(--sl-color-text-accent);
+  }
+  @media (max-width: 30rem) {
+    .menu ul {
+      right: auto;
+      left: 0;
+    }
+  }
+</style>

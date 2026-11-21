@@ -1,0 +1,59 @@
+version: 2
+
+# Version updates, weekly. Security updates (PRs for Dependabot alerts) are a repository setting,
+# not configured here: Settings > Advanced Security > Dependabot security updates. They ignore
+# `cooldown` and `open-pull-requests-limit`, so a fix for an alert is proposed right away.
+#
+# `cooldown` waits a few days before proposing a freshly published version, so a compromised
+# release that npm pulls within hours never reaches a PR. Groups keep PR volume to about one per
+# ecosystem per week.
+updates:
+  - package-ecosystem: npm
+    directory: /
+    schedule: { interval: weekly }
+    open-pull-requests-limit: 10
+    cooldown: { default-days: 3 }
+    commit-message: { prefix: chore, include: scope }
+    groups:
+      dev-tooling:
+        dependency-type: development
+      security:
+        applies-to: security-updates
+        patterns: ['*']
+    ignore:
+      # Types track the OLDEST supported runtime (engines: ^24.11.0 || ^26.0.0), so code
+      # can't use APIs Node 24 lacks. Bump the major only when Node 24 support is dropped.
+      - dependency-name: '@types/node'
+        update-types: ['version-update:semver-major']
+  # The documentation site is its own pnpm root (site/pnpm-lock.yaml); it is built into the
+  # Docker image only.
+  - package-ecosystem: npm
+    directory: /site
+    schedule: { interval: weekly }
+    open-pull-requests-limit: 5
+    cooldown: { default-days: 3 }
+    commit-message: { prefix: build, include: scope }
+    groups:
+      site:
+        patterns: ['*']
+  - package-ecosystem: github-actions
+    directory: /
+    schedule: { interval: weekly }
+    cooldown: { default-days: 3 }
+    commit-message: { prefix: ci, include: scope }
+    groups:
+      actions:
+        patterns: ['*']
+  - package-ecosystem: docker
+    directory: /
+    schedule: { interval: weekly }
+    cooldown: { default-days: 3 }
+    commit-message: { prefix: build, include: scope }
+    groups:
+      docker:
+        patterns: ['*']
+    ignore:
+      # The image runs the Node line the CI matrix covers; move majors deliberately.
+      # Digest and patch bumps still come through.
+      - dependency-name: node
+        update-types: ['version-update:semver-major']

@@ -1,76 +1,62 @@
 # Security Policy
 
-## Supported Versions
+## Reporting a vulnerability
 
-We release patches for security vulnerabilities. Which versions are eligible for receiving such patches depends on the CVSS v3.0 Rating:
+Please **do not file public GitHub issues for security reports**. Instead, open a private GitHub
+Security Advisory:
 
-| Version | Supported          |
-| ------- | ------------------ |
-| 1.x.x   | :white_check_mark: |
-| < 1.0   | :x:                |
+> <https://github.com/blencorp/capture-mcp-server/security/advisories/new>
 
-## Reporting a Vulnerability
+If that is not available, write to **opensource@blencorp.com**.
 
-If you discover a security vulnerability within Capture MCP Server, please send an email to security@example.com. All security vulnerabilities will be promptly addressed.
+We try to respond within **3 business days**. A typical timeline for a confirmed report:
 
-Please do not report security vulnerabilities through public GitHub issues.
+1. Initial acknowledgement and severity triage within 3 business days.
+2. Coordinated fix in a private branch within 14 days for critical and 30 for high-severity issues.
+3. Patched release with a credit line (unless you ask not to be credited).
+4. Public advisory and CVE filing once users have had reasonable upgrade time.
 
-### What to include in your report
+## Scope
 
-- Type of issue (e.g. buffer overflow, SQL injection, cross-site scripting, etc.)
-- Full paths of source file(s) related to the manifestation of the issue
-- The location of the affected source code (tag/branch/commit or direct URL)
-- Any special configuration required to reproduce the issue
-- Step-by-step instructions to reproduce the issue
-- Proof-of-concept or exploit code (if possible)
-- Impact of the issue, including how an attacker might exploit the issue
+In scope:
 
-### What to expect
+- **Auth bypass.** Any request to `/mcp` in OAuth mode that reaches a tool handler without a valid
+  bearer token, or a Lambda request that does so without a valid access key.
+- **Key exposure.** Any way for a result, a log or an error to reveal a provider API key, for the
+  operator's environment keys to serve a remote caller, or for one caller's key to serve another's.
+- **Token forgery or replay.** Forging or modifying a sealed access or refresh token, or using one
+  for a client, resource or scope it was not issued for.
+- **OAuth flow flaws.** Open redirects, a missing PKCE check, or an authorization code that can be
+  used twice.
+- **DNS rebinding or request forgery** against the loopback-only single-user HTTP mode.
+- **Argument handling.** A tool argument that changes which upstream host, path or method a call
+  uses.
 
-- Within 48 hours, we will acknowledge receipt of your vulnerability report
-- Within 7 days, we will send a more detailed response indicating the next steps
-- We will keep you informed about the progress towards fixing the vulnerability
-- We will notify you when the vulnerability is fixed
+Out of scope (please file a normal issue instead):
 
-## Security Best Practices
+- Provider rate limits and quotas, which belong to SAM.gov, Tango and HigherGov.
+- Denial of service through lawful but expensive queries. The server adds no limit to `/mcp`, so
+  put a rate-limiting proxy in front of a hosted deployment.
+- Issues that only occur with `MCP_ALLOW_INSECURE_HTTP=true`, which is documented as single-user and
+  loopback-only.
 
-When using Capture MCP Server:
+## Design notes
 
-1. **API Key Management**
-   - Never commit API keys to version control
-   - Use environment variables for sensitive configuration
-   - Rotate API keys regularly
-   - Restrict API key permissions to minimum required
+- **Fails closed.** HTTP mode refuses to start without OAuth (`MCP_REQUIRE_OAUTH=true` with
+  `OAUTH_TOKEN_SECRET` and `MCP_PUBLIC_BASE_URL`) or the explicit loopback opt-in, which refuses
+  other addresses and other Host headers. The Lambda function answers `503` on `/mcp` until its key
+  bucket is configured.
+- **Keys are the caller's own.** A remote caller's keys come from its OAuth token (sealed with
+  AES-256-GCM under `OAUTH_TOKEN_SECRET`) and then from its `X-*-Api-Key` headers. They never come
+  from the server's environment, and a header never authenticates a caller.
+- **Nothing is stored.** The server has no database. Registered OAuth clients, pending
+  authorizations and revoked token IDs live in process memory.
+- **Tools are read-only,** with strict argument schemas that refuse unknown arguments.
+- A key reaches only the source it belongs to. SAM.gov and HigherGov take it as a URL query
+  parameter, and Tango as a header.
 
-2. **Data Handling**
-   - Be aware that procurement data may contain sensitive information
-   - Implement proper access controls in your application
-   - Log access to sensitive data appropriately
-   - Follow data retention policies
+## Dependencies
 
-3. **Network Security**
-   - Use HTTPS for all API communications
-   - Implement proper rate limiting
-   - Monitor for unusual API usage patterns
-
-4. **Dependencies**
-   - Keep all dependencies up to date
-   - Regularly audit dependencies for vulnerabilities
-   - Use `npm audit` to check for known vulnerabilities
-
-## Disclosure Policy
-
-When we receive a security vulnerability report, we will:
-
-1. Confirm the vulnerability and determine its impact
-2. Work on a fix and prepare a security update
-3. Release the update and publish a security advisory
-4. Credit the reporter (unless they prefer to remain anonymous)
-
-We ask that you:
-
-- Give us reasonable time to fix the issue before public disclosure
-- Make a good faith effort to avoid privacy violations and data destruction
-- Not access or modify data without explicit permission
-
-Thank you for helping keep Capture MCP Server and its users safe!
+CI fails on any known advisory (`pnpm audit --audit-level moderate`, for the server and for the
+documentation site), a scheduled workflow audits the lockfiles daily, and Dependabot proposes updates
+weekly. For an advisory that affects this server, expect a patch release within the timeline above.

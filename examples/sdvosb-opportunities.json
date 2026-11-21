@@ -1,0 +1,9 @@
+{
+  "tool": "search_highergov_opportunities",
+  "arguments": {
+    "set_aside": ["sdvosb"],
+    "naics": ["5415"],
+    "posted_after": "2026-11-01",
+    "limit": 25
+  }
+}

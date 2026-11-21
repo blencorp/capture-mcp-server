@@ -97,7 +97,7 @@ export class ServerlessStack extends Stack {
     this.lambdaFunction = new Function(this, 'McpHandler', {
       functionName: 'capture-mcp-server',
       description: 'Capture MCP Server - Federal procurement data access via MCP protocol',
-      runtime: Runtime.NODEJS_20_X,
+      runtime: Runtime.NODEJS_24_X,
       handler: 'lambda-handler.handler',
       code: Code.fromAsset(lambdaCodePath),
       memorySize: 512,

@@ -1,40 +1,41 @@
 ---
 name: Bug report
-about: Create a report to help us improve
-title: '[BUG] '
-labels: 'bug'
-assignees: ''
-
+about: Something is broken or misbehaving
+labels: bug
 ---
 
-**Describe the bug**
-A clear and concise description of what the bug is.
+## What happened?
 
-**To Reproduce**
-Steps to reproduce the behavior:
-1. Configure MCP server with '...'
-2. Call tool '....'
-3. With parameters '....'
-4. See error
+<!-- One paragraph. What did you expect? What did you see instead? -->
 
-**Expected behavior**
-A clear and concise description of what you expected to happen.
+## Reproduction
 
-**Actual behavior**
-What actually happened instead.
+<!-- The tool you called and its arguments, with any key removed. -->
 
-**Error messages**
-If applicable, add error messages or logs to help explain your problem.
-
-```
-Paste any error messages here
+```json
+{ "tool": "", "arguments": {} }
 ```
 
-**Environment (please complete the following information):**
- - OS: [e.g. macOS, Windows, Linux]
- - Node.js version: [e.g. 18.0.0]
- - MCP Server version: [e.g. 1.0.0]
- - Claude Desktop version: [if applicable]
+## Result
 
-**Additional context**
-Add any other context about the problem here.
+<!-- The full result or error text the tool returned. -->
+
+```
+```
+
+## Environment
+
+- Server version: <!-- the version your MCP client shows, or git SHA -->
+- Transport: <!-- stdio | http (hosted or self-hosted) | lambda -->
+- Node: <!-- node -v -->
+- OS / arch: <!-- e.g. Ubuntu 22.04 x64 -->
+- MCP client: <!-- Claude Desktop, Cursor, custom, etc. -->
+
+## Logs
+
+<!-- Paste relevant log lines. Remove API keys first, and names or addresses from provider responses. -->
+
+```
+```
+
+> **Security issue?** Please use a GitHub Security Advisory instead — see [SECURITY.md](https://github.com/blencorp/capture-mcp-server/blob/main/SECURITY.md).

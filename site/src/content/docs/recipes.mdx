@@ -1,0 +1,94 @@
+---
+title: Example questions
+description: Calls your assistant can make, as the exact tool and arguments, for common federal procurement questions, and tips for your own.
+---
+
+import ToolExample from '../../components/ToolExample.astro';
+
+Your assistant turns a question into one tool call. Each call below is the exact tool and arguments
+for a common question. The repository checks each one against the tool's input schema. The dates and
+identifiers are made up: your assistant fills in values that fit the question.
+
+## Check a set-aside code
+
+"What does set-aside code 8AN mean?" Ask this before you filter on a code. `8A` is 8(a) Competed
+and `8AN` is 8(a) Sole Source. This needs no key.
+
+<ToolExample file="reference-set-aside.json" />
+
+## Open opportunities
+
+"Find small business set-aside solicitations about software in Texas, posted in the first three
+weeks of November." SAM.gov takes dates as `MM/dd/yyyy`. `SBA` is a total small business set-aside.
+
+<ToolExample file="software-solicitations.json" />
+
+## Look up a company
+
+"Show me the SAM.gov registration for this UEI."
+
+<ToolExample file="entity-details.json" />
+
+"Is Acme Corp excluded from federal contracting?"
+
+<ToolExample file="exclusions-check.json" />
+
+"What does this company's SAM.gov record look like next to the awards it won in fiscal 2025?"
+
+<ToolExample file="entity-and-awards.json" />
+
+## Awards and spending
+
+"How many 8(a) competed and sole source awards did the VA make in August and September 2025?"
+This tool needs no key. It groups awards without pulling every row, and its answer says which date
+it filtered on.
+
+<ToolExample file="set-aside-counts.json" />
+
+"What did Boeing win in fiscal 2025?"
+
+<ToolExample file="recipient-awards.json" />
+
+"Confirm that award's set-aside and how many offers it got before it goes in a memo." This is the
+verification step: it returns the full FPDS record of one award.
+
+<ToolExample file="award-detail.json" />
+
+## Contracts, protests, and trends with Tango
+
+"Which IT contracts did the VA award to service-disabled veteran-owned small businesses in fiscal
+2026?" Tango takes an agency as an FPDS code, `3600` for the VA, and a set-aside as exact FPDS codes.
+
+<ToolExample file="va-sdvosb-contracts.json" />
+
+"Which VA bid protests were sustained this year?"
+
+<ToolExample file="sustained-protests.json" />
+
+"How have this vendor's obligations moved over three years?"
+
+<ToolExample file="spending-trend.json" />
+
+## Forecasts and recompetes with HigherGov
+
+"Which IT contracts end in the first half of 2027?" Period-of-performance dates are applied by the
+server on the page it gets, so the answer says so in `filters` and `warnings`.
+
+<ToolExample file="recompete-candidates.json" />
+
+"Which service-disabled veteran-owned opportunities were posted this month?"
+
+<ToolExample file="sdvosb-opportunities.json" />
+
+## Tips
+
+- **Filter first.** Each source has its own quota, and some are small. One well-filtered call is
+  better than many lookups.
+- **Read `filters` and `warnings`.** They say which filters the source applied and which the server
+  applied to one page. A `total` of `null` means the count cannot be trusted.
+- **Check codes before using them.** `lookup_reference_code` lists the codes of a domain.
+- **Start with a small `limit`**, and page with `next_cursor` for more.
+- **Use `aggregate_contracts` for population figures.** `get_tango_spending_summary` summarizes one
+  page of at most 100 records, and says when there are more.
+
+The [tool reference](/reference/sdk/) lists every tool and argument.

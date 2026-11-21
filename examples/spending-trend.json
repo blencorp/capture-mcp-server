@@ -1,0 +1,4 @@
+{
+  "tool": "get_tango_entity_metrics",
+  "arguments": { "uei": "A1B2C3D4E5F6", "months": 36, "period_grouping": "quarter" }
+}

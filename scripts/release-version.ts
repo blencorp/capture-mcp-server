@@ -1,7 +1,7 @@
 // Release version helper for .github/workflows/release.yml.
 //
-//   npm run release-version              # print current/next/bump as key=value
-//   npm run release-version -- --write 1.2.0   # write that version into the manifests
+//   pnpm release-version              # print current/next/bump as key=value
+//   pnpm release-version --write 1.2.0   # write that version into the manifests
 //
 // Decision logic lives in src/utils/version-bump.ts (unit tested); this script
 // only supplies git history and file I/O.

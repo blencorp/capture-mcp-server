@@ -30,7 +30,15 @@ permissions:
   contents: write
 
 jobs:
+  # The same gates as CI (audit, typecheck, lint, build, test, accessibility, Docker).
+  ci:
+    name: CI
+    uses: ./.github/workflows/ci.yml
+    permissions:
+      contents: read
+
   release:
+    needs: ci
     name: Tag and release
     runs-on: ubuntu-latest
     timeout-minutes: 15
@@ -39,26 +47,30 @@ jobs:
     if: "!contains(github.event.head_commit.message, '[skip release]')"
     steps:
       - name: Check out repository
-        uses: actions/checkout@v4
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           # Full history and tags: the version decision reads both.
           fetch-depth: 0
 
+      # pnpm version is read from the "packageManager" field in package.json.
+      - uses: pnpm/action-setup@73e46992e05b19abd31f2f3c20e0e7370d762115 # v6.1.1
+
       - name: Set up Node
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with:
-          node-version: 20
-          cache: npm
+          node-version: '24'
+          cache: pnpm
+          cache-dependency-path: pnpm-lock.yaml
 
       - name: Install dependencies
-        run: npm ci
+        run: pnpm install --frozen-lockfile
 
       - name: Run test suite
-        run: npm test
+        run: pnpm test
 
       - name: Decide the next version
         id: version
-        run: npm run --silent release-version -- --bump=${{ inputs.bump || 'auto' }} >> "$GITHUB_OUTPUT"
+        run: pnpm run --silent release-version --bump=${{ inputs.bump || 'auto' }} >> "$GITHUB_OUTPUT"
 
       - name: Summarize the decision
         run: |
@@ -80,11 +92,11 @@ jobs:
             exit 1
           fi
 
-      - name: Write the new version into package.json, the lockfile, and the manifests
+      - name: Write the new version into package.json and the manifests
         if: steps.version.outputs.seeded == 'false'
         run: |
-          npm version "${{ steps.version.outputs.next }}" --no-git-tag-version
-          npm run --silent release-version -- --write "${{ steps.version.outputs.next }}"
+          npm pkg set version="${{ steps.version.outputs.next }}"
+          pnpm run --silent release-version --write "${{ steps.version.outputs.next }}"
 
       - name: Commit the version bump and tag the release
         run: |

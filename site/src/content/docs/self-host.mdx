@@ -1,0 +1,134 @@
+---
+title: Self-host
+description: Run the server on your computer over stdio or loopback HTTP, host it with Docker or Railway for other people, or deploy it to AWS Lambda for a team.
+---
+
+The server is not published to npm. Run it from a checkout of the
+[repository](https://github.com/blencorp/capture-mcp-server), which needs Node.js 24.11 or later (or
+26) and [pnpm](https://pnpm.io/) 12:
+
+```bash
+git clone https://github.com/blencorp/capture-mcp-server.git
+cd capture-mcp-server
+pnpm install --frozen-lockfile
+pnpm build
+```
+
+Pick the mode by who uses it.
+
+| Mode | Who it serves | Whose keys | How to start it |
+| --- | --- | --- | --- |
+| stdio | You, in a desktop assistant | Yours, from the environment | `node dist/server.js` |
+| Local HTTP | You, on your computer | Yours, from the environment | `MCP_TRANSPORT=http MCP_ALLOW_INSECURE_HTTP=true node dist/server.js` |
+| Hosted HTTP | Many people | Each person's own, entered when they connect | `MCP_TRANSPORT=http MCP_REQUIRE_OAUTH=true node dist/server.js`, with the settings below |
+| Lambda | A team | Each caller's own, sent in headers | `pnpm cdk:deploy` |
+
+SAM.gov, Tango, and HigherGov keys are personal. The server never answers one person with another's
+key, and a hosted server never uses a key from its own environment for a caller.
+
+## stdio
+
+Your assistant starts the server and talks to it over standard input and output. Add it to the
+assistant's MCP configuration (here, the format of Claude Desktop's `claude_desktop_config.json`),
+with the keys you have:
+
+```json
+{
+  "mcpServers": {
+    "capture": {
+      "command": "node",
+      "args": ["/path/to/capture-mcp-server/dist/server.js"],
+      "env": {
+        "SAM_GOV_API_KEY": "your-sam-gov-key",
+        "TANGO_API_KEY": "your-tango-key",
+        "HIGHERGOV_API_KEY": "your-highergov-key"
+      }
+    }
+  }
+}
+```
+
+Only the tools whose key you set are listed. With no keys, the 7 reference and USAspending tools
+work. The repository also builds a Claude Desktop bundle with `pnpm package`, which produces
+`capture-mcp-server.mcpb`. The bundle is not attached to releases.
+
+## Local HTTP
+
+```bash
+MCP_TRANSPORT=http MCP_ALLOW_INSECURE_HTTP=true PORT=8080 SAM_GOV_API_KEY=... node dist/server.js
+```
+
+There is no sign-in. The server binds to `127.0.0.1`, refuses any other `HOST`, and refuses a request
+whose Host header is not loopback. A client may send its own keys in `X-Sam-Api-Key`,
+`X-Tango-Api-Key`, and `X-Highergov-Api-Key` headers, which override the environment.
+
+## Hosted HTTP
+
+HTTP mode refuses to start without authentication. For other people, set `MCP_REQUIRE_OAUTH=true`,
+and the server runs the OAuth flow that [Connect your assistant](/connect/) describes.
+
+| Setting | What it does |
+| --- | --- |
+| `MCP_TRANSPORT` | `http`. The default, `stdio`, speaks over standard input and output. |
+| `MCP_REQUIRE_OAUTH` | `true`. Required for hosting. |
+| `OAUTH_TOKEN_SECRET` | The secret that seals tokens. Required. Generate one with `openssl rand -base64 48`. Changing it invalidates every token. |
+| `MCP_PUBLIC_BASE_URL` | The public HTTPS origin your clients use, such as `https://capture.example.com`. Required. |
+| `OAUTH_ACCESS_TOKEN_TTL_SECONDS`, `OAUTH_REFRESH_TOKEN_TTL_SECONDS` | Token lifetimes. The defaults are 30 and 90 days. |
+| `MCP_ALLOW_INSECURE_HTTP` | `true` for the single-user mode above. Not for hosting. |
+| `PORT`, `HOST` | The listening port, and address. Leave `HOST` unset when you host so that Node listens on IPv4 and IPv6. |
+
+The server serves the landing page, the policy pages, and this documentation at `/docs`. Put it
+behind HTTPS, and a proxy that limits requests, because the server adds no limit to `/mcp`.
+
+### Docker
+
+The repository's `Dockerfile` builds the hosted image. It builds this site into the image, runs
+`node dist/server.js` as an unprivileged user, and refuses to start without authentication:
+
+```bash
+docker build -t capture-mcp-server .
+docker run --rm -p 8080:8080 \
+  -e MCP_REQUIRE_OAUTH=true \
+  -e OAUTH_TOKEN_SECRET="$(openssl rand -base64 48)" \
+  -e MCP_PUBLIC_BASE_URL=https://capture.example.com \
+  capture-mcp-server
+```
+
+### Railway
+
+Railway builds the same `Dockerfile` from the repository root. Set the three variables in the service
+settings. The image carries its own start command and port, but not Railway's deploy health check,
+which `railway.toml` declares (`/health`, 30 seconds) and Railway stops reading on 2026-12-01. Set the
+health check in the service settings or in infrastructure as code before then.
+
+## AWS Lambda
+
+The `infrastructure/` folder is a CDK project for a team deployment: a Lambda function behind an HTTP
+API, and an S3 bucket of access keys, with an optional custom domain. It is its own npm project.
+
+```bash
+pnpm cdk:deploy
+pnpm manage-keys create --owner "Jane Doe"
+```
+
+Each caller sends two kinds of header: `X-Api-Key`, an access key from the bucket, and their own
+provider keys in `X-Sam-Api-Key`, `X-Tango-Api-Key`, and `X-Highergov-Api-Key`. The function never
+uses a provider key from its own environment, and answers `503` on `/mcp` until it has a bucket. It
+serves no landing page or documentation.
+
+## Rules for every deployment
+
+- **Run one replica.** The pacing queues, the cache and the registered assistants are in the
+  server's memory. Two instances that share a key look like two clients to the source, and an
+  assistant registered on one is unknown to the other.
+- **Authentication is required.** HTTP mode refuses to start without OAuth or the loopback opt-in.
+- **Guard `OAUTH_TOKEN_SECRET`.** Anyone who has it can open every token, and so every key sealed in
+  one.
+
+## Full guides
+
+These documents are in the repository:
+
+- [Accessibility](https://github.com/blencorp/capture-mcp-server/blob/main/docs/accessibility.md)
+- [Upstream API notes](https://github.com/blencorp/capture-mcp-server/blob/main/docs/upstream-api-notes.md)
+- [Every setting](https://github.com/blencorp/capture-mcp-server/blob/main/.env.example)

@@ -1,4 +1,4 @@
-import axios, { AxiosResponse, AxiosError } from 'axios';
+import axios, { type AxiosResponse, type AxiosError } from 'axios';
 
 export interface ApiResponse<T = any> {
   data: T;
@@ -295,6 +295,7 @@ export class ApiClient {
   static sanitizeInput(input: any): any {
     if (typeof input === 'string') {
       // Strip control characters while preserving meaningful punctuation
+      // eslint-disable-next-line no-control-regex -- the control characters are the point
       return input.replace(/[\u0000-\u001F\u007F]/g, '').trim();
     }
     

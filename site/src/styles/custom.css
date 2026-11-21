@@ -1,0 +1,69 @@
+/* Starlight's default theme in black and white. The BLEN logo is the one color on the site.
+   Two more hints of BLEN: its typeface, and its pill buttons. */
+
+:root {
+  --sl-font: 'Geist Variable', ui-sans-serif, system-ui, sans-serif;
+  --sl-font-mono: 'Geist Mono Variable', ui-monospace, SFMono-Regular, Menlo, monospace;
+}
+
+/* The accent is the text color: white on dark, black on light. Starlight defines dark first
+   and light as the override. */
+:root {
+  --code-surface: #161618;
+  --sl-color-accent-low: #2a2a2a;
+  --sl-color-accent: #d4d4d4;
+  --sl-color-accent-high: #ffffff;
+}
+:root[data-theme='light'] {
+  --code-surface: #fafafa;
+  --sl-color-accent-low: #e8e8e8;
+  --sl-color-accent: #111111;
+  --sl-color-accent-high: #111111;
+}
+
+/* Headings sit a little tighter, as BLEN sets them. */
+h1,
+h2,
+h3 {
+  letter-spacing: -0.02em;
+}
+
+/* A method or setting name in a heading reads as part of the heading, not as a code chip. */
+.sl-markdown-content :is(h2, h3, h4, h5) code {
+  padding: 0;
+  background: transparent;
+  font-size: 0.92em;
+}
+
+.sl-link-button {
+  border-radius: 999px;
+}
+
+/* The header: the wordmark is the color, so the product name beside it stays in the text color. */
+.site-title {
+  color: var(--sl-color-white);
+}
+.site-title img {
+  height: 1.375rem;
+  width: auto;
+}
+
+/* Starlight gives each card icon and each note its own color. Here they are gray. */
+:root .card:nth-child(n) {
+  --sl-card-border: var(--sl-color-gray-4);
+  --sl-card-bg: var(--sl-color-gray-6);
+}
+.starlight-aside--note {
+  --sl-color-asides-text-accent: var(--sl-color-white);
+  --sl-color-asides-border: var(--sl-color-gray-4);
+  background-color: var(--sl-color-gray-6);
+}
+:root[data-theme='light'] .starlight-aside--note {
+  background-color: var(--sl-color-gray-7);
+}
+
+/* The search button shows a keyboard shortcut (⌘K) that is not part of its accessible name
+   ("Search"), which WCAG 2.5.3 (label in name) does not allow. The shortcut still works. */
+button[data-open-modal] kbd {
+  display: none;
+}

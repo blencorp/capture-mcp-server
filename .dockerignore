@@ -1,5 +1,7 @@
 **/node_modules
-dist
+**/dist
+**/.astro
+test-results
 .git
 .github
 .env
@@ -7,7 +9,8 @@ dist
 !.env.example
 infrastructure
 fixtures
-docs
+docs/*
+!docs/sdk-reference.md
 *.log
 *.mcpb
 *.dxt

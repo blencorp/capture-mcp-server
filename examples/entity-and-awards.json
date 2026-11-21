@@ -1,0 +1,4 @@
+{
+  "tool": "get_entity_and_awards",
+  "arguments": { "uei": "A1B2C3D4E5F6", "fiscal_year": 2025, "award_limit": 10 }
+}

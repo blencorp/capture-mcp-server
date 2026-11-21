@@ -1,19 +1,38 @@
 # CLAUDE.md
 
-This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
+This file provides guidance to Claude Code when working with code in this repository.
 
 ## Development Commands
 
-### Building and Running
-- `npm run build` - Compiles TypeScript to dist/ directory
-- `npm start` - Runs the compiled server (requires build first)
-- `npm run dev` - Development mode with ts-node (auto-reload with nodemon)
+Run everything from the repository root (`pnpm@12.21.0`, pinned in `packageManager`; Node 24 or 26).
 
-### Project Configuration
-- Uses ES modules (`"type": "module"` in package.json)
-- TypeScript compilation target: ES2020
-- Output directory: `dist/`
-- Source directory: `src/`
+```bash
+pnpm install --frozen-lockfile
+pnpm typecheck       # tsc --noEmit for src and scripts, web/, web/e2e (the correctness gate)
+pnpm lint            # eslint: @eslint/js + typescript-eslint, type-aware promise rules and stderr-only console in src/, react-hooks in web/
+pnpm build           # tsc -p tsconfig.build.json (src to dist/) then Vite (web to dist/web)
+pnpm test            # builds, then tsx --test "src/**/*.test.ts" (node:test)
+pnpm test:web        # builds web and site, then Playwright + axe (web/e2e); needs Chromium once
+pnpm kit:check       # the shared portal kit matches web/portal-kit.json
+pnpm docs:reference  # regenerates docs/sdk-reference.md from the tool definitions
+pnpm dev             # tsx src/server.ts (stdio); MCP_TRANSPORT=http for HTTP
+```
+
+- **TypeScript 7 runs beside TS 6**: `devDependencies.typescript` is the `@typescript/typescript6` alias
+  (the API typescript-eslint imports) and `@typescript/native` is TS 7, which provides the `tsc`
+  binary. Do not "simplify" the aliases away.
+- `tsconfig.json` checks sources, tests and scripts and never emits; `tsconfig.build.json` emits
+  `src/` to `dist/` without tests or fixtures.
+- `pnpm-workspace.yaml` holds `allowBuilds` and the `overrides:` that pin patched transitive versions
+  (`pnpm audit`). Remove an override once its parent ships the fix.
+- ESM everywhere: relative imports use the `.js` extension even in `.ts` sources. Logs go to stderr
+  only (stdout is the stdio JSON-RPC stream).
+- `.github/workflows/ci.yml` runs audit (root and `site/`), typecheck, lint, build and test on
+  Node 24 and 26, an accessibility job (`pnpm test:web`) and a Docker job. `release.yml` and
+  `deploy-railway.yml` run the same gates. Actions are pinned to commit SHAs.
+- The server and the `Dockerfile` target Node 26; the Docker base image is pinned by digest.
+- `src/tools/` and `src/utils/` have `no-explicit-any` switched off in `eslint.config.mjs`
+  (temporary: the upstream payloads are untyped).
 
 ## Architecture Overview
 
@@ -22,9 +41,9 @@ This is a Model Context Protocol (MCP) server that captures federal procurement 
 ### Core Components
 
 **Server (`src/server.ts`)**
-- MCP server using `@modelcontextprotocol/sdk`
-- Uses stdio transport for Claude Desktop integration
-- Handles tool registration and execution through centralized registry
+- MCP server using `@modelcontextprotocol/sdk` v1 (1.32.x); `src/mcp-handlers.ts` registers `tools/list` and `tools/call`
+- stdio by default; `MCP_TRANSPORT=http` serves `src/http-app.ts` (Express)
+- `src/lambda-handler.ts` is the AWS Lambda entry point
 
 **Tool Architecture (`src/tools/`)**
 - Modular tool system with six categories:
@@ -34,7 +53,7 @@ This is a Model Context Protocol (MCP) server that captures federal procurement 
   - `tango-tools.ts` - 12 Tango API tools (contracts, grants, vendor profiles, opportunities, spending summaries, GAO protests + detail, IDVs + child/task-order drill-down, vehicle catalog, OTAs, entity time-series metrics). Set-aside filtering is exact on FPDS codes; cursor pagination via the Tango `next` URL.
   - `highergov-tools.ts` - 9 HigherGov tools (forecast/opportunity/contract/people search, saved-search listing, opportunity documents, single-record lookups). Responses are normalized to lowercase agency/vehicle/set-aside slugs via `utils/highergov-slugs.ts`. `get_*` tools cache for 15 min in an in-process LRU.
   - `join-tools.ts` - 2 cross-API tools (entity+awards, opportunity+context)
-- Response conventions (see `utils/envelope.ts` and docs/fix-plan.md): every list tool echoes `filters.upstream` vs `filters.client_side`, nulls untrustworthy totals (`total_upstream_unfiltered` / `total_upstream_unverified` + warnings), labels `count_unit` and `date_field`, and returns one `next_cursor` shape. `tools/index.ts` rejects unknown/mistyped parameters with a structured bad_request. `utils/fpds-codes.ts` is the FPDS code table; `docs/upstream-api-notes.md` records which upstream params are verified to bind (run `npm run capture-fixtures` with live keys to re-probe).
+- Response conventions (see `utils/envelope.ts` and docs/fix-plan.md): every list tool echoes `filters.upstream` vs `filters.client_side`, nulls untrustworthy totals (`total_upstream_unfiltered` / `total_upstream_unverified` + warnings), labels `count_unit` and `date_field`, and returns one `next_cursor` shape. `tools/index.ts` rejects unknown/mistyped parameters with a structured bad_request. `utils/fpds-codes.ts` is the FPDS code table; `docs/upstream-api-notes.md` records which upstream params are verified to bind (run `pnpm capture-fixtures` with live keys to re-probe).
 - Each tool module exports `getTools()` and `callTool()` methods
 - `ToolCatalog` in `tools/index.ts` builds a per-request tool set and injects the request's key
 
@@ -101,6 +120,14 @@ or the explicit single-user `MCP_ALLOW_INSECURE_HTTP=true` (loopback only: a non
 - Per-request precedence: OAuth-sealed key → caller header. Never the server's env.
 - The Lambda handler (`src/lambda-handler.ts`) answers 503 on `/mcp` unless `API_KEY_BUCKET` (S3 API-key auth) is configured, and uses only the caller's header keys.
 - Tools are registered per request in a `ToolCatalog` (`src/tools/index.ts`); there is no module-level registry, so concurrent requests cannot see each other's tool sets.
+
+### Web pages and docs
+
+- `src/http-app.ts` also serves the public, static pages, before the OAuth and MCP routes: `/` (landing), `/privacy-policy` and `/terms` (prerendered, from `legal/*.md`), unknown browser paths (the not-found page, status 404), `/assets`, and `/docs` (`src/docs.ts`: the built `site/`, its own CSP with inline scripts allowed only by hash). There are no accounts (`accounts: false` in `web/src/brand.tsx`), so the shared header has no sign-in link and no session check. The pages need `dist/web` (`pnpm build:web`) and `docs-site/` (the Dockerfile builds `site/` into it).
+- `web/` is the landing page (React, Vite, Tailwind). `web/src/components/kit/`, `components/ui/`, `index.css`, `lib/utils.ts` and the BLEN logo are a **kit shared byte for byte** with BLEN's other MCP servers, hashed in `web/portal-kit.json` (`pnpm kit:check`). Product text lives in `web/src/brand.tsx`; `pages/home.tsx` is Capture's own landing page (the kit's `Landing` offers account sign-in unless `accounts` is false). `web/prerender.ts` and `web/third-party-notices.ts` are shared too, but not in the manifest.
+- `site/` is the documentation site (Astro Starlight, base `/docs`, its own pnpm root and lockfile; `pnpm --dir site build`). Product values are in `site/product.mjs`. Its Tool reference page is `docs/sdk-reference.md`, which `scripts/gen-tool-reference.ts` writes from the tool definitions (`src/tool-reference.test.ts` fails when it is stale), and its example questions are `examples/*.json` (`src/docs-examples.test.ts` validates each against the tool's schema).
+- `docs/accessibility.md` says what the browser tests cover. The OAuth authorization page (`renderAuthorizationPage`) is server-rendered HTML and is not covered.
+- `legal/privacy-policy.md` and `legal/terms.md` describe the hosted service; update them when auth or storage changes.
 
 ### MCP Integration
 

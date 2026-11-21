@@ -1,0 +1,11 @@
+{
+  "tool": "aggregate_contracts",
+  "arguments": {
+    "group_by": "set_aside",
+    "metric": "count",
+    "date_from": "2025-08-01",
+    "date_to": "2025-09-30",
+    "agency": "Department of Veterans Affairs",
+    "set_aside": ["8A", "8AN"]
+  }
+}

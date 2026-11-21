@@ -1,188 +1,95 @@
-# Contributing to Capture MCP Server
+# Contributing
 
-First off, thank you for considering contributing to Capture MCP Server! It's people like you that make this MIT-licensed tool better for everyone.
+Thanks for considering a contribution. This project is small enough that process is mostly
+conversational: open an issue describing what you want to do before sending anything non-trivial,
+and we'll figure it out together.
 
-## Code of Conduct
+## Ground rules
 
-By participating in this project, you are expected to uphold our [Code of Conduct](CODE_OF_CONDUCT.md).
+- The server is a **read-only** window onto public procurement APIs (SAM.gov, USAspending, Tango and
+  HigherGov). Anything that lets a caller choose the upstream URL, method or headers, or that writes
+  to a source, needs an explicit design discussion first.
+- **No shared keys.** Provider keys are personal. Don't add any path where one person's key serves
+  other people, where the server's own environment keys serve a remote caller, or where a key
+  reaches a tool result or a log. Hosted HTTP must keep requiring a verified bearer token on `/mcp`.
+- **Never commit or push directly to `main`.** Every change lands through a branch and a pull
+  request.
+- The tools and their input and output shapes are the contract. A breaking change needs a `!`
+  commit or a `BREAKING CHANGE:` footer, which makes the release a major version, and a note in the
+  CHANGELOG.
+- Add regression tests for authentication, protocol or upstream-behaviour changes, and never weaken a
+  failing test to get a green build.
+- Keep pull requests focused. Include the problem, the resulting behaviour, meaningful test evidence
+  and any unverified integration. A passing mocked suite is not evidence that a provider works live:
+  say what you did not check against the real API.
+- Do not commit API keys, `.env` files, raw provider responses that hold personal data, or
+  production fixtures. Fixtures with federal contacts must use synthetic names and emails.
+- The repository is licensed under Apache-2.0 and contributions are provided under that license.
+  Preserve third-party attribution (`NOTICE`).
 
-## How Can I Contribute?
+## Development
 
-### Reporting Bugs
-
-Before creating bug reports, please check the existing issues to avoid duplicates. When you create a bug report, please include as many details as possible using our [bug report template](.github/ISSUE_TEMPLATE/bug_report.md).
-
-### Suggesting Enhancements
-
-Enhancement suggestions are tracked as GitHub issues. Before creating enhancement suggestions, please check the existing issues. When creating an enhancement suggestion, please use our [feature request template](.github/ISSUE_TEMPLATE/feature_request.md).
-
-### Pull Requests
-
-1. Fork the repo and create your branch from `main`.
-2. If you've added code that should be tested, add tests.
-3. If you've changed APIs, update the documentation.
-4. Ensure the test suite passes.
-5. Make sure your code lints.
-6. Issue that pull request!
-
-## Development Setup
-
-1. Clone your fork:
-   ```bash
-   git clone https://github.com/blencorp/capture-mcp-server.git
-   cd capture-mcp-server
-   ```
-
-2. Install dependencies:
-   ```bash
-   npm install
-   ```
-
-3. Set up environment variables:
-   ```bash
-   export SAM_GOV_API_KEY=your-sam-api-key   # Enables SAM.gov + join tools
-   export TANGO_API_KEY=your-tango-api-key   # Enables Tango tools
-   export HIGHERGOV_API_KEY=your-highergov-api-key # Enables HigherGov tools
-   ```
-
-4. Build the project:
-   ```bash
-   npm run build
-   ```
-
-5. Run in development mode:
-   ```bash
-   npm run dev
-   ```
-
-## Development Guidelines
-
-### Code Style
-
-- We use TypeScript for type safety
-- Follow the existing code style
-- Use meaningful variable and function names
-- Add comments for complex logic
-- Keep functions small and focused
-
-### Commit Messages
-
-- Use the present tense ("Add feature" not "Added feature")
-- Use the imperative mood ("Move cursor to..." not "Moves cursor to...")
-- Limit the first line to 72 characters or less
-- Reference issues and pull requests liberally after the first line
-
-Conventional Commit prefixes are optional but they decide the released version
-(see [Releases](#releases)):
-
-| Prefix | Effect on the next release |
-| --- | --- |
-| `feat:` / `feat(scope):` | minor bump (1.2.3 → 1.3.0) |
-| `fix:`, `docs:`, `chore:`, `ci:`, anything else | patch bump (1.2.3 → 1.2.4) |
-| any type with `!` (`feat!:`), or a `BREAKING CHANGE:` footer | major bump (1.2.3 → 2.0.0) |
-| no prefix at all | patch bump |
-
-### Testing
-
-- Write tests for new functionality
-- Ensure all tests pass before submitting PR
-- Include both positive and negative test cases
-- Test edge cases
-
-### Documentation
-
-- Update README.md if you change functionality
-- Update CLAUDE.md if you add new development commands
-- Document new tools in the appropriate section
-- Include JSDoc comments for public APIs
-
-## Releases
-
-Releases are automatic. Every merge to `main` runs
-[`.github/workflows/release.yml`](.github/workflows/release.yml), which:
-
-1. Runs the full test suite — a failing suite blocks the release.
-2. Picks the next version from the Conventional Commit prefixes since the last
-   tag (see the table above). The first release seeds at `package.json`'s
-   current version instead of bumping past it.
-3. Writes the version into `package.json`, `package-lock.json`, and
-   `manifest.json`, and the `x-release-version` line in `src/version.ts`, commits it as `chore(release): vX.Y.Z [skip ci]`, and
-   pushes it to `main`.
-4. Pushes the `vX.Y.Z` tag and publishes a GitHub release whose notes are
-   generated from the merged pull requests. Note grouping is configured in
-   [`.github/release.yml`](.github/release.yml) — label PRs (`feature`, `bug`,
-   `breaking`, `upstream`, `documentation`) to place them in a section.
-
-To force a level, run the **Release** workflow manually from the Actions tab
-and choose `patch`, `minor`, or `major`. To land a change on `main` without
-releasing, include `[skip release]` in the merge commit message.
-
-Preview what the next release would be without publishing anything:
+Node.js 24.11 or later (or 26) and pnpm 12 (pinned by `packageManager` in `package.json`) are
+required.
 
 ```bash
-npm run release-version              # prints current/next/bump
-npm run release-version -- --bump=minor
+pnpm install --frozen-lockfile
+pnpm typecheck       # tsc --noEmit: src, scripts, web and web/e2e
+pnpm lint            # eslint: correctness and security rules, type-aware promise rules in src/
+pnpm test            # builds, then tsx --test over src/**/*.test.ts; no keys or network needed
+pnpm build           # tsc (dist/) and the Vite build of the landing page (dist/web)
+pnpm test:web        # builds the pages and the docs site, then Playwright + axe in Chromium
+pnpm kit:check       # the shared portal kit matches web/portal-kit.json
+pnpm docs:reference  # regenerate docs/sdk-reference.md (a test fails if it is stale)
+pnpm dev             # tsx src/server.ts (stdio); MCP_TRANSPORT=http for HTTP
 ```
 
-The bump logic lives in `src/utils/version-bump.ts` and is unit tested; the
-workflow only supplies git history and file I/O through
-`scripts/release-version.ts`.
+`pnpm test:web` needs Chromium once (`pnpm exec playwright install chromium`) and the documentation
+site's own install (`pnpm --dir site install --frozen-lockfile`). To check real provider responses,
+use your own keys with `pnpm capture-fixtures` (keep keys in a git-ignored `.env`; it spends a little
+of each key's quota, and you must replace any federal contact it captures with synthetic values).
 
-**Requirements:** the workflow pushes the bump commit to `main` with the
-built-in `GITHUB_TOKEN`. If `main` is protected, either allow GitHub Actions to
-bypass the restriction or the push step will fail (the tag and release are
-created only after that push succeeds).
+TypeScript 7 runs side by side with the TypeScript 6 API that tooling (typescript-eslint) needs; see
+the toolchain notes in `CLAUDE.md` before touching those aliases.
 
-## Project Structure
+The HTTP tests (`src/http-app.test.ts`, `src/web-pages.test.ts`) exercise the real Express app and
+are the canonical end-to-end check: add to them for new HTTP-visible behaviour.
 
-```
-capture-mcp-server/
-├── src/
-│   ├── server.ts            # Main MCP server bootstrap
-│   ├── tools/               # Tool implementations (SAM, USASpending, Tango, join)
-│   │   ├── index.ts         # Tool registry
-│   │   ├── sam-tools.ts     # SAM.gov API tools (4)
-│   │   ├── usaspending-tools.ts # USASpending API tools (4)
-│   │   ├── join-tools.ts    # Cross-API tools (2)
-│   │   └── tango-tools.ts   # Tango API tools (5)
-│   └── utils/
-│       └── api-client.ts    # Shared HTTP client with rate limiting
-├── dist/                    # Compiled TypeScript output
-├── assets/                  # Extension assets (icons, etc.)
-└── README.md, manifest.json # Public documentation and MCP manifest
-```
+The landing page (`web/`) targets WCAG 2.2 AA and Section 508; see
+[docs/accessibility.md](./docs/accessibility.md) for what is tested automatically. Its layout and UI
+primitives (`web/src/components/kit`, `components/ui`, `index.css`) are a **kit shared byte for
+byte** with BLEN's other MCP servers: product text goes in `web/src/brand.tsx`, and a change to a kit
+file is made in the reference server (`uspto-mcp-server`) first and then copied here with
+`web/portal-kit.json`.
 
-## Adding New Tools
+The documentation site is in `site/` (Astro Starlight). The Docker image builds it and the hosted
+server serves it at `/docs` (`src/docs.ts`). It is its own pnpm root with its own lockfile:
 
-1. Create a new file in `src/tools/` or add to existing tool file
-2. Export `getTools()` and `callTool()` functions
-3. Register the tool in `src/tools/index.ts`
-4. Update documentation
-5. Add tests for the new tool
-
-Example tool structure:
-```typescript
-export function getTools() {
-  return [{
-    name: "tool-name",
-    description: "What this tool does",
-    inputSchema: {
-      type: "object",
-      properties: {
-        // Define parameters
-      },
-      required: ["required-params"]
-    }
-  }];
-}
-
-export async function callTool(name: string, args: any): Promise<any> {
-  // Implement tool logic
-}
+```bash
+pnpm --dir site install --frozen-lockfile
+pnpm --dir site dev       # local preview
+pnpm --dir site build     # builds, validates the internal links, and checks the Markdown copies
 ```
 
-## Questions?
+Everything product-specific about the site is in `site/product.mjs` and its pages in
+`site/src/content/docs/`. Its Tool reference page is `docs/sdk-reference.md`, generated from the tool
+definitions (`pnpm docs:reference`), and its example questions are the files in `examples/`, which
+`src/docs-examples.test.ts` checks against each tool's input schema. Edit those sources, not the
+generated site. Every claim on the pages (limits, key rules, error shapes) is a fact about `src/`:
+change both together, and update `legal/` when authentication or storage changes.
 
-Feel free to open an issue with your question or reach out to the maintainers.
+## Releasing
 
-Thank you for contributing!
+Releases are cut by `.github/workflows/release.yml` on a push to `main`, after the same gates as CI
+(`scripts/release-version.ts` picks the version from the commit types). Use
+[Conventional Commits](https://www.conventionalcommits.org/) (`feat:`, `fix:`, `docs:`, `ci:`, ...;
+add `!` or a `BREAKING CHANGE:` footer for a major), and never edit versions or tags by hand.
+Update `CHANGELOG.md` in the pull request. Actions are pinned to commit SHAs, and Dependabot proposes
+updates for npm packages (the server and `site/`), Actions and the Docker base image. Patched
+versions of vulnerable transitive dependencies are pinned with `overrides:` in
+`pnpm-workspace.yaml`; remove an entry once its parent ships the fix.
+
+## Reporting security issues
+
+See [SECURITY.md](./SECURITY.md). **Do not** open a public issue for authentication or key-exposure
+reports.

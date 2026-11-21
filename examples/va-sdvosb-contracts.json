@@ -1,0 +1,11 @@
+{
+  "tool": "search_tango_contracts",
+  "arguments": {
+    "agency": "3600",
+    "naics_code": "541512",
+    "set_aside": ["SDVOSBS"],
+    "date_from": "2025-10-01",
+    "date_to": "2026-09-30",
+    "limit": 25
+  }
+}

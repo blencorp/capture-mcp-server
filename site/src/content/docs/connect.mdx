@@ -1,0 +1,86 @@
+---
+title: Connect your assistant
+description: Add the hosted server to Claude, Claude Code, Cursor, VS Code, Gemini CLI, or ChatGPT, and what to do when a connection fails.
+---
+
+import { Code } from '@astrojs/starlight/components';
+
+BLEN hosts the server at:
+
+```text
+https://capture.mcp.blencorp.com/mcp
+```
+
+Your assistant connects to it over HTTPS. Before you start, [get your keys](/keys/) for the sources
+you use. The connection needs at least one of the three; the reference codes and USAspending need
+none.
+
+When your assistant first connects, it opens a page from the server. Tick the sources you use, paste
+your own key for each, and continue. There is no account to create and no password. The server seals
+your keys inside the token it gives your assistant, so the next time you connect from the same
+assistant you are not asked again until that token expires.
+
+## Claude
+
+In Claude, open **Settings → Connectors**, choose **Add custom connector**, and enter the URL above.
+Claude opens the server's page for your keys. Connectors for a team or organization are added by an
+owner of that account.
+
+## Claude Code
+
+<Code code="claude mcp add --transport http capture https://capture.mcp.blencorp.com/mcp" lang="bash" />
+
+Then run `/mcp` in Claude Code, choose **capture**, and authenticate. Claude Code opens the server's
+page for your keys in your browser.
+
+## Cursor
+
+Add the server to `~/.cursor/mcp.json`, or to `.cursor/mcp.json` in one project, then choose
+**Connect** next to it in Cursor's MCP settings:
+
+<Code code={JSON.stringify({ mcpServers: { capture: { url: 'https://capture.mcp.blencorp.com/mcp' } } }, null, 2)} lang="json" title=".cursor/mcp.json" />
+
+## VS Code
+
+Add the server to `.vscode/mcp.json`, or run **MCP: Add Server** from the command palette:
+
+<Code code={JSON.stringify({ servers: { capture: { type: 'http', url: 'https://capture.mcp.blencorp.com/mcp' } } }, null, 2)} lang="json" title=".vscode/mcp.json" />
+
+VS Code opens the server's page for your keys when it starts the server.
+
+## Gemini CLI
+
+Add the server to `~/.gemini/settings.json`, or to `.gemini/settings.json` in one project, then run
+`/mcp auth capture`:
+
+<Code code={JSON.stringify({ mcpServers: { capture: { httpUrl: 'https://capture.mcp.blencorp.com/mcp' } } }, null, 2)} lang="json" title="settings.json" />
+
+## ChatGPT and other remote clients
+
+ChatGPT and other clients that take a remote MCP server work the same way: add the URL as a custom
+connector, then enter your keys on the page the server shows. Which plans offer custom connectors is
+up to the client.
+
+## Run it yourself
+
+To run the server on your own computer, with the keys in its environment and no sign-in, or to host
+your own, see [Self-host](/self-host/).
+
+## Check that it works
+
+Ask your assistant:
+
+> What does the set-aside code 8AN mean?
+
+The assistant calls `lookup_reference_code`, which needs no key. Then try a question for a source
+whose key you entered, such as "Find SAM.gov opportunities posted this week for NAICS 541512."
+
+| What you see | Cause | Fix |
+| --- | --- | --- |
+| A source's tools are missing from the list | You did not enter a key for that source. | Disconnect the connector and connect again, and enter the key. |
+| `Tool "…" not found` | The same: the tool needs a key the connection does not have. | As above. |
+| `API Error 401` or `403`, or `auth_failed` | The source refused the key. The server does not check a key when you enter it. | Check the key with its source (see [Get your keys](/keys/)), then connect again. |
+| `API Error 429`, or `rate_limited` | The source's limit for the key is used up. | Wait, and ask for less. |
+| The assistant says the connection expired, or asks you to connect again | The access token ran out (30 days), and the refresh token (90 days) could not renew it, for example because the server restarted and forgot your assistant. | Connect again. |
+
+[Tool reference](/reference/sdk/#results-and-errors) describes the error shapes.

@@ -1,44 +1,23 @@
-## Description
+## What
 
-Please include a summary of the changes and which issue is fixed. Include relevant motivation and context.
+<!-- One paragraph: the change and its motivation. Link issues. -->
 
-Fixes # (issue)
+## How
 
-## Type of change
+<!-- Implementation notes for a reviewer. Highlight non-obvious decisions. -->
 
-Please delete options that are not relevant.
+## Test plan
 
-- [ ] Bug fix (non-breaking change which fixes an issue)
-- [ ] New feature (non-breaking change which adds functionality)
-- [ ] Breaking change (fix or feature that would cause existing functionality to not work as expected)
-- [ ] Documentation update
-- [ ] Performance improvement
-- [ ] Code refactoring
+- [ ] `pnpm typecheck`
+- [ ] `pnpm lint`
+- [ ] `pnpm test`
+- [ ] `pnpm build`
+- [ ] If the landing page (`web/`) or docs site (`site/`) changed: `pnpm test:web` passes, and the manual checks in `docs/accessibility.md` were repeated for the changed pages
+- [ ] If a portal kit file changed: `pnpm kit:update`, and a follow-up to copy the kit to the other servers
+- [ ] If a tool or its arguments changed: ran `pnpm docs:reference`, and updated or added an example in `examples/`
+- [ ] If HTTP-visible: added or updated a case in `src/http-app.test.ts` or `src/web-pages.test.ts`
+- [ ] No API keys, `.env` files, or captured provider responses in the diff
 
-## How Has This Been Tested?
+## Risk
 
-Please describe the tests that you ran to verify your changes. Provide instructions so we can reproduce.
-
-- [ ] Unit tests
-- [ ] Integration tests
-- [ ] Manual testing
-
-**Test Configuration**:
-* Node.js version:
-* Operating System:
-
-## Checklist:
-
-- [ ] My code follows the style guidelines of this project
-- [ ] I have performed a self-review of my own code
-- [ ] I have commented my code, particularly in hard-to-understand areas
-- [ ] I have made corresponding changes to the documentation
-- [ ] My changes generate no new warnings
-- [ ] I have added tests that prove my fix is effective or that my feature works
-- [ ] New and existing unit tests pass locally with my changes
-- [ ] Any dependent changes have been merged and published in downstream modules
-- [ ] I have checked my code and corrected any misspellings
-
-## Additional context
-
-Add any other context or screenshots about the pull request here.
+<!-- Security/perf/back-compat impact. "None" is a valid answer when honest. -->

@@ -1,0 +1,89 @@
+name: security
+
+# Daily dependency audit of the unchanged lockfile. CI audits only when something is pushed, so
+# an advisory published against a quiet main would otherwise surface first as an unrelated PR
+# failing its audit gate. scripts/security-audit.mjs runs the same audit as CI on the root lockfile
+# (infrastructure/ is a separate npm project and is not covered here), and also checks that every
+# `auditConfig.ignoreGhsas` exception still deserves its place (it fails once the advisory is
+# withdrawn or gets a fix).
+#
+# Findings open one tracking issue (or comment on it); a green run closes it. When the audit
+# service itself fails (registry or network trouble), the run retries once and then fails
+# without touching the issue. Fixes land through normal PRs (a Dependabot security update, an
+# `overrides:` entry in pnpm-workspace.yaml, or a removed exception), never from this workflow.
+#
+# Nothing is installed: `pnpm audit` reads only the lockfile, so no dependency code runs here.
+on:
+  schedule:
+    - cron: '23 7 * * *'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: security-audit
+  cancel-in-progress: true
+
+env:
+  ISSUE_TITLE: Scheduled dependency audit is failing
+
+jobs:
+  audit:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      issues: write # the tracking issue
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      # pnpm version is read from the "packageManager" field in package.json.
+      - uses: pnpm/action-setup@73e46992e05b19abd31f2f3c20e0e7370d762115 # v6.1.1
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: '26'
+      # Exit 0 clean, 1 a person has to act, 2 the audit service could not be reached.
+      # The issue lookups list open issues directly (no search index, which lags new issues).
+      - name: Audit the server
+        id: audit
+        run: |
+          set +e
+          node scripts/security-audit.mjs .
+          code=$?
+          if [ "$code" -eq 2 ]; then
+            echo "::warning::audit service error; retrying in 60 s"
+            sleep 60
+            node scripts/security-audit.mjs .
+            code=$?
+          fi
+          echo "code=$code" >> "$GITHUB_OUTPUT"
+          exit "$code"
+      - name: Open or update the tracking issue
+        if: ${{ failure() && steps.audit.outputs.code == '1' }}
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+        run: |
+          body="The scheduled audit found something: $RUN_URL
+
+          Fix it with a PR: merge the Dependabot security update if one is open, otherwise update the package or add an \`overrides:\` entry in \`pnpm-workspace.yaml\`. If an \`auditConfig.ignoreGhsas\` exception was flagged, remove it (and its row in \`src/audit-exceptions.test.ts\`). This issue closes itself when the workflow passes again."
+          number=$(gh issue list --state open --limit 200 --json number,title \
+            --jq "map(select(.title == env.ISSUE_TITLE))[0].number // empty")
+          if [ -n "$number" ]; then
+            gh issue comment "$number" --body "Still failing: $RUN_URL"
+          else
+            gh issue create --title "$ISSUE_TITLE" --body "$body"
+          fi
+      - name: Close the tracking issue
+        if: ${{ success() }}
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+        run: |
+          for number in $(gh issue list --state open --limit 200 --json number,title \
+            --jq "map(select(.title == env.ISSUE_TITLE)) | .[].number"); do
+            gh issue close "$number" --comment "The audit passes again: $RUN_URL"
+          done
