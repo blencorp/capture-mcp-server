@@ -52,6 +52,30 @@ test('an api_key query value in an error is redacted even when it is not the key
   }
 });
 
+test('URL-encoded forms of a provider key are redacted outside an api_key parameter', async () => {
+  const key = 'synthetic/key+value= x';
+  const encoded = [
+    encodeURIComponent(key),
+    encodeURI(key),
+    new URLSearchParams({ k: key }).toString().slice(2),
+    encodeURIComponent(key).toLowerCase(),
+  ];
+  const restore = failWith(400, {
+    detail: `rejected ${encoded[0]}`,
+    url: `https://example.gov/v1/x?token=${encoded[2]}&other=${encoded[3]}`,
+    path: `/keys/${encoded[1]}`,
+  });
+  try {
+    const res = await ApiClient.highergovGet('/x', {}, key);
+    for (const text of [res.error!, ApiClient.redactSecrets(encoded.join(' '), [key])]) {
+      for (const form of encoded) assert.ok(!text.includes(form), text);
+      assert.match(text, /REDACTED/);
+    }
+  } finally {
+    restore();
+  }
+});
+
 test('an upstream error body is truncated', async () => {
   const restore = failWith(502, 'x'.repeat(5000));
   try {

@@ -237,10 +237,25 @@ export class ApiClient {
     let out = text;
     for (const secret of secrets) {
       if (typeof secret !== 'string' || secret.length === 0) continue;
-      // The key as written, and as it appears inside a JSON-encoded body.
-      for (const form of [secret, JSON.stringify(secret).slice(1, -1)]) out = out.split(form).join('[REDACTED]');
+      for (const form of this.secretForms(secret)) out = out.split(form).join('[REDACTED]');
     }
     return out.replace(/(api[_-]?key=)[^&\s"'\\]+/gi, '$1[REDACTED]');
+  }
+
+  /** Every way a provider might echo a key: as written, JSON-escaped, and URL-encoded in either hex case. */
+  private static secretForms(secret: string): Set<string> {
+    const forms = new Set([secret, JSON.stringify(secret).slice(1, -1)]);
+    const encoded = [
+      encodeURIComponent(secret),
+      encodeURI(secret),
+      new URLSearchParams({ k: secret }).toString().slice(2), // form encoding: space as `+`
+    ];
+    for (const form of encoded) {
+      forms.add(form);
+      forms.add(form.replace(/%[0-9A-F]{2}/gi, (hex) => hex.toLowerCase()));
+      forms.add(form.replace(/%[0-9A-F]{2}/gi, (hex) => hex.toUpperCase()));
+    }
+    return forms;
   }
 
   private static readonly MAX_ERROR_BODY = 500;
