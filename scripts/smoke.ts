@@ -7,6 +7,12 @@
 import { tangoTools } from '../src/tools/tango-tools.js';
 import { highergovTools } from '../src/tools/highergov-tools.js';
 
+// Tools never read keys from the environment (the server injects the caller's key), so pass them.
+const tango = (name: string, args: Record<string, any>) =>
+  tangoTools.callTool(name, { api_key: process.env.TANGO_API_KEY, ...args });
+const highergov = (name: string, args: Record<string, any>) =>
+  highergovTools.callTool(name, { api_key: process.env.HIGHERGOV_API_KEY, ...args });
+
 let failures = 0;
 
 function check(label: string, ok: boolean, detail?: string): void {
@@ -23,8 +29,8 @@ async function smokeTango(): Promise<void> {
 
   // P0-1: exact set-aside. 8A and 8AN must be disjoint.
   const window = { date_from: '2025-08-01', date_to: '2025-09-30' };
-  const eightA: any = await tangoTools.callTool('search_tango_contracts', { ...window, set_aside: '8A', limit: 100 });
-  const eightAN: any = await tangoTools.callTool('search_tango_contracts', { ...window, set_aside: '8AN', limit: 100 });
+  const eightA: any = await tango('search_tango_contracts', { ...window, set_aside: '8A', limit: 100 });
+  const eightAN: any = await tango('search_tango_contracts', { ...window, set_aside: '8AN', limit: 100 });
   check('8A search returned without error', !eightA.error, JSON.stringify(eightA.error ?? ''));
   check('8AN search returned without error', !eightAN.error, JSON.stringify(eightAN.error ?? ''));
   if (!eightA.error && !eightAN.error) {
@@ -39,7 +45,7 @@ async function smokeTango(): Promise<void> {
   }
 
   // P0-2: amount filter must visibly apply.
-  const withMin: any = await tangoTools.callTool('search_tango_contracts', {
+  const withMin: any = await tango('search_tango_contracts', {
     ...window, set_aside: '8AN', award_amount_min: 1000000, limit: 100,
   });
   check('award_amount_min echoes in filters.client_side', withMin.filters?.client_side?.award_amount_min === 1000000
@@ -54,7 +60,7 @@ async function smokeTango(): Promise<void> {
   const seen = new Set<string>();
   let dupes = 0;
   for (let page = 0; page < 3; page++) {
-    const res: any = await tangoTools.callTool('search_tango_contracts',
+    const res: any = await tango('search_tango_contracts',
       cursor ? { cursor } : { ...window, set_aside: '8AN', limit: 100 });
     if (res.error) { check(`cursor page ${page + 1} fetch`, false, JSON.stringify(res.error)); break; }
     for (const c of res.contracts ?? []) {
@@ -68,9 +74,9 @@ async function smokeTango(): Promise<void> {
     `${seen.size} unique rows, ${dupes} duplicates`);
 
   // Agency names must be rejected, codes must bind.
-  const name: any = await tangoTools.callTool('search_tango_contracts', { agency: 'Army', limit: 1 });
+  const name: any = await tango('search_tango_contracts', { agency: 'Army', limit: 1 });
   check('agency name is rejected with guidance', name.error?.code === 'bad_request');
-  const code: any = await tangoTools.callTool('search_tango_contracts', { ...window, agency: '2100', set_aside: '8AN', limit: 5 });
+  const code: any = await tango('search_tango_contracts', { ...window, agency: '2100', set_aside: '8AN', limit: 5 });
   check('agency code binds (rows are Army)', !code.error
     && (code.contracts ?? []).every((c: any) => c.agency?.code === '2100'),
     JSON.stringify((code.contracts ?? []).map((c: any) => c.agency?.code)));
@@ -79,7 +85,7 @@ async function smokeTango(): Promise<void> {
 async function smokeHighergov(): Promise<void> {
   console.log('\n== HigherGov (P0-5/P0-6)');
 
-  const res: any = await highergovTools.callTool('search_highergov_contracts', {
+  const res: any = await highergov('search_highergov_contracts', {
     agency: 'Department of Veterans Affairs',
     naics: ['541511'],
     limit: 10,

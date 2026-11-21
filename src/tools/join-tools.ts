@@ -12,7 +12,7 @@ export const joinTools = {
           properties: {
             api_key: {
               type: "string", 
-              description: "SAM.gov API key (optional if SAM_GOV_API_KEY env var is set)"
+              description: "SAM.gov API key (optional; the server supplies your key)"
             },
             uei: {
               type: "string",
@@ -38,7 +38,7 @@ export const joinTools = {
           properties: {
             api_key: {
               type: "string",
-              description: "SAM.gov API key (optional if SAM_GOV_API_KEY env var is set)"
+              description: "SAM.gov API key (optional; the server supplies your key)"
             },
             opportunity_id: {
               type: "string", 
@@ -75,11 +75,10 @@ export const joinTools = {
   async getEntityAndAwards(args: any): Promise<any> {
     const { api_key, uei, fiscal_year = 2024, award_limit = 10 } = args;
     
-    // Use environment variable if API key not provided in args
-    const samApiKey = api_key || process.env.SAM_GOV_API_KEY;
+    const samApiKey = api_key;
     
     if (!samApiKey) {
-      throw new Error("SAM.gov API key is required. Please provide it as a parameter or set SAM_GOV_API_KEY environment variable");
+      throw new Error("SAM.gov API key is required. The server injects the caller's key; locally, set SAM_GOV_API_KEY.");
     }
     
     if (!uei) {
@@ -194,11 +193,10 @@ export const joinTools = {
   async getOpportunitySpendingContext(args: any): Promise<any> {
     const { api_key, opportunity_id, solicitation_number, fiscal_year = 2024 } = args;
     
-    // Use environment variable if API key not provided in args
-    const samApiKey = api_key || process.env.SAM_GOV_API_KEY;
+    const samApiKey = api_key;
     
     if (!samApiKey) {
-      throw new Error("SAM.gov API key is required. Please provide it as a parameter or set SAM_GOV_API_KEY environment variable");
+      throw new Error("SAM.gov API key is required. The server injects the caller's key; locally, set SAM_GOV_API_KEY.");
     }
     
     if (!opportunity_id && !solicitation_number) {

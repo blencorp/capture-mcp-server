@@ -8,11 +8,8 @@ import { tangoTools } from './tango-tools.js';
 import { highergovTools } from './highergov-tools.js';
 import { referenceTools } from './reference-tools.js';
 
-// Tool registry
-const toolRegistry = new Map<string, (args: any) => Promise<any>>();
 type ApiKeyName = 'samKey' | 'tangoKey' | 'higherGovKey';
-const toolApiKeyRegistry = new Map<string, ApiKeyName | null>();
-const toolSchemaRegistry = new Map<string, Tool>();
+export type ProviderKeyOverrides = { samKey?: string; tangoKey?: string; higherGovKey?: string };
 
 // Design convention: reject unknown or mistyped parameters with a structured
 // bad_request instead of accepting-and-ignoring them. A silently dropped
@@ -65,139 +62,81 @@ export interface ApiKeyConfig {
   hasSamApiKey: boolean;
   hasTangoApiKey: boolean;
   hasHigherGovApiKey: boolean;
-  // Actual key values (from headers or env vars) for injection into tool calls
+  // Actual key values (resolved per request) for injection into tool calls
   samApiKey?: string;
   tangoApiKey?: string;
   higherGovApiKey?: string;
 }
 
-export async function initializeTools(config: ApiKeyConfig): Promise<Tool[]> {
-  const allTools: Tool[] = [];
-  const enabledToolSets: string[] = [];
-
-  toolRegistry.clear();
-  toolApiKeyRegistry.clear();
-  toolSchemaRegistry.clear();
-
-  // Always register reference tools (static lookups, no API key or network)
-  const referenceToolList = await referenceTools.getTools();
-  referenceToolList.forEach(tool => {
-    allTools.push(tool);
-    toolRegistry.set(tool.name, (args) => referenceTools.callTool(tool.name, args));
-    toolApiKeyRegistry.set(tool.name, null);
-    toolSchemaRegistry.set(tool.name, tool);
-  });
-  enabledToolSets.push(`Reference (${referenceToolList.length} tools)`);
-
-  // Always register USASpending.gov tools (no API key required - public API)
-  const usaspendingToolList = await usaspendingTools.getTools();
-  usaspendingToolList.forEach(tool => {
-    allTools.push(tool);
-    toolRegistry.set(tool.name, (args) => usaspendingTools.callTool(tool.name, args));
-    toolApiKeyRegistry.set(tool.name, null);
-    toolSchemaRegistry.set(tool.name, tool);
-  });
-  enabledToolSets.push(`USASpending.gov (${usaspendingToolList.length} tools)`);
-
-  // Conditionally register SAM.gov tools
-  if (config.hasSamApiKey) {
-    const samToolList = await samTools.getTools();
-    samToolList.forEach(tool => {
-      allTools.push(tool);
-      toolRegistry.set(tool.name, (args) => samTools.callTool(tool.name, args));
-      toolApiKeyRegistry.set(tool.name, 'samKey');
-      toolSchemaRegistry.set(tool.name, tool);
-    });
-    enabledToolSets.push(`SAM.gov (${samToolList.length} tools)`);
-
-    // Register join tools (require SAM.gov API key)
-    const joinToolList = await joinTools.getTools();
-    joinToolList.forEach(tool => {
-      allTools.push(tool);
-      toolRegistry.set(tool.name, (args) => joinTools.callTool(tool.name, args));
-      toolApiKeyRegistry.set(tool.name, 'samKey');
-      toolSchemaRegistry.set(tool.name, tool);
-    });
-    enabledToolSets.push(`Join Tools (${joinToolList.length} tools)`);
-  }
-
-  // Conditionally register Tango tools
-  if (config.hasTangoApiKey) {
-    const tangoToolList = await tangoTools.getTools();
-    tangoToolList.forEach(tool => {
-      allTools.push(tool);
-      toolRegistry.set(tool.name, (args) => tangoTools.callTool(tool.name, args));
-      toolApiKeyRegistry.set(tool.name, 'tangoKey');
-      toolSchemaRegistry.set(tool.name, tool);
-    });
-    enabledToolSets.push(`Tango API (${tangoToolList.length} tools)`);
-  }
-
-  // Conditionally register HigherGov tools
-  if (config.hasHigherGovApiKey) {
-    const highergovToolList = await highergovTools.getTools();
-    highergovToolList.forEach(tool => {
-      allTools.push(tool);
-      toolRegistry.set(tool.name, (args) => highergovTools.callTool(tool.name, args));
-      toolApiKeyRegistry.set(tool.name, 'higherGovKey');
-      toolSchemaRegistry.set(tool.name, tool);
-    });
-    enabledToolSets.push(`HigherGov (${highergovToolList.length} tools)`);
-  }
-
-  // Log enabled tool sets in debug mode
-  if (process.env.DEBUG) {
-    console.error(`Enabled tool sets: ${enabledToolSets.join(", ")}`);
-    console.error(`Total tools available: ${allTools.length}`);
-  }
-
-  return allTools;
-}
+type ToolEntry = {
+  tool: Tool;
+  call: (args: any) => Promise<any>;
+  keyName: ApiKeyName | null;
+};
 
 /**
- * Determines which API key to use for a given tool
+ * The tools one request may use, and how to call them. Each request builds its own catalog from
+ * the keys that request is allowed to use, so concurrent requests with different keys never see
+ * each other's tool sets (a shared module-level registry was cleared and refilled per request).
  */
-function getApiKeyForTool(toolName: string, keys: { samKey?: string, tangoKey?: string, higherGovKey?: string }): string | undefined {
-  const keyName = toolApiKeyRegistry.get(toolName);
-  return keyName ? keys[keyName] : undefined;
-}
+export class ToolCatalog {
+  readonly tools: Tool[];
+  readonly #entries: Map<string, ToolEntry>;
 
-/**
- * Call a tool by name with arguments
- * @param name Tool name
- * @param args Tool arguments
- * @param apiKeyOverrides Optional API keys from HTTP headers to inject into args
- */
-export async function callTool(
-  name: string, 
-  args: any, 
-  apiKeyOverrides?: { samKey?: string, tangoKey?: string, higherGovKey?: string }
-): Promise<any> {
-  const toolFunction = toolRegistry.get(name);
-  
-  if (!toolFunction) {
-    throw new Error(`Tool "${name}" not found`);
+  private constructor(entries: ToolEntry[]) {
+    this.tools = entries.map(entry => entry.tool);
+    this.#entries = new Map(entries.map(entry => [entry.tool.name, entry]));
   }
 
-  const schema = toolSchemaRegistry.get(name);
-  if (schema) {
-    const validationError = validateToolArgs(schema, args);
+  static async create(config: ApiKeyConfig): Promise<ToolCatalog> {
+    const entries: ToolEntry[] = [];
+    const enabledToolSets: string[] = [];
+    const add = async (
+      label: string,
+      module: { getTools(): Promise<Tool[]> | Tool[]; callTool(name: string, args: any): Promise<any> },
+      keyName: ApiKeyName | null,
+    ) => {
+      const list = await module.getTools();
+      for (const tool of list) {
+        entries.push({ tool, call: args => module.callTool(tool.name, args), keyName });
+      }
+      enabledToolSets.push(`${label} (${list.length} tools)`);
+    };
+
+    // Always available: static reference lookups and the public USASpending.gov API.
+    await add('Reference', referenceTools, null);
+    await add('USASpending.gov', usaspendingTools, null);
+    if (config.hasSamApiKey) {
+      await add('SAM.gov', samTools, 'samKey');
+      await add('Join Tools', joinTools, 'samKey'); // join tools call SAM.gov
+    }
+    if (config.hasTangoApiKey) await add('Tango API', tangoTools, 'tangoKey');
+    if (config.hasHigherGovApiKey) await add('HigherGov', highergovTools, 'higherGovKey');
+
+    if (process.env.DEBUG) {
+      console.error(`Enabled tool sets: ${enabledToolSets.join(', ')}`);
+      console.error(`Total tools available: ${entries.length}`);
+    }
+    return new ToolCatalog(entries);
+  }
+
+  /**
+   * Call a tool by name. `keys` are the provider keys this request may use; the one the tool
+   * needs is injected as `api_key` unless the caller passed one explicitly.
+   */
+  async call(name: string, args: any, keys?: ProviderKeyOverrides): Promise<any> {
+    const entry = this.#entries.get(name);
+    if (!entry) {
+      throw new Error(`Tool "${name}" not found`);
+    }
+
+    const validationError = validateToolArgs(entry.tool, args);
     if (validationError) {
       return { error: { code: 'bad_request', message: validationError } };
     }
-  }
 
-  // Inject API key from headers if not already provided in args
-  let argsWithKey = args;
-  if (apiKeyOverrides) {
-    const keyForTool = getApiKeyForTool(name, apiKeyOverrides);
-    if (keyForTool && !args?.api_key) {
-      argsWithKey = { ...args, api_key: keyForTool };
-      if (process.env.DEBUG) {
-        console.error(`[${name}] Injecting API key from header`);
-      }
-    }
+    const keyForTool = entry.keyName && keys ? keys[entry.keyName] : undefined;
+    const argsWithKey = keyForTool && !args?.api_key ? { ...args, api_key: keyForTool } : args;
+    return await entry.call(argsWithKey);
   }
-
-  return await toolFunction(argsWithKey);
 }

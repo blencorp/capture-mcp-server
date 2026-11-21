@@ -12,7 +12,9 @@ import { nextVersion, type BumpLevel } from '../src/utils/version-bump.js';
 
 const TAG_PREFIX = 'v';
 // Files that carry a user-visible version and must not drift from package.json.
-const MANIFESTS = ['manifest.json', 'manifest-hosted.json'];
+const MANIFESTS = ['manifest.json'];
+// Source files whose version literal sits on a line marked `x-release-version`.
+const MARKER_FILES = ['src/version.ts'];
 
 function git(args: string[]): string {
   return execFileSync('git', args, { encoding: 'utf8' }).trim();
@@ -58,6 +60,20 @@ function writeManifestVersion(path: string, version: string): boolean {
   return true;
 }
 
+function writeMarkerVersion(path: string, version: string): boolean {
+  const raw = readFileSync(path, 'utf8');
+  if (!raw.includes('x-release-version')) {
+    throw new Error(`${path} has no line marked x-release-version; the released version would drift from package.json`);
+  }
+  const updated = raw
+    .split('\n')
+    .map(line => (line.includes('x-release-version') ? line.replace(/(['"])\d+\.\d+\.\d+\1/, `'${version}'`) : line))
+    .join('\n');
+  if (updated === raw) return false;
+  writeFileSync(path, updated);
+  return true;
+}
+
 function main(): void {
   const args = process.argv.slice(2);
   const writeIndex = args.indexOf('--write');
@@ -71,6 +87,11 @@ function main(): void {
     for (const manifest of MANIFESTS) {
       if (writeManifestVersion(manifest, version)) {
         console.log(`updated ${manifest} -> ${version}`);
+      }
+    }
+    for (const file of MARKER_FILES) {
+      if (writeMarkerVersion(file, version)) {
+        console.log(`updated ${file} -> ${version}`);
       }
     }
     return;

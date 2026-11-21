@@ -36,7 +36,7 @@ This is a Model Context Protocol (MCP) server that captures federal procurement 
   - `join-tools.ts` - 2 cross-API tools (entity+awards, opportunity+context)
 - Response conventions (see `utils/envelope.ts` and docs/fix-plan.md): every list tool echoes `filters.upstream` vs `filters.client_side`, nulls untrustworthy totals (`total_upstream_unfiltered` / `total_upstream_unverified` + warnings), labels `count_unit` and `date_field`, and returns one `next_cursor` shape. `tools/index.ts` rejects unknown/mistyped parameters with a structured bad_request. `utils/fpds-codes.ts` is the FPDS code table; `docs/upstream-api-notes.md` records which upstream params are verified to bind (run `npm run capture-fixtures` with live keys to re-probe).
 - Each tool module exports `getTools()` and `callTool()` methods
-- Central registry in `tools/index.ts` manages all tool registration
+- `ToolCatalog` in `tools/index.ts` builds a per-request tool set and injects the request's key
 
 **API Client (`src/utils/api-client.ts`)**
 - Centralized HTTP client with rate limiting
@@ -50,7 +50,7 @@ This is a Model Context Protocol (MCP) server that captures federal procurement 
 ### API Integration Patterns
 
 **SAM.gov Tools**
-- Require API key (from args or SAM_GOV_API_KEY env var)
+- Require an API key (injected by `ToolCatalog` as `api_key`; locally from SAM_GOV_API_KEY)
 - Use GET requests with query parameters
 - Return filtered essential fields to minimize token usage
 
@@ -60,7 +60,7 @@ This is a Model Context Protocol (MCP) server that captures federal procurement 
 - POST used for complex filtering operations
 
 **Tango API Tools**
-- Require API key (from args or TANGO_API_KEY env var)
+- Require an API key (injected by `ToolCatalog` as `api_key`; locally from TANGO_API_KEY)
 - Use GET and POST requests with API key in headers (X-API-Key)
 - Unified API consolidating FPDS, USASpending, and SAM data
 - Enhanced filtering and search capabilities
@@ -84,18 +84,23 @@ Optional environment variables (configure based on which tools you need):
 - 9 HigherGov when `HIGHERGOV_API_KEY` is set
 - All 34 tools when all three keys are set
 
-HTTP header overrides (precedence over env vars) — used by remote MCP clients:
-`X-Sam-Api-Key`, `X-Tango-Api-Key`, `X-Highergov-Api-Key`.
+Key sources (`src/auth/request-keys.ts`, `resolveRequestKeys`): stdio and `MCP_ALLOW_INSECURE_HTTP` (single user) use the
+process env keys, overridable by `X-*-Api-Key` headers. Remote callers (OAuth HTTP, Lambda) use ONLY their own keys —
+OAuth-sealed, then their headers — never the process env. Tool modules never read `process.env` for keys; `ToolCatalog`
+injects the request's key as `api_key`.
 
 The server automatically registers only the tools for which API keys are available.
 
 ### Remote Auth (HTTP mode)
 
-When `MCP_TRANSPORT=http` and `MCP_REQUIRE_OAUTH=true`:
+`MCP_TRANSPORT=http` fails closed (`httpAuthFromEnv` in `src/http-app.ts`): it needs `MCP_REQUIRE_OAUTH=true` + `OAUTH_TOKEN_SECRET`,
+or the explicit single-user `MCP_ALLOW_INSECURE_HTTP=true` (loopback only: a non-loopback `HOST` is a startup error, `listenHost`).
 - `src/auth/mcp-oauth.ts` implements an OAuth 2.1 server with PKCE, dynamic client registration, and AES-256-GCM sealed access/refresh tokens. Each token carries a `keys: { sam?, tango?, highergov? }` map sealed against `OAUTH_TOKEN_SECRET`.
 - `GET/POST /oauth/authorize` renders a multi-provider authorization page; users pick checkboxes per provider and supply only the keys they have.
-- `POST /mcp` is gated by `requireBearerAuth` UNLESS the caller presents an `X-Sam-Api-Key` / `X-Tango-Api-Key` / `X-Highergov-Api-Key` header. Header presence bypasses OAuth for programmatic clients — the key itself is the trust anchor.
-- Precedence per request: OAuth-sealed key → header → env var.
+- `POST /mcp` always requires a verified bearer token. Provider-key headers never authenticate a caller; they only add the caller's own key for a provider.
+- Per-request precedence: OAuth-sealed key → caller header. Never the server's env.
+- The Lambda handler (`src/lambda-handler.ts`) answers 503 on `/mcp` unless `API_KEY_BUCKET` (S3 API-key auth) is configured, and uses only the caller's header keys.
+- Tools are registered per request in a `ToolCatalog` (`src/tools/index.ts`); there is no module-level registry, so concurrent requests cannot see each other's tool sets.
 
 ### MCP Integration
 

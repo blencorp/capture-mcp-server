@@ -427,8 +427,8 @@ export function getProviderKeysFromAuth(authInfo: AuthInfo | undefined): Provide
   return out;
 }
 
-export function getOAuthPublicBaseUrl(port: number): URL {
-  const configured = process.env.MCP_PUBLIC_BASE_URL || process.env.PUBLIC_URL;
+export function getOAuthPublicBaseUrl(port: number, env: NodeJS.ProcessEnv = process.env): URL {
+  const configured = env.MCP_PUBLIC_BASE_URL || env.PUBLIC_URL;
   if (configured) {
     const url = new URL(configured);
     url.hash = '';

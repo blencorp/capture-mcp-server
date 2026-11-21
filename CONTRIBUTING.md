@@ -106,7 +106,7 @@ Releases are automatic. Every merge to `main` runs
    tag (see the table above). The first release seeds at `package.json`'s
    current version instead of bumping past it.
 3. Writes the version into `package.json`, `package-lock.json`, and
-   `manifest.json`, commits it as `chore(release): vX.Y.Z [skip ci]`, and
+   `manifest.json`, and the `x-release-version` line in `src/version.ts`, commits it as `chore(release): vX.Y.Z [skip ci]`, and
    pushes it to `main`.
 4. Pushes the `vX.Y.Z` tag and publishes a GitHub release whose notes are
    generated from the merged pull requests. Note grouping is configured in

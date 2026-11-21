@@ -3,7 +3,8 @@ import assert from 'node:assert/strict';
 import { ApiClient } from '../utils/api-client.js';
 import { tangoTools } from './tango-tools.js';
 
-process.env.TANGO_API_KEY = process.env.TANGO_API_KEY || 'test-key';
+// The server injects the caller's key as api_key; tools never read keys from the environment.
+const callTool = (name: string, args: Record<string, any> = {}) => tangoTools.callTool(name, { api_key: 'test-key', ...args });
 
 function tangoContract(over: Record<string, any> = {}) {
   return {
@@ -54,7 +55,7 @@ test('P0-1: set_aside matches exactly against per-row FPDS codes and describes t
     ),
   }));
   try {
-    const out: any = await tangoTools.callTool('search_tango_contracts', { set_aside: '8A' });
+    const out: any = await callTool('search_tango_contracts', { set_aside: '8A' });
     assert.equal(out.contracts.length, 1);
     assert.equal(out.contracts[0].contract_id, 'B');
     assert.deepEqual(out.contracts[0].set_aside, { code: '8A', description: '8(a) Competed (FAR 19.8)' });
@@ -79,14 +80,14 @@ test('P0-1: set_aside accepts an array and rejects unknown codes with the valid 
     ]),
   }));
   try {
-    const out: any = await tangoTools.callTool('search_tango_contracts', {
+    const out: any = await callTool('search_tango_contracts', {
       set_aside: ['8AN', 'SDVOSBS', 'HZS'],
     });
     assert.deepEqual(out.contracts.map((c: any) => c.contract_id).sort(), ['A', 'B']);
     // Multi-code filters go upstream via Tango's documented OR syntax.
     assert.equal(stub.calls[0].params.set_aside, '8AN|SDVOSBS|HZS');
 
-    const err: any = await tangoTools.callTool('search_tango_contracts', { set_aside: ['8ASS'] });
+    const err: any = await callTool('search_tango_contracts', { set_aside: ['8ASS'] });
     assert.equal(err.error.code, 'bad_request');
     assert.match(err.error.message, /8ASS/);
     assert.match(err.error.message, /8AN \(8\(a\) Sole Source/);
@@ -104,7 +105,7 @@ test('P0-1: when rows carry no readable code, results are declared LOOSE and the
     ),
   }));
   try {
-    const out: any = await tangoTools.callTool('search_tango_contracts', { set_aside: '8AN' });
+    const out: any = await callTool('search_tango_contracts', { set_aside: '8AN' });
     assert.equal(out.contracts.length, 2, 'must not filter blind');
     assert.ok(out.warnings.some((w: string) => /LOOSE matches/.test(w)));
     assert.equal(out.total, null);
@@ -123,7 +124,7 @@ test('P0-2: amount bounds are enforced client-side, echoed, and never silently d
     ),
   }));
   try {
-    const out: any = await tangoTools.callTool('search_tango_contracts', {
+    const out: any = await callTool('search_tango_contracts', {
       set_aside: '8AN',
       award_amount_min: 1000000,
     });
@@ -147,13 +148,13 @@ test('P0-3: next_cursor round-trips and replays the exact next-page query', asyn
     data: page([tangoContract()], { next: nextUrl }),
   }));
   try {
-    const first: any = await tangoTools.callTool('search_tango_contracts', { set_aside: '8AN', limit: 100 });
+    const first: any = await callTool('search_tango_contracts', { set_aside: '8AN', limit: 100 });
     assert.equal(first.next_cursor, nextUrl);
 
-    await tangoTools.callTool('search_tango_contracts', { cursor: nextUrl });
+    await callTool('search_tango_contracts', { cursor: nextUrl });
     assert.deepEqual(stub.calls[1].params, { limit: '100', offset: '100', set_aside: '8AN' });
 
-    const wrong: any = await tangoTools.callTool('search_tango_grants', { cursor: nextUrl });
+    const wrong: any = await callTool('search_tango_grants', { cursor: nextUrl });
     assert.equal(wrong.error.code, 'bad_request');
     assert.match(wrong.error.message, /belongs to \/contracts\//);
   } finally {
@@ -168,7 +169,7 @@ test('contract search requests the documented field shape and degrades gracefull
     return { success: true, data: page([tangoContract()]) };
   });
   try {
-    const ok: any = await tangoTools.callTool('search_tango_contracts', { agency: '2100' });
+    const ok: any = await callTool('search_tango_contracts', { agency: '2100' });
     assert.equal(ok.contracts.length, 1);
   } finally {
     stub1.restore();
@@ -182,7 +183,7 @@ test('contract search requests the documented field shape and degrades gracefull
     return { success: true, data: page([tangoContract()]) };
   });
   try {
-    const out: any = await tangoTools.callTool('search_tango_contracts', { agency: '2100' });
+    const out: any = await callTool('search_tango_contracts', { agency: '2100' });
     assert.equal(call, 2);
     assert.equal(out.contracts.length, 1);
     assert.ok(out.warnings.some((w: string) => /field-shape request/.test(w)));
@@ -194,11 +195,11 @@ test('contract search requests the documented field shape and degrades gracefull
 test('agency accepts FPDS codes and rejects names with guidance (upstream hangs on names)', async () => {
   const stub = stubTangoGet(() => ({ success: true, data: page([tangoContract()]) }));
   try {
-    const ok: any = await tangoTools.callTool('search_tango_contracts', { agency: '2100' });
+    const ok: any = await callTool('search_tango_contracts', { agency: '2100' });
     assert.equal(stub.calls[0].params.awarding_agency, '2100');
     assert.equal(ok.contracts.length, 1);
 
-    const err: any = await tangoTools.callTool('search_tango_contracts', { agency: 'Army' });
+    const err: any = await callTool('search_tango_contracts', { agency: 'Army' });
     assert.equal(err.error.code, 'bad_request');
     assert.match(err.error.message, /FPDS agency code/);
     assert.match(err.error.message, /2100=Army/);
@@ -213,7 +214,7 @@ test('clean queries keep the upstream total with its unit label', async () => {
     data: page([tangoContract()], { count: 510 }),
   }));
   try {
-    const out: any = await tangoTools.callTool('search_tango_contracts', {
+    const out: any = await callTool('search_tango_contracts', {
       agency: '2100',
       date_from: '2025-08-01',
       date_to: '2025-09-30',
@@ -236,7 +237,7 @@ test('grants: recipient and amount filters are client-side with honest echo', as
     ]),
   }));
   try {
-    const out: any = await tangoTools.callTool('search_tango_grants', {
+    const out: any = await callTool('search_tango_grants', {
       recipient_uei: 'U2',
       award_amount_min: 100000,
     });
@@ -255,7 +256,7 @@ test('opportunities: envelope with cursor', async () => {
     data: page([{ opportunity_id: 'O1', title: 'Thing', active: true }], { next: nextUrl, count: 44 }),
   }));
   try {
-    const out: any = await tangoTools.callTool('search_tango_opportunities', { query: 'devops' });
+    const out: any = await callTool('search_tango_opportunities', { query: 'devops' });
     assert.equal(out.opportunities.length, 1);
     assert.equal(out.total, 44);
     assert.equal(out.next_cursor, nextUrl);
@@ -273,7 +274,7 @@ test('spending summary declares partial aggregation instead of posing as populat
     ),
   }));
   try {
-    const out: any = await tangoTools.callTool('get_tango_spending_summary', { agency: '2100' });
+    const out: any = await callTool('get_tango_spending_summary', { agency: '2100' });
     assert.equal(out.total_contracts, 2);
     assert.ok(out.warnings.some((w: string) => /PARTIAL AGGREGATION/.test(w)));
     assert.match(out.count_unit, /fetched page/);

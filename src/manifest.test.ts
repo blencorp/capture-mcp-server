@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
-import { initializeTools } from './tools/index.js';
+import { ToolCatalog } from './tools/index.js';
 
 function readJson(url: URL): any {
   return JSON.parse(readFileSync(url, 'utf8'));
@@ -10,7 +10,7 @@ function readJson(url: URL): any {
 test('desktop manifest exposes every provider key and complete tool catalog', async () => {
   const packageJson = readJson(new URL('./package.json', import.meta.url));
   const manifest = readJson(new URL('../manifest.json', import.meta.url));
-  const tools = await initializeTools({
+  const { tools } = await ToolCatalog.create({
     hasSamApiKey: true,
     hasTangoApiKey: true,
     hasHigherGovApiKey: true,
