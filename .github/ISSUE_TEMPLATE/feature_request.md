@@ -1,23 +1,22 @@
 ---
 name: Feature request
-about: Suggest an idea for this project
-title: '[FEATURE] '
-labels: 'enhancement'
-assignees: ''
-
+about: Propose a new tool, argument or setting
+labels: enhancement
 ---
 
-**Is your feature request related to a problem? Please describe.**
-A clear and concise description of what the problem is. Ex. I'm always frustrated when [...]
+## What problem does this solve?
 
-**Describe the solution you'd like**
-A clear and concise description of what you want to happen.
+<!-- A paragraph on the use case and who it's for. -->
 
-**Describe alternatives you've considered**
-A clear and concise description of any alternative solutions or features you've considered.
+## Proposed change
 
-**Use case**
-Please provide a specific use case or example of how this feature would be used in practice.
+<!-- Sketch the API. New tool? Tool argument? Configuration setting? -->
 
-**Additional context**
-Add any other context, mockups, or examples about the feature request here.
+## Alternatives considered
+
+<!-- What else did you weigh? Why is this the right shape? -->
+
+## Out of scope
+
+A path where one person's key serves other people, or where a key reaches the model or a tool result,
+is out of scope per [CONTRIBUTING.md](../../CONTRIBUTING.md).
