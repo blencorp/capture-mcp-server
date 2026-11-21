@@ -1,0 +1,14 @@
+**/node_modules
+dist
+.git
+.github
+.env
+.env.*
+!.env.example
+infrastructure
+fixtures
+docs
+*.log
+*.mcpb
+*.dxt
+.claude

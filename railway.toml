@@ -1,10 +1,11 @@
 # Railway deployment config for capture-mcp-server.
-# Runs the server in HTTP mode (StreamableHTTP transport) on Railway-injected $PORT.
+# Builds the root Dockerfile, which carries its own start command, port and health check, so the
+# service is unchanged when Railway stops reading this file (2026-12-01).
 # Auth: set MCP_REQUIRE_OAUTH=true, OAUTH_TOKEN_SECRET and MCP_PUBLIC_BASE_URL; HTTP mode refuses to start without auth.
 
 [build]
-builder = "NIXPACKS"
-buildCommand = "npm run build"
+builder = "DOCKERFILE"
+dockerfilePath = "Dockerfile"
 
 [deploy]
 startCommand = "node dist/server.js"
