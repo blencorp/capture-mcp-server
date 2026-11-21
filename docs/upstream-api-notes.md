@@ -47,14 +47,15 @@ Open items:
 
 Documentation source: **the official OpenAPI 3.0.3 spec (v1.2), retrieved
 2026-08-23** from `https://www.highergov.com/api-external/schema/?format=json`
-(the URL the Swagger UI at `/api-external/docs/` loads) and committed as
-`fixtures/raw/highergov-openapi.json`. "spec" below means confirmed there.
+(the URL the Swagger UI at `/api-external/docs/` loads). The spec is HigherGov's own and is not
+kept in this repository: fetch it again to re-check. "spec" below means confirmed there.
 The spec is authoritative for which parameters and record fields *exist*;
 "spec + verified" additionally means observed live — a full live
 `capture-fixtures` run was completed 2026-08-23 with a real key
 (`fixtures/raw/highergov-*-page.json`; api_key redacted from all saved
-payloads, which matters because HigherGov embeds it in `links.*` and
-`document_path` URLs). Note: HigherGov silently ignores unknown query params,
+payloads, which matters because HigherGov embeds it in `links.*` and `document_path` URLs, and the
+names, emails and phone numbers of federal contacts replaced with synthetic values, so the shapes
+and keys are real and the people are not). Note: HigherGov silently ignores unknown query params,
 so a spec-absent param is a no-op — EXCEPT on `/opportunity/`, which returns
 400 when no binding param at all is present (see below).
 

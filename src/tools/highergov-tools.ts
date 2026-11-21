@@ -272,8 +272,8 @@ function normalizeOpportunity(raw: any) {
 }
 
 // Field names below are the `Federal Contract` schema from the HigherGov
-// OpenAPI spec (fixtures/raw/highergov-openapi.json, v1.2, retrieved
-// 2026-08-23). Nested shapes: awardee → AwardeeSimple {awardee_key,
+// OpenAPI spec (v1.2, retrieved 2026-08-23 from
+// https://www.highergov.com/api-external/schema/?format=json). Nested shapes: awardee → AwardeeSimple {awardee_key,
 // clean_name, uei, cage_code, path}; awarding_agency/funding_agency →
 // AgencySimple {agency_key, agency_name, agency_abbreviation, agency_type,
 // path}; vehicle → VehicleSimple {vehicle_key, vehicle_name, ...};
