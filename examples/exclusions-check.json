@@ -1,0 +1,4 @@
+{
+  "tool": "check_sam_exclusions",
+  "arguments": { "entity_name": "Acme Corp" }
+}

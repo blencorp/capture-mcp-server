@@ -1,0 +1,86 @@
+---
+title: Get your keys
+description: The API keys the server uses for SAM.gov, Tango, and HigherGov, where to get each one, how you give them to the server, and how a missing or wrong key behaves.
+---
+
+import { Steps } from '@astrojs/starlight/components';
+
+The server calls each source with your own key. SAM.gov, Tango, and HigherGov issue a key to one
+person or account, so do not share yours. USAspending needs no key.
+
+| Source | What it unlocks | Where to get it |
+| --- | --- | --- |
+| SAM.gov | 4 SAM.gov tools and the 2 join tools | The Public API Key in your [SAM.gov account details](https://sam.gov/workspace/profile/account-details) |
+| Tango | 12 Tango tools | [Tango](https://tango.makegov.com/docs/), the service from makegov |
+| HigherGov | 9 HigherGov tools | [HigherGov](https://www.highergov.com/api-external/docs/), with an API plan |
+| USAspending | 6 USAspending tools | No key |
+
+- Every key is optional. A tool needs only the key for its own source.
+- Without a key, the source is off: the server does not list its tools, and sends nothing to it.
+- The reference-code lookup needs no key either, so with no keys at all the server still has 7
+  tools.
+
+## Get the SAM.gov key
+
+<Steps>
+
+1. Sign in to SAM.gov and open your [account details](https://sam.gov/workspace/profile/account-details).
+2. Find the **Public API Key**, select the eye icon, and enter the one-time password that SAM.gov
+   emails you. SAM.gov shows the key.
+3. Paste it into the server's page when your assistant [connects](/connect/).
+
+</Steps>
+
+The [SAM.gov Get Opportunities API documentation](https://open.gsa.gov/api/get-opportunities-public-api/)
+explains how SAM.gov issues keys. SAM.gov asks personal-key holders to renew the key every 90 days.
+The server does not know when a key expires, so renew it on your SAM.gov account page and connect
+again with the new one. SAM.gov also limits how many requests a key may make each day.
+
+## Get the Tango key
+
+Create an account with [Tango](https://tango.makegov.com/docs/) and copy your API key from it.
+Tango limits the requests a key may make each day, and that limit can be small. Ask for what you need
+in few calls.
+
+## Get the HigherGov key
+
+HigherGov offers API access with an API plan. See HigherGov's
+[API documentation](https://www.highergov.com/api-external/docs/) for how to get a key.
+
+## How the server gets your keys
+
+On the hosted server, the page your assistant opens during connection lists SAM.gov, Tango, and
+HigherGov. Tick a source and a field for its key appears; a ticked source with no key is refused.
+You must give at least one key.
+
+The server does **not** test a key when you enter it. It seals the keys, with AES-256-GCM, inside the
+access and refresh tokens that it gives your assistant, and it keeps nothing else: no database, no
+account, no copy. Each of your requests carries the token back, and the server opens it, uses the key
+for the one source the tool needs, and forgets it when the request ends.
+
+Because the keys live in the token:
+
+- **To add, replace, or remove a key, connect again.** Disconnect the connector in your assistant and
+  add it again, and enter the keys you want. The old token keeps working until it expires, so rotate
+  a key with its source too if you think it leaked.
+- **A token lasts 30 days, and the refresh token 90.** After that, your assistant asks you to connect
+  again.
+- **A server restart makes your assistant connect again.** The server remembers registered assistants
+  only in memory.
+
+## When a key is missing, or wrong
+
+- **Missing.** The source is off, as described above. Nothing is sent to it.
+- **Wrong or expired.** The source answers `401` or `403`, and the call fails with that status in its
+  error text (`auth_failed` for HigherGov). Connect again with the right key.
+
+## Keep a key working
+
+- **Keep it private.** Never put a key in a prompt or in tool arguments. Most tools list an
+  `api_key` argument, which the server fills in for you. A key passed there is visible to your
+  assistant and its client, and is used instead of your connection's key.
+- **Your keys are yours.** The server never uses a key from its own environment to answer a hosted
+  caller, and never gives one caller's key to another.
+- **Where the key goes.** The server sends a key only to the source it belongs to, at that source's
+  fixed address. SAM.gov and HigherGov take the key as a URL query parameter, so it is part of the
+  request those providers receive. Tango receives it in a header.

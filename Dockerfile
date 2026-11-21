@@ -17,6 +17,18 @@ COPY web ./web
 COPY legal ./legal
 RUN pnpm build && pnpm prune --prod
 
+# ---- Docs: the documentation site (site/, Astro Starlight), served at /docs ---------------
+# Its own pnpm root and lockfile. The build reads docs/sdk-reference.md and examples/*.json.
+FROM node:26-trixie-slim@sha256:e6bedef217677b276c591795e169840edd9096dbf13f29df8ef8d1856b8820bc AS docs
+WORKDIR /repo
+RUN npm install -g --ignore-scripts pnpm@12.21.0
+COPY site/package.json site/pnpm-lock.yaml site/pnpm-workspace.yaml ./site/
+RUN cd site && pnpm install --frozen-lockfile
+COPY site ./site
+COPY docs/sdk-reference.md ./docs/
+COPY examples ./examples
+RUN cd site && pnpm build
+
 FROM node:26-trixie-slim@sha256:e6bedef217677b276c591795e169840edd9096dbf13f29df8ef8d1856b8820bc AS runtime
 RUN apt-get update \
   && apt-get install -y --no-install-recommends dumb-init \
@@ -28,6 +40,8 @@ ENV NODE_ENV=production \
     PORT=8080
 COPY --from=build --chown=node:node /app/node_modules ./node_modules
 COPY --from=build --chown=node:node /app/dist ./dist
+# The documentation site sits beside dist/ (src/http-app.ts looks for ../docs-site from dist/).
+COPY --from=docs --chown=node:node /repo/site/dist ./docs-site
 COPY --chown=node:node package.json LICENSE ./
 USER node
 EXPOSE 8080

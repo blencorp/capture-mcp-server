@@ -1,0 +1,58 @@
+---
+// The path of one question, top to bottom. Plain HTML so it reads on a phone and in both themes.
+const steps = [
+  { name: 'Your assistant', note: 'Calls one tool with filters such as dates, a NAICS code, or a UEI.' },
+  { name: 'Tool', note: 'Checks every argument before anything is sent.' },
+  { name: 'Server process', note: 'Adds your key for that source and paces the call.' },
+  { name: 'The source', note: 'SAM.gov, USAspending, Tango, or HigherGov. Reference codes come from a built-in table.' },
+];
+---
+
+<ol class="flow not-content">
+  {
+    steps.map((step) => (
+      <li>
+        <strong>{step.name}</strong>
+        <span>{step.note}</span>
+      </li>
+    ))
+  }
+</ol>
+
+<style>
+  .flow {
+    display: flex;
+    flex-direction: column;
+    gap: 1.75rem;
+    max-width: 26rem;
+    margin: 1.5rem 0;
+    padding: 0;
+    list-style: none;
+  }
+  .flow li {
+    position: relative;
+    display: flex;
+    flex-direction: column;
+    gap: 0.125rem;
+    padding: 0.625rem 1rem;
+    border: 1px solid var(--sl-color-gray-5);
+    border-radius: 0.5rem;
+    background: var(--sl-color-bg-nav);
+  }
+  .flow li + li::before {
+    content: '↓' / '';
+    position: absolute;
+    top: -1.75rem;
+    left: 50%;
+    transform: translateX(-50%);
+    line-height: 1.75rem;
+    color: var(--sl-color-gray-3);
+  }
+  .flow strong {
+    color: var(--sl-color-white);
+  }
+  .flow span {
+    font-size: var(--sl-text-sm);
+    color: var(--sl-color-gray-2);
+  }
+</style>

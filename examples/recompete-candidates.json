@@ -1,0 +1,9 @@
+{
+  "tool": "search_highergov_contracts",
+  "arguments": {
+    "naics": ["541512"],
+    "pop_end_after": "2027-01-01",
+    "pop_end_before": "2027-06-30",
+    "limit": 50
+  }
+}

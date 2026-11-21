@@ -1,0 +1,32 @@
+{
+  "name": "capture-mcp-server-site",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "description": "Documentation site for @blen/capture-mcp-server (Astro Starlight, served at /docs by the hosted server).",
+  "packageManager": "pnpm@12.21.0",
+  "engines": {
+    "node": "^24.11.0 || ^26.0.0"
+  },
+  "scripts": {
+    "sync": "node scripts/sync-reference.mjs",
+    "dev": "pnpm sync && astro dev",
+    "build": "pnpm sync && astro build && node scripts/check-links.mjs",
+    "preview": "astro preview",
+    "og": "node scripts/render-og.mjs"
+  },
+  "dependencies": {
+    "@astrojs/markdown-remark": "^7.3.10",
+    "@astrojs/starlight": "^0.43.1",
+    "@fontsource-variable/geist": "^5.3.0",
+    "@fontsource-variable/geist-mono": "^5.3.0",
+    "@fontsource/geist": "^5.3.0",
+    "@fontsource/instrument-serif": "^5.3.0",
+    "astro": "^7.4.13",
+    "prettier": "^3.10.1",
+    "satori": "^0.63.2",
+    "sharp": "^0.35.5",
+    "starlight-links-validator": "^0.27.0",
+    "starlight-llms-txt": "^0.12.0"
+  }
+}

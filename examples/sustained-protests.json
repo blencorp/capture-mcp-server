@@ -1,0 +1,9 @@
+{
+  "tool": "search_tango_protests",
+  "arguments": {
+    "agency": "3600",
+    "outcome": "Sustained",
+    "filed_date_from": "2025-01-01",
+    "limit": 10
+  }
+}

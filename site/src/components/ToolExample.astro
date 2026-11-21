@@ -1,0 +1,19 @@
+---
+import { Code } from '@astrojs/starlight/components';
+import { readFileSync } from 'node:fs';
+import { resolve } from 'node:path';
+
+interface Props {
+  /** A file name in the repository's examples/ folder. */
+  file: string;
+}
+
+// examples/ is the single source: src/docs-examples.test.ts keeps each file's arguments accepted by
+// the tool's input schema. The path starts at the working directory because the build bundles this
+// component elsewhere. This is capture's own component: the shared Example.astro formats JavaScript.
+const { file } = Astro.props;
+const example = JSON.parse(readFileSync(resolve(process.cwd(), '../examples', file), 'utf8'));
+const code = JSON.stringify(example, null, 2);
+---
+
+<Code code={code} lang="json" label={`Example: ${example.tool} call`} />

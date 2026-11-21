@@ -1,0 +1,4 @@
+{
+  "tool": "search_usaspending_awards_by_recipient",
+  "arguments": { "recipient_name": "Boeing", "fiscal_year": 2025, "limit": 10 }
+}

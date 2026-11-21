@@ -1,0 +1,50 @@
+---
+title: Security
+description: Where keys live, what the server does and does not do, and how to report a vulnerability.
+---
+
+The server calls public APIs with your keys, and it treats everything those APIs return as untrusted
+text.
+
+## Keys
+
+- Your keys are sealed with AES-256-GCM inside the access and refresh tokens that the server gives
+  your assistant. The sealing secret is the server's `OAUTH_TOKEN_SECRET`, held only in its
+  environment. The server stores no key and has no database.
+- The server opens a token for the request that carries it, uses the key for the one source a tool
+  needs, and does not keep it.
+- A key goes only to the source it belongs to, at that source's fixed address.
+- Most tools list an optional `api_key` argument, which the server fills in. A key an assistant puts
+  there is visible to it, so never do that. It is used instead of your connection's key.
+- The server does not check a key when you enter it, and it does not remove a key that a source echoes
+  back from an error. Rotate a key with its source if you think it leaked.
+- A token cannot be revoked from the outside. The server tracks revoked tokens only in memory, so a
+  restart forgets them. Rotate the key with its source to cut off a leaked token, or change the
+  server's secret to invalidate every token.
+
+## Access
+
+- Every tool is read-only: the server changes nothing at any source.
+- Hosted access uses OAuth 2.1 with PKCE and dynamic client registration. Every `/mcp` request needs
+  a valid bearer token. Provider-key headers never authenticate a caller: they only add the
+  caller's own key for a source.
+- Access tokens last 30 days and refresh tokens 90, unless the operator sets different lifetimes.
+- A hosted caller uses only keys it supplied. The server never uses a key from its own environment to
+  answer one. On your own computer, over stdio or loopback HTTP, the environment keys are yours.
+- Single-user HTTP (`MCP_ALLOW_INSECURE_HTTP`) refuses to listen on anything but loopback, and
+  refuses a request whose Host is not loopback.
+- The server sets no per-person or per-address limit, so run it behind a proxy that does if you
+  host it for many people.
+
+## What the server does not do
+
+- It runs no code that a model wrote: the tools take arguments, and nothing more.
+- It does not download documents or files. A tool that lists documents returns their links.
+- It does not store your questions or the answers.
+
+## Report a vulnerability
+
+Do not open a public issue. Open a
+[private security advisory](https://github.com/blencorp/capture-mcp-server/security/advisories/new),
+or write to opensource@blencorp.com. The full policy is in
+[SECURITY.md](https://github.com/blencorp/capture-mcp-server/blob/main/SECURITY.md).

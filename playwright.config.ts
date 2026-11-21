@@ -1,8 +1,8 @@
 import { defineConfig, devices } from '@playwright/test';
 
-// Browser tests of the landing and policy pages (web/). `pnpm test:web` builds them, serves dist/web
-// with Vite's preview server (client-side routes fall back to index.html) and mocks the one auth
-// call the header makes (web/e2e/fixtures.ts).
+// Browser tests of the portal (web/) and the documentation site (site/). `pnpm test:web` builds
+// both, serves dist/web with Vite's preview server (client-side routes fall back to index.html)
+// and site/dist through the server's own /docs handler, and mocks the one auth call the header makes (web/e2e/fixtures.ts).
 export default defineConfig({
   testDir: 'web/e2e',
   fullyParallel: true,
@@ -20,6 +20,12 @@ export default defineConfig({
     {
       command: 'pnpm exec vite preview --config web/vite.config.ts --host 127.0.0.1 --port 4173 --strictPort',
       url: 'http://127.0.0.1:4173',
+      reuseExistingServer: false,
+    },
+    {
+      // The built site through the server's real /docs handler (CSP, caching, 404 page).
+      command: 'pnpm exec tsx web/e2e/docs-server.ts',
+      url: 'http://127.0.0.1:4174/docs/',
       reuseExistingServer: false,
     },
   ],

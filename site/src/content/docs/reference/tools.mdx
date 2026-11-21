@@ -1,0 +1,80 @@
+---
+title: Tools
+description: The 34 tools by source, what each one does, and which key it needs.
+---
+
+The server has 34 narrow tools over five sources, and every one is read-only. Each result is JSON
+text, with the same object as structured content. A call that fails returns an `error` that says why.
+
+A tool needs the key for its own source. The server lists a tool only when the connection has that
+key, so a source without a key is simply off. The [tool reference](/reference/sdk/) lists every
+argument of every tool, the list result, and the shapes an error can take.
+
+## Reference codes
+
+No key. A built-in table, so it works offline.
+
+| Tool | What it does |
+| --- | --- |
+| `lookup_reference_code` | Gives the official FPDS description of a code, or lists a whole domain: set-aside, extent competed, award type, solicitation procedure, or competition. |
+
+## USAspending
+
+No key. These calls share one pacing queue.
+
+| Tool | What it does |
+| --- | --- |
+| `get_usaspending_awards` | Award counts, obligations, and top awards for an agency and fiscal year. |
+| `get_usaspending_spending_by_category` | Spending by award category for an agency and fiscal year. |
+| `get_usaspending_budgetary_resources` | Budgetary resources and obligations for an agency in a fiscal year. |
+| `search_usaspending_awards_by_recipient` | Awards by recipient name, with fiscal year and amount filters. |
+| `get_award_detail` | The full FPDS record of one procurement award: set-aside, competition, offers received, and dates. |
+| `aggregate_contracts` | Obligations or counts grouped by agency, sub-agency, recipient, NAICS, PSC, month, or set-aside. |
+
+## SAM.gov
+
+Needs your SAM.gov key.
+
+| Tool | What it does |
+| --- | --- |
+| `search_sam_entities` | Finds registered entities by name, state, NAICS code, or UEI. |
+| `get_sam_opportunities` | Finds contract opportunities by date range, keyword, set-aside, or state. |
+| `get_sam_entity_details` | The registration record of one entity, by UEI. |
+| `check_sam_exclusions` | Checks whether an entity is excluded from federal contracting. |
+| `get_entity_and_awards` | Joins an entity's SAM.gov record with its USAspending awards. |
+| `get_opportunity_spending_context` | Joins an opportunity with spending on similar NAICS codes. |
+
+## Tango
+
+Needs your Tango key.
+
+| Tool | What it does |
+| --- | --- |
+| `search_tango_contracts` | Contracts, with exact set-aside matching on FPDS codes. |
+| `search_tango_grants` | Grants and financial assistance awards. |
+| `get_tango_vendor_profile` | A vendor profile, with its contract and grant history on request. |
+| `search_tango_opportunities` | Opportunities and forecasts. |
+| `get_tango_spending_summary` | A spending summary over one page of contracts, and it says when there are more. |
+| `search_tango_protests` | GAO bid protests, by agency, protester, outcome, case type, and dates. |
+| `get_tango_protest` | One protest, by case number. |
+| `search_tango_idvs` | Indefinite delivery vehicles: IDIQs, BPAs, and FSS. |
+| `get_tango_idv_children` | The child IDVs, task orders, and transactions under one IDV. |
+| `search_tango_vehicles` | The catalog of contract vehicles: BPAs, GWACs, MAS, and agency-wide IDIQs. |
+| `search_tango_otas` | Other Transaction Authority awards. |
+| `get_tango_entity_metrics` | An entity's obligations over time, by month, quarter, or year. |
+
+## HigherGov
+
+Needs your HigherGov key.
+
+| Tool | What it does |
+| --- | --- |
+| `search_highergov_forecasts` | Forecasts that match a HigherGov saved search. |
+| `search_highergov_opportunities` | Active opportunities by set-aside, NAICS, PSC, agency, and dates. |
+| `get_highergov_opportunity` | One opportunity, by HigherGov ID, SAM notice ID, or URL. |
+| `get_opportunity_documents` | The solicitation documents of one opportunity, with links. |
+| `list_highergov_saved_searches` | The saved searches on the account behind the key. |
+| `search_highergov_contracts` | Awarded contracts, for finding recompetes by period-of-performance end date and value. |
+| `get_highergov_contract` | One contract, by award ID or PIID. |
+| `search_highergov_people` | Federal points of contact, by agency and role. |
+| `get_highergov_person` | One contact's profile, by email. |

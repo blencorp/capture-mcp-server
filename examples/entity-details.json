@@ -1,0 +1,4 @@
+{
+  "tool": "get_sam_entity_details",
+  "arguments": { "uei": "A1B2C3D4E5F6" }
+}

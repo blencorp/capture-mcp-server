@@ -1,0 +1,57 @@
+---
+import Default from '@astrojs/starlight/components/Footer.astro';
+import { markdownPath } from '../lib/pages.mjs';
+import { withBase } from '../lib/paths';
+import BlenLogo from './BlenLogo.astro';
+
+const path = markdownPath(Astro.locals.starlightRoute.entry.id);
+---
+
+<Default><slot /></Default>
+<div class="site-footer">
+  <a class="signature" href="https://www.blencorp.com">
+    <span>Built by</span>
+    <BlenLogo height={18} />
+  </a>
+  <p>
+    For assistants: <a href={withBase('/llms.txt')}>llms.txt</a>,{' '}
+    <a href={withBase('/llms-full.txt')}>llms-full.txt</a>{
+      path && (
+        <>
+          , and <a href={withBase(path)}>this page as Markdown</a>
+        </>
+      )
+    }.
+  </p>
+</div>
+
+<style>
+  .site-footer {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    justify-content: space-between;
+    gap: 0.75rem 1.5rem;
+    margin-top: 2.5rem;
+    padding-top: 1.5rem;
+    border-top: 1px solid var(--sl-color-gray-5);
+    font-size: var(--sl-text-sm);
+    color: var(--sl-color-gray-3);
+  }
+  .site-footer p {
+    margin: 0;
+  }
+  .site-footer p a {
+    color: var(--sl-color-text-accent);
+  }
+  .signature {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    color: var(--sl-color-white);
+    text-decoration: none;
+  }
+  .signature span {
+    color: var(--sl-color-gray-3);
+  }
+</style>

@@ -1,0 +1,98 @@
+---
+title: Overview
+description: Ask your AI assistant questions about federal contracts, grants, and spending, answered from SAM.gov, USAspending, Tango, and HigherGov.
+template: splash
+hero:
+  title: Capture MCP
+  tagline: Ask your AI assistant real questions about federal contracts, grants, and spending. The answers come from SAM.gov, USAspending, Tango, and HigherGov.
+  actions:
+    - text: Connect your assistant
+      link: /docs/connect/
+      icon: right-arrow
+    - text: Get your keys
+      link: /docs/keys/
+      variant: secondary
+    - text: View on GitHub
+      link: https://github.com/blencorp/capture-mcp-server
+      icon: external
+      variant: minimal
+---
+
+import { Card, CardGrid, LinkButton, Steps } from '@astrojs/starlight/components';
+
+## Connect in one step
+
+Add `https://capture.mcp.blencorp.com/mcp` as a custom connector (a remote MCP server) in Claude,
+ChatGPT, Cursor, VS Code, or another assistant. Your assistant opens a page from the server. Tick the
+sources you use, paste your own [key](/keys/) for each, and continue. There is no account to create.
+Every key is optional, and a source without a key is simply off.
+
+<LinkButton href="/connect/" icon="right-arrow">Step-by-step guides</LinkButton>
+
+## Ask in plain language
+
+- "Which small business set-aside solicitations were posted in Texas this month?"
+- "Who won the most 8(a) sole source awards at the VA in August and September 2025?"
+- "Is this vendor excluded from federal contracting, and what have they been awarded?"
+
+## What it covers
+
+<CardGrid>
+  <Card title="Reference codes" icon="information">
+    Official FPDS descriptions for set-aside, competition, and award-type codes. It needs no key.
+  </Card>
+  <Card title="USAspending" icon="list-format">
+    Awards, spending by category, budgetary resources, and groupings by agency, recipient, NAICS,
+    PSC, month, or set-aside. It needs no key.
+  </Card>
+  <Card title="SAM.gov" icon="document">
+    Contract opportunities, entity registrations, and exclusions, and two tools that join them
+    with USAspending awards.
+  </Card>
+  <Card title="Tango" icon="open-book">
+    Contracts, grants, vendor profiles, GAO bid protests, IDVs and vehicles, OTAs, and spending
+    over time.
+  </Card>
+  <Card title="HigherGov" icon="pencil">
+    Forecasts, opportunities, awarded contracts for recompete targeting, federal contacts, and
+    solicitation documents.
+  </Card>
+</CardGrid>
+
+## How it works
+
+<Steps>
+
+1. **Pick the tool.** Your assistant chooses one of 34 narrow tools, such as
+   `search_tango_contracts` or `get_sam_opportunities`.
+2. **Fill in the arguments.** The server checks each one before anything leaves it.
+3. **Get the answer.** The server calls the source with your key, paces the call, and returns
+   JSON that says which filters ran and which did not.
+
+</Steps>
+
+The server keeps no database. Your keys travel inside the token your assistant holds, and the server
+uses them for your calls only.
+
+<LinkButton href="/how-it-works/" variant="secondary" icon="right-arrow">How it works</LinkButton>
+
+## Made for assistants too
+
+<CardGrid>
+  <Card title="One file for the site" icon="document">
+    [llms.txt](/llms.txt) lists every page. [llms-full.txt](/llms-full.txt) is the whole site in one
+    file.
+  </Card>
+  <Card title="Markdown for every page" icon="pencil">
+    **Copy page** at the top of a page copies it as Markdown, ready to paste.
+  </Card>
+  <Card title="Ask about a page" icon="comment">
+    The **Open** menu sends a page to ChatGPT or Claude.
+  </Card>
+</CardGrid>
+
+---
+
+Open source under Apache-2.0. This is an independent project. It calls the public APIs of
+SAM.gov, USAspending.gov, Tango, and HigherGov and is not affiliated with or endorsed by them or by
+the U.S. government.

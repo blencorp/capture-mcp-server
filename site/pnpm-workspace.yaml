@@ -1,0 +1,11 @@
+# Makes site/ its own pnpm root with its own lockfile. An install here never reads or changes
+# the server's lockfile, so the server's audit gate and its bundles do not see the site's packages.
+allowBuilds:
+  esbuild: true
+# Patched versions of vulnerable transitive build-time packages (pnpm audit). Remove an entry once
+# its parent ships the fix.
+overrides:
+  fflate@>=0.7.0 <0.7.5: ^0.7.5 # satori (og image render) -> GHSA-px8p-9vwx-vf98
+# Advisories with no patched release, in build-time packages only, go under auditConfig.ignoreGhsas
+# (see the root pnpm-workspace.yaml). The scheduled security workflow fails once one is withdrawn or
+# gets a fix; then remove it.

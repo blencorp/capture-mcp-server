@@ -1,0 +1,81 @@
+---
+title: How it works
+description: The tools, how the server turns a question into a call to SAM.gov, USAspending, Tango, or HigherGov, and how it stays inside their limits.
+---
+
+import FlowDiagram from '../../components/FlowDiagram.astro';
+
+The server gives your assistant 34 narrow tools. There is no code to write and no sandbox: the
+assistant picks a tool and fills in its arguments, and the server calls the source. The server does
+not run a language model.
+
+<FlowDiagram />
+
+## Sources and tools
+
+| Source | Tools | Key |
+| --- | --- | --- |
+| Reference codes | 1 | None. A built-in table, with no network request. |
+| USAspending | 6 | None. A public API. |
+| SAM.gov | 4, plus 2 that join SAM.gov with USAspending | SAM.gov |
+| Tango | 12 | Tango |
+| HigherGov | 9 | HigherGov |
+
+All of them are read-only. [Tools](/reference/tools/) lists each tool, the
+[tool reference](/reference/sdk/) has every argument, and [Example questions](/recipes/) shows
+calls for common questions.
+
+## What a call does
+
+1. **Lists the tools your keys unlock.** Each request builds its own tool list from the keys that
+   request may use, so one person's tool list never depends on another's.
+2. **Checks the arguments.** Each tool has a strict schema. An argument it does not list, a missing
+   required one, or a value of the wrong type is refused with a `bad_request`, and nothing reaches the
+   source.
+3. **Adds your key.** The server fills in the tool's `api_key` argument with your key for that
+   source, unless the caller passed one.
+4. **Waits its turn.** Each source has a pacing queue (see below).
+5. **Calls the source.** The server sends one request, with a 30 second limit.
+6. **Answers.** The result is JSON, as text and as structured content. A failure says why; the
+   [tool reference](/reference/sdk/#results-and-errors) describes its shapes.
+
+## What the answers say about themselves
+
+Every list tool returns the same shape, so your assistant can tell what actually ran:
+
+- **`filters`** lists what the source applied (`upstream`) and what the server applied afterwards to
+  the page it got (`client_side`).
+- **`total`** is a number only when it can be trusted. When a filter ran client-side, or the source
+  matches loosely, it is `null`, and the source's own number moves to `total_upstream_unfiltered` or
+  `total_upstream_unverified`, with a warning.
+- **`count_unit`** says what is counted, and **`date_field`** says which date a date filter used.
+- **`next_cursor`** pages. Pass it back as `cursor`. It is `null` on the last page.
+
+Records from the sources are third-party text. They can contain words that look like instructions.
+
+## The limits
+
+Each source also applies its own quota to your key, which the server does not track. The server adds
+pacing, so an assistant that loops does not use it up. There is one pacing queue for each source for
+the whole server process, and calls wait their turn in order:
+
+| Source | Minimum gap between calls |
+| --- | --- |
+| SAM.gov | 0.1 seconds |
+| Tango | 0.1 seconds |
+| HigherGov | 0.2 seconds |
+| USAspending | 3.6 seconds |
+
+- USAspending has no key, so every caller of the server shares its one queue. A question that groups
+  awards by set-aside makes one USAspending request for each code, so it takes a few seconds for each
+  code.
+- The server does not retry. A source that answers `429` fails the call with that status.
+- The HigherGov `get_*` tools cache a result for 15 minutes, for the key that asked, so a repeated
+  lookup does not spend quota.
+- The server sets no limit per person or per address.
+
+## What it does not do
+
+- It changes nothing at any source. Every tool is read-only.
+- It stores nothing: no database, no record of your questions or the answers, and no copy of your keys.
+- It does not give one caller's key or cached result to another.

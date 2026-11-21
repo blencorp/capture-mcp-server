@@ -1,0 +1,11 @@
+{
+  "tool": "get_sam_opportunities",
+  "arguments": {
+    "posted_from": "11/01/2026",
+    "posted_to": "11/21/2026",
+    "keyword": "software",
+    "set_aside": "SBA",
+    "state": "TX",
+    "limit": 10
+  }
+}
