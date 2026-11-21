@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 // Publishes docs/sdk-reference.md as the site's SDK reference page, so the method list has one
-// source: the repository file, which a test keeps in step with the tool catalog (src/server/toolCatalog.ts).
+// source: the repository file, which a test keeps in step with the tool catalog (src/tools, via scripts/gen-tool-reference.ts).
 import { mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
