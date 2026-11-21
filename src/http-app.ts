@@ -201,7 +201,11 @@ export function createHttpApp({ auth, env = process.env, webRoot, docsRoot }: Ht
   app.get(PORTAL_ROUTES, async (_req, res) => {
     await sendPage(res);
   });
-  // There are no accounts. The site header's sign-in and account links lead to how to connect.
+  // There are no accounts. The shared site header asks for a session (answer: none) and links to
+  // sign-in and the account, which lead to how to connect.
+  app.get('/api/auth/get-session', (_req, res) => {
+    res.set('Cache-Control', 'no-store').json(null);
+  });
   app.get(['/sign-in', '/account'], (_req, res) => {
     res.redirect(302, '/docs/connect/');
   });
@@ -296,6 +300,12 @@ export function createHttpApp({ auth, env = process.env, webRoot, docsRoot }: Ht
   app.use(async (req: Request, res: Response, next: express.NextFunction) => {
     if (isNavigation(req)) return sendPage(res, 404);
     next();
+  });
+  // A browser that hits an unhandled error gets a page; everything else keeps Express's answer.
+  app.use((error: unknown, req: Request, res: Response, next: express.NextFunction) => {
+    if (res.headersSent || !isNavigation(req)) return next(error);
+    console.error('request_failed');
+    res.status(500).set('Content-Security-Policy', PAGE_CSP).type('html').send(ERROR_PAGE);
   });
 
   return app;

@@ -71,6 +71,10 @@ for (const auth of [OAUTH, { mode: 'insecure' } as HttpAuth]) {
       assert.equal(signIn.status, 302);
       assert.equal(signIn.headers.get('location'), '/docs/connect/');
       assert.equal((await fetch(`${server.url}/health`)).status, 200);
+      // The shared header asks whether the browser has a session; nobody does.
+      const session = await fetch(`${server.url}/api/auth/get-session`);
+      assert.equal(session.status, 200);
+      assert.equal(await session.json(), null);
     } finally {
       await server.close();
     }
