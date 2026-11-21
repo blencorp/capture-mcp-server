@@ -15,7 +15,7 @@ export const brand: Brand = {
     signInStep: (
       <>
         Your assistant opens a page from this server. Tick the sources you use and paste your own key for each:
-        SAM.gov, Tango and HigherGov. Every key is optional, and a tool needs only its own source&rsquo;s key. There is no
+        SAM.gov, Tango and HigherGov. You need at least one, and a tool needs only its own source&rsquo;s key. There is no
         account and nothing is stored on the server: the keys travel inside the token your assistant keeps.{' '}
         <a href="/docs/keys/" className="text-foreground underline underline-offset-4">
           How to get the keys

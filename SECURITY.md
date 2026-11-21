@@ -35,7 +35,7 @@ In scope:
 Out of scope (please file a normal issue instead):
 
 - Provider rate limits and quotas, which belong to SAM.gov, Tango and HigherGov.
-- Denial of service through lawful but expensive queries. The server sets no per-person limit, so
+- Denial of service through lawful but expensive queries. The server adds no limit to `/mcp`, so
   put a rate-limiting proxy in front of a hosted deployment.
 - Issues that only occur with `MCP_ALLOW_INSECURE_HTTP=true`, which is documented as single-user and
   loopback-only.

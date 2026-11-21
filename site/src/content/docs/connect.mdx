@@ -12,7 +12,8 @@ https://capture.mcp.blencorp.com/mcp
 ```
 
 Your assistant connects to it over HTTPS. Before you start, [get your keys](/keys/) for the sources
-you use. All of them are optional.
+you use. The connection needs at least one of the three; the reference codes and USAspending need
+none.
 
 When your assistant first connects, it opens a page from the server. Tick the sources you use, paste
 your own key for each, and continue. There is no account to create and no password. The server seals
@@ -80,6 +81,6 @@ whose key you entered, such as "Find SAM.gov opportunities posted this week for 
 | `Tool "…" not found` | The same: the tool needs a key the connection does not have. | As above. |
 | `API Error 401` or `403`, or `auth_failed` | The source refused the key. The server does not check a key when you enter it. | Check the key with its source (see [Get your keys](/keys/)), then connect again. |
 | `API Error 429`, or `rate_limited` | The source's limit for the key is used up. | Wait, and ask for less. |
-| The assistant says the connection expired, or asks you to connect again | The token ran out (30 days for access, 90 for refresh), or the server restarted and forgot your assistant. | Connect again. |
+| The assistant says the connection expired, or asks you to connect again | The access token ran out (30 days), and the refresh token (90 days) could not renew it, for example because the server restarted and forgot your assistant. | Connect again. |
 
 [Tool reference](/reference/sdk/#results-and-errors) describes the error shapes.

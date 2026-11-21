@@ -24,8 +24,8 @@ authorization step (see "Your API keys" below).
 - **Provider API keys:** the keys you enter on the authorization page, and any
   key your client sends in a request header (see below).
 - **Network metadata:** our hosting provider, Railway, handles connection
-  metadata and request headers. The application itself does not record client
-  IP addresses.
+  metadata and request headers. The application uses the client address only for
+  in-memory rate limiting of its OAuth endpoints, and does not record it.
 - **Support communications:** information you voluntarily provide when
   contacting BLEN for assistance.
 
@@ -55,7 +55,8 @@ alongside its token; those are used the same way.
 The server keeps a short-lived record in process memory while you connect: the
 client's registration, your pending authorization (10 minutes) and the one-time
 authorization code. These are not written to disk and are lost when the process
-restarts, in which case your client has to connect again. Token revocation is
+restarts. Your access token keeps working, but your client can no longer refresh
+it, so it has to connect again once the access token expires. Token revocation is
 also tracked in memory. To stop a leaked token from being used, rotate the key
 with its provider.
 
@@ -91,11 +92,11 @@ Service.
   memory for up to 15 minutes, with a maximum of 500 entries. Entries are
   separated by key (by a hash of it), are not persisted to disk, and may remain
   in memory until evicted or the process exits.
-- **Rate-limit state:** pacing queues for calls to each provider are held in
-  process memory.
+- **Rate-limit state:** pacing queues for calls to each provider, and per-address
+  counters for the OAuth endpoints, are held in process memory.
 - **Operational logs:** the application writes startup and error messages to
-  stderr. They do not contain API keys, but error messages can include request
-  fragments. Hosting infrastructure may collect additional network and service
+  stderr. It does not log request bodies, tokens or keys, but an error message
+  can include a fragment of a provider's reply. Hosting infrastructure may collect additional network and service
   logs. Log retention depends on the provider and its configured settings; this
   policy does not promise a fixed deletion period.
 - **Support records:** information provided to support is handled to respond
@@ -131,7 +132,7 @@ deployment operator.
 ## Security
 
 The hosted endpoint uses HTTPS. Application safeguards include sealed tokens,
-redaction of keys from errors, and size and time limits on upstream requests. No
+per-address limits on the OAuth endpoints, and time limits on upstream requests. No
 safeguard is a guarantee against every security incident.
 
 ## Changes and contact

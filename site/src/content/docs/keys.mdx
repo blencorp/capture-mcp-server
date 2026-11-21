@@ -15,10 +15,10 @@ person or account, so do not share yours. USAspending needs no key.
 | HigherGov | 9 HigherGov tools | [HigherGov](https://www.highergov.com/api-external/docs/), with an API plan |
 | USAspending | 6 USAspending tools | No key |
 
-- Every key is optional. A tool needs only the key for its own source.
+- On your own computer every key is optional. The hosted connection needs at least one. A tool needs only the key for its own source.
 - Without a key, the source is off: the server does not list its tools, and sends nothing to it.
-- The reference-code lookup needs no key either, so with no keys at all the server still has 7
-  tools.
+- The reference-code lookup needs no key either, so on your own computer with no keys at all the
+  server still has 7 tools.
 
 ## Get the SAM.gov key
 
@@ -51,7 +51,7 @@ HigherGov offers API access with an API plan. See HigherGov's
 
 On the hosted server, the page your assistant opens during connection lists SAM.gov, Tango, and
 HigherGov. Tick a source and a field for its key appears; a ticked source with no key is refused.
-You must give at least one key.
+You must give at least one key, or the page refuses it.
 
 The server does **not** test a key when you enter it. It seals the keys, with AES-256-GCM, inside the
 access and refresh tokens that it gives your assistant, and it keeps nothing else: no database, no
@@ -65,8 +65,9 @@ Because the keys live in the token:
   a key with its source too if you think it leaked.
 - **A token lasts 30 days, and the refresh token 90.** After that, your assistant asks you to connect
   again.
-- **A server restart makes your assistant connect again.** The server remembers registered assistants
-  only in memory.
+- **A server restart ends your assistant's ability to refresh.** The server remembers registered
+  assistants only in memory. Your access token keeps working until it expires, and then your assistant
+  has to connect again.
 
 ## When a key is missing, or wrong
 

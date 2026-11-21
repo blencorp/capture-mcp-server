@@ -24,14 +24,10 @@ export const description =
   'Connect an AI assistant to SAM.gov, USAspending, Tango, and HigherGov federal procurement data with the Capture MCP server.';
 /** The line under the name on the link-preview image, and its alt text. */
 export const tagline = 'Ask your AI assistant about federal procurement.';
-/** Environment variables a desktop install sets, with blank values (the server explains each). */
-export const keyEnv = ['SAM_GOV_API_KEY', 'TANGO_API_KEY', 'HIGHERGOV_API_KEY'];
+/** Environment variables a desktop install sets. None: this server is not published, so there are no install buttons. */
+export const keyEnv = [];
 /** Example values shown in a pasted config. */
-export const exampleKeyValues = {
-  SAM_GOV_API_KEY: 'your-sam-gov-key',
-  TANGO_API_KEY: 'your-tango-key',
-  HIGHERGOV_API_KEY: 'your-highergov-key',
-};
+export const exampleKeyValues = {};
 /** What llms.txt says about the product, above the page list. */
 export const llmsDetails = [
   'Run it from source with your own SAM.gov, Tango, and HigherGov API keys, or connect an assistant to the hosted server and enter your keys when it asks. There are no accounts.',

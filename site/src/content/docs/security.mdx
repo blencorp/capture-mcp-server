@@ -16,8 +16,9 @@ text.
 - A key goes only to the source it belongs to, at that source's fixed address.
 - Most tools list an optional `api_key` argument, which the server fills in. A key an assistant puts
   there is visible to it, so never do that. It is used instead of your connection's key.
-- The server does not check a key when you enter it, and it does not remove a key that a source echoes
-  back from an error. Rotate a key with its source if you think it leaked.
+- The server does not check a key when you enter it, and it has no general redaction: an error
+  carries the status and body a source sent. The HigherGov tools do not pass on the URLs in which
+  HigherGov embeds the key. Rotate a key with its source if you think it leaked.
 - A token cannot be revoked from the outside. The server tracks revoked tokens only in memory, so a
   restart forgets them. Rotate the key with its source to cut off a leaked token, or change the
   server's secret to invalidate every token.
@@ -33,8 +34,9 @@ text.
   answer one. On your own computer, over stdio or loopback HTTP, the environment keys are yours.
 - Single-user HTTP (`MCP_ALLOW_INSECURE_HTTP`) refuses to listen on anything but loopback, and
   refuses a request whose Host is not loopback.
-- The server sets no per-person or per-address limit, so run it behind a proxy that does if you
-  host it for many people.
+- The server adds no limit to `/mcp`, so run it behind a proxy that limits requests if you host it
+  for many people. The MCP SDK's OAuth endpoints limit each address by default (100 authorization
+  requests and 50 token or revocation requests every 15 minutes, and 20 registrations an hour).
 
 ## What the server does not do
 

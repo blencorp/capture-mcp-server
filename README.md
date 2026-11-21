@@ -32,7 +32,7 @@ Add it as a custom connector (a remote MCP server) in Claude, ChatGPT, Cursor, V
 | [Tango](https://tango.makegov.com) (contracts, grants, vendors, protests, IDVs, vehicles, OTAs, metrics) | 12 | Tango |
 | [HigherGov](https://www.highergov.com) (forecasts, opportunities, contracts, contacts, documents) | 9 | HigherGov |
 
-The server lists only the tools whose key the connection has, so with no keys the 7 reference and USAspending tools work. Every list tool echoes which filters the source applied and which the server applied itself, says what its `total` counts, and returns `null` when a total cannot be trusted. [`docs/sdk-reference.md`](./docs/sdk-reference.md) lists every tool and argument, and [`examples/`](./examples/) holds example calls.
+The server lists only the tools whose key the connection has. On your own computer with no keys the 7 reference and USAspending tools work; the hosted connection asks for at least one key. Every list tool echoes which filters the source applied and which the server applied itself, says what its `total` counts, and returns `null` when a total cannot be trusted. [`docs/sdk-reference.md`](./docs/sdk-reference.md) lists every tool and argument, and [`examples/`](./examples/) holds example calls.
 
 ## API keys
 
@@ -88,7 +88,7 @@ MCP_TRANSPORT=http MCP_REQUIRE_OAUTH=true \
   node dist/server.js
 ```
 
-HTTP mode fails closed: it refuses to start without `MCP_REQUIRE_OAUTH=true` or the loopback opt-in. The root `Dockerfile` builds the hosted image (Railway builds it too) and puts the landing page, the policy pages and the documentation site at `/`, `/privacy-policy`, `/terms` and `/docs`. The server sets no per-person limit, so host it behind a proxy that does. For a team on AWS, [`docs/lambda.md`](./docs/lambda.md) deploys a Lambda function with S3-backed access keys. [Self-host](https://capture.mcp.blencorp.com/docs/self-host/) describes every mode.
+HTTP mode fails closed: it refuses to start without `MCP_REQUIRE_OAUTH=true` or the loopback opt-in. The root `Dockerfile` builds the hosted image (Railway builds it too) and puts the landing page, the policy pages and the documentation site at `/`, `/privacy-policy`, `/terms` and `/docs`. The server adds no limit to `/mcp`, so host it behind a proxy that does. For a team on AWS, [`docs/lambda.md`](./docs/lambda.md) deploys a Lambda function with S3-backed access keys. [Self-host](https://capture.mcp.blencorp.com/docs/self-host/) describes every mode.
 
 ### Configuration
 

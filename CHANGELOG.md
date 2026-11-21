@@ -27,8 +27,8 @@ Release workflow, which tags the version; this file is written by hand.
 - The project is licensed under Apache-2.0 (it was MIT); `NOTICE` keeps the MIT notices for
   contributions made under that license.
 - pnpm 12, Node `^24.11.0 || ^26.0.0`, TypeScript 6 and 7, ESLint 10 and `tsx --test`.
-- Replaced HigherGov's OpenAPI spec and the real federal contacts in the HigherGov fixtures with
-  synthetic ones.
+- Removed HigherGov's OpenAPI spec from the fixtures, and replaced the federal contacts in the
+  HigherGov captures with synthetic ones.
 
 ## [1.0.2] - 2026-08-27
 
@@ -57,3 +57,8 @@ Release workflow, which tags the version; this file is written by hand.
 - Tango set-aside filtering is exact on FPDS codes, with honest filter echoes and cursor paging.
 - HigherGov contract, opportunity, document and forecast lookups now match the real API.
 - The default OAuth client-registration scope is `mcp:tools`.
+
+[Unreleased]: https://github.com/blencorp/capture-mcp-server/compare/v1.0.2...HEAD
+[1.0.2]: https://github.com/blencorp/capture-mcp-server/compare/v1.0.1...v1.0.2
+[1.0.1]: https://github.com/blencorp/capture-mcp-server/compare/v1.0.0...v1.0.1
+[1.0.0]: https://github.com/blencorp/capture-mcp-server/releases/tag/v1.0.0
