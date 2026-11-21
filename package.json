@@ -43,7 +43,7 @@
     "tango"
   ],
   "author": "Mike Endale from BLEN, Inc.",
-  "license": "MIT",
+  "license": "Apache-2.0",
   "repository": {
     "type": "git",
     "url": "https://github.com/blencorp/capture-mcp-server.git"

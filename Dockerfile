@@ -42,7 +42,7 @@ COPY --from=build --chown=node:node /app/node_modules ./node_modules
 COPY --from=build --chown=node:node /app/dist ./dist
 # The documentation site sits beside dist/ (src/http-app.ts looks for ../docs-site from dist/).
 COPY --from=docs --chown=node:node /repo/site/dist ./docs-site
-COPY --chown=node:node package.json LICENSE ./
+COPY --chown=node:node package.json LICENSE NOTICE ./
 USER node
 EXPOSE 8080
 HEALTHCHECK --interval=30s --timeout=5s --start-period=10s --retries=3 \
