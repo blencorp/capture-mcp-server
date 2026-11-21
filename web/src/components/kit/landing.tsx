@@ -27,13 +27,15 @@ export function Landing({ accountUrl, publicUrl }: { accountUrl: string; publicU
           </h1>
           <p className="text-muted-foreground max-w-2xl text-lg">{brand.summary}</p>
           <div className="flex flex-wrap gap-3">
-            <Button asChild size="lg">
-              <a href={signedIn ? '/account' : '/sign-in?next=%2Faccount'}>
-                {signedIn ? 'Go to your account' : 'Create an account or sign in'}
-                <ArrowRight />
-              </a>
-            </Button>
-            <Button asChild size="lg" variant="outline">
+            {brand.accounts !== false && (
+              <Button asChild size="lg">
+                <a href={signedIn ? '/account' : '/sign-in?next=%2Faccount'}>
+                  {signedIn ? 'Go to your account' : 'Create an account or sign in'}
+                  <ArrowRight />
+                </a>
+              </Button>
+            )}
+            <Button asChild size="lg" variant={brand.accounts === false ? 'default' : 'outline'}>
               <a href={brand.docsUrl}>
                 <BookOpen />
                 Read the docs
@@ -74,7 +76,7 @@ export function Landing({ accountUrl, publicUrl }: { accountUrl: string; publicU
               </p>
             </li>
             <li className="grid content-start gap-3">
-              <h3 className="font-medium">3. Sign in when asked</h3>
+              <h3 className="font-medium">3. {brand.accounts === false ? 'Authorize when asked' : 'Sign in when asked'}</h3>
               <p className="text-muted-foreground text-sm">{brand.connect.signInStep}</p>
             </li>
           </ol>

@@ -9,7 +9,7 @@ export const brand: Brand = {
   docsUrl: '/docs/',
   license: 'Apache-2.0',
   disclaimer: 'Independent open-source project; not affiliated with or endorsed by SAM.gov, USAspending.gov, Tango or HigherGov.',
-  // This server has no accounts; the kit's sign-in text is not used (see pages/home.tsx).
+  accounts: false,
   accountPurpose: 'connect your SAM.gov, Tango and HigherGov keys',
   connect: {
     signInStep: (

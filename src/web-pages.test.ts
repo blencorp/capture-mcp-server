@@ -67,14 +67,7 @@ for (const auth of [OAUTH, { mode: 'insecure' } as HttpAuth]) {
       const slashless = await fetch(`${server.url}/docs?x=1`, { redirect: 'manual' });
       assert.equal(slashless.status, 301);
       assert.equal(slashless.headers.get('location'), '/docs/?x=1');
-      const signIn = await fetch(`${server.url}/sign-in`, { redirect: 'manual' });
-      assert.equal(signIn.status, 302);
-      assert.equal(signIn.headers.get('location'), '/docs/connect/');
       assert.equal((await fetch(`${server.url}/health`)).status, 200);
-      // The shared header asks whether the browser has a session; nobody does.
-      const session = await fetch(`${server.url}/api/auth/get-session`);
-      assert.equal(session.status, 200);
-      assert.equal(await session.json(), null);
     } finally {
       await server.close();
     }

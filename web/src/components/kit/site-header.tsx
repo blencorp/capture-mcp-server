@@ -30,19 +30,21 @@ export function SiteHeader() {
                 </a>
               </li>
             )}
-            <li>
-              {signedIn ? (
-                <a href="/account" className={navLink}>
-                  <UserRound className="size-4" />
-                  Account
-                </a>
-              ) : (
-                <a href="/sign-in?next=%2Faccount" className={navLink}>
-                  <LogIn className="size-4" />
-                  Sign in
-                </a>
-              )}
-            </li>
+            {brand.accounts !== false && (
+              <li>
+                {signedIn ? (
+                  <a href="/account" className={navLink}>
+                    <UserRound className="size-4" />
+                    Account
+                  </a>
+                ) : (
+                  <a href="/sign-in?next=%2Faccount" className={navLink}>
+                    <LogIn className="size-4" />
+                    Sign in
+                  </a>
+                )}
+              </li>
+            )}
           </ul>
         </nav>
       </div>

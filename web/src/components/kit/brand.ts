@@ -22,6 +22,12 @@ export interface Brand {
   license: string;
   /** Shown in the footer, e.g. "Independent open-source project; not affiliated with …". */
   disclaimer: string;
+  /**
+   * Set to `false` for a server with no user accounts (its hosted service authorizes with a
+   * key form instead). The header then has no sign-in/account link, the landing page no
+   * account button, and nothing checks for a session. Omit it for the default: accounts.
+   */
+  accounts?: false;
   /** What signing in is for, completing "Sign in to …" ("manage your USPTO API keys"). */
   accountPurpose: string;
   connect: {

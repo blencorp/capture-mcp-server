@@ -34,8 +34,9 @@ test.describe('with JavaScript', () => {
       page.on('pageerror', (e) => problems.push(e.message));
       await mockServer(page);
       await page.goto(path);
-      // The header's session check finishes only when the client has taken over.
-      await expect(page.getByRole('navigation', { name: 'Site' }).getByRole('link', { name: 'Sign in' })).toBeVisible();
+      // There are no accounts, so no session check marks hydration; wait for the scripts to settle.
+      await page.waitForLoadState('networkidle');
+      await expect(page.getByRole('navigation', { name: 'Site' }).getByRole('link', { name: 'Docs' })).toBeVisible();
       await expect(page.locator('h1')).toHaveCount(1);
       await expect(page.getByRole('heading', { level: 1, name: title })).toBeVisible();
       await page.keyboard.press('Tab');

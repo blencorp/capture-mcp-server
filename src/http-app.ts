@@ -201,14 +201,6 @@ export function createHttpApp({ auth, env = process.env, webRoot, docsRoot }: Ht
   app.get(PORTAL_ROUTES, async (_req, res) => {
     await sendPage(res);
   });
-  // There are no accounts. The shared site header asks for a session (answer: none) and links to
-  // sign-in and the account, which lead to how to connect.
-  app.get('/api/auth/get-session', (_req, res) => {
-    res.set('Cache-Control', 'no-store').json(null);
-  });
-  app.get(['/sign-in', '/account'], (_req, res) => {
-    res.redirect(302, '/docs/connect/');
-  });
 
   let gate: express.RequestHandler[] = [];
   if (auth.mode === 'oauth') {
