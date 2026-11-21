@@ -20,13 +20,13 @@ import { Logger } from '@aws-lambda-powertools/logger';
 import { Metrics, MetricUnit } from '@aws-lambda-powertools/metrics';
 import type { APIGatewayProxyEventV2, APIGatewayProxyResultV2, Context } from 'aws-lambda';
 import { configure as serverlessExpress } from '@codegenie/serverless-express';
-import express, { Request, Response, NextFunction } from 'express';
+import express, { type Request, type Response, type NextFunction } from 'express';
 import { StreamableHTTPServerTransport } from "@modelcontextprotocol/sdk/server/streamableHttp.js";
 import { headerKeys, resolveRequestKeys } from './auth/request-keys.js';
 import { createMcpServer } from './http-app.js';
 import { registerToolHandlers } from './mcp-handlers.js';
 import { SERVER_VERSION } from './version.js';
-import { createS3ApiKeyMiddleware, AuthenticatedRequest } from './middleware/s3-api-key.js';
+import { createS3ApiKeyMiddleware, type AuthenticatedRequest } from './middleware/s3-api-key.js';
 
 // Initialize Powertools
 const logger = new Logger({
@@ -123,7 +123,7 @@ export function createApp(options: LambdaAppOptions = {}): express.Application {
       });
 
       res.on('close', () => {
-        transport.close();
+        void transport.close();
       });
 
       await server.connect(transport);
@@ -200,9 +200,10 @@ export const handler = async (
   logger.addContext(context);
   
   // Track cold starts
-  const isColdStart = (global as any).__COLD_START__ === undefined;
+  const coldStartState = globalThis as { __COLD_START__?: boolean };
+  const isColdStart = coldStartState.__COLD_START__ === undefined;
   if (isColdStart) {
-    (global as any).__COLD_START__ = true;
+    coldStartState.__COLD_START__ = true;
     metrics.addMetric('ColdStart', MetricUnit.Count, 1);
   }
 

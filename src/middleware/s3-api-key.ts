@@ -14,8 +14,8 @@
  * - API_KEY_PREFIX: Object key prefix (default: "api-keys/")
  */
 
-import { S3Client, HeadObjectCommand, HeadObjectCommandOutput } from '@aws-sdk/client-s3';
-import { Request, Response, NextFunction } from 'express';
+import { S3Client, HeadObjectCommand, type HeadObjectCommandOutput } from '@aws-sdk/client-s3';
+import { type Request, type Response, type NextFunction } from 'express';
 import { createHash } from 'crypto';
 
 // Initialize S3 client (uses default credential chain - IAM role in Lambda)
@@ -87,7 +87,7 @@ export async function validateApiKey(apiKey: string): Promise<ApiKeyValidationRe
 
     // Check if key has expired
     if (expires && expires < new Date()) {
-      console.info(`[S3ApiKeyAuth] API key expired for owner: ${owner}, expired: ${expires.toISOString()}`);
+      console.error(`[S3ApiKeyAuth] API key expired for owner: ${owner}, expired: ${expires.toISOString()}`);
       return { 
         valid: false, 
         owner,
@@ -97,7 +97,7 @@ export async function validateApiKey(apiKey: string): Promise<ApiKeyValidationRe
       };
     }
 
-    console.info(`[S3ApiKeyAuth] Valid API key for owner: ${owner}`);
+    console.error(`[S3ApiKeyAuth] Valid API key for owner: ${owner}`);
     return {
       valid: true,
       owner,
@@ -111,7 +111,7 @@ export async function validateApiKey(apiKey: string): Promise<ApiKeyValidationRe
       const errorName = (error as { name: string }).name;
       
       if (errorName === 'NotFound' || errorName === 'NoSuchKey') {
-        console.info('[S3ApiKeyAuth] API key not found in S3');
+        console.error('[S3ApiKeyAuth] API key not found in S3');
         return { valid: false, error: 'Invalid API key' };
       }
       

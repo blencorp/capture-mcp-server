@@ -210,7 +210,7 @@ export function createHttpApp({ auth, env = process.env }: HttpAppOptions): expr
   return app;
 }
 
-function parseAuthorizeForm(body: any): {
+function parseAuthorizeForm(body: Record<string, unknown> | undefined): {
   keys: ProviderKeys;
   checked: Partial<Record<ProviderId, boolean>>;
   fieldErrors: FormFieldErrors;

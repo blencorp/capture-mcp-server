@@ -1,6 +1,6 @@
-import { Tool } from "@modelcontextprotocol/sdk/types.js";
+import { type Tool } from "@modelcontextprotocol/sdk/types.js";
 import { createHash } from 'node:crypto';
-import { ApiClient, ApiResponse } from '../utils/api-client.js';
+import { ApiClient, type ApiResponse } from '../utils/api-client.js';
 import {
   normalizeAgency,
   normalizeVehicle,

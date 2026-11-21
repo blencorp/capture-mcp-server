@@ -1,4 +1,4 @@
-import { Tool } from "@modelcontextprotocol/sdk/types.js";
+import { type Tool } from "@modelcontextprotocol/sdk/types.js";
 import { ApiClient } from '../utils/api-client.js';
 import { describeSetAside, validateSetAsideCodes, lookupReferenceCode } from '../utils/fpds-codes.js';
 import { listEnvelope } from '../utils/envelope.js';
@@ -296,7 +296,7 @@ export const usaspendingTools = {
 
       for (const [groupIndex, awardTypeGroup] of PIID_AWARD_TYPE_GROUPS.entries()) {
         let page = 1;
-        let hasNext = false;
+        let hasNext: boolean;
 
         do {
           const search = await ApiClient.usaspendingPost('/search/spending_by_award/', {
