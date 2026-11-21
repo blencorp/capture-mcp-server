@@ -85,6 +85,7 @@
     "globals": "^17.14.0",
     "lucide-react": "1.77.0",
     "radix-ui": "1.8.1",
+    "railway": "3.17.0",
     "react": "19.3.1",
     "react-dom": "19.3.1",
     "react-markdown": "10.1.0",
