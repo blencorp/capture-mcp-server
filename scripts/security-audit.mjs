@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 // Dependency audit for the scheduled security workflow (.github/workflows/security.yml).
 //
-//   node scripts/security-audit.mjs [dir ...]     (default: .)
+//   node scripts/security-audit.mjs [dir ...]     (default: . and site)
 //
 // For each pnpm root it
 //   1. runs `pnpm audit --json` as CI does (exceptions applied) and reports every advisory at
@@ -173,7 +173,7 @@ export function checkRoot(dir, { runAudit = audit } = {}) {
 }
 
 if (resolve(process.argv[1] ?? '') === import.meta.filename) {
-  const dirs = process.argv.length > 2 ? process.argv.slice(2) : ['.'];
+  const dirs = process.argv.length > 2 ? process.argv.slice(2) : ['.', 'site'];
   let actionable = false;
   let unavailable = false;
   for (const d of dirs) {

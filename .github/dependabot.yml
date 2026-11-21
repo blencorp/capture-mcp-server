@@ -25,6 +25,17 @@ updates:
       # can't use APIs Node 24 lacks. Bump the major only when Node 24 support is dropped.
       - dependency-name: '@types/node'
         update-types: ['version-update:semver-major']
+  # The documentation site is its own pnpm root (site/pnpm-lock.yaml); it is built into the
+  # Docker image only.
+  - package-ecosystem: npm
+    directory: /site
+    schedule: { interval: weekly }
+    open-pull-requests-limit: 5
+    cooldown: { default-days: 3 }
+    commit-message: { prefix: build, include: scope }
+    groups:
+      site:
+        patterns: ['*']
   - package-ecosystem: github-actions
     directory: /
     schedule: { interval: weekly }
