@@ -1,8 +1,8 @@
 name: CI
 
 on:
-  push:
-    branches: [main]
+  # No push trigger: on main, release.yml and deploy-railway.yml run these gates via workflow_call
+  # before they publish.
   pull_request:
     branches: [main]
   # Other workflows (release, Railway deploy) run these exact gates on the commit they publish.
@@ -13,7 +13,8 @@ permissions:
 
 concurrency:
   group: ci-${{ github.workflow }}-${{ github.ref }}
-  cancel-in-progress: true
+  # Only superseded pull-request runs are cancelled, never the gates of a release or deploy.
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 jobs:
   test:

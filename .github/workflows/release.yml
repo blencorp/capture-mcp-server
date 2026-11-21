@@ -30,7 +30,15 @@ permissions:
   contents: write
 
 jobs:
+  # The same gates as CI (audit, typecheck, lint, build, test, accessibility, Docker).
+  ci:
+    name: CI
+    uses: ./.github/workflows/ci.yml
+    permissions:
+      contents: read
+
   release:
+    needs: ci
     name: Tag and release
     runs-on: ubuntu-latest
     timeout-minutes: 15
