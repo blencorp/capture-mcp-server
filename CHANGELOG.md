@@ -5,16 +5,6 @@ Release workflow, which tags the version; this file is written by hand.
 
 ## [Unreleased]
 
-### Security
-- Hosted HTTP requires a verified bearer token on every `/mcp` request, and remote callers use only
-  their own keys: sealed in their OAuth token, then their `X-*-Api-Key` headers, never the server's
-  environment. `MCP_TRANSPORT=http` refuses to start without `MCP_REQUIRE_OAUTH=true` (with
-  `OAUTH_TOKEN_SECRET` and `MCP_PUBLIC_BASE_URL`) or the loopback-only `MCP_ALLOW_INSECURE_HTTP=true`,
-  and the Lambda function answers `503` on `/mcp` without `API_KEY_BUCKET`. **Breaking** for
-  deployments that relied on header-only access or on the server's own keys.
-- Update vulnerable production dependencies (MCP SDK 1.32.2, axios, express, body-parser,
-  fast-xml-parser, ajv).
-
 ### Added
 - A landing page, prerendered privacy policy and terms pages, and a not-found page, from the shared
   BLEN portal kit.
@@ -29,6 +19,20 @@ Release workflow, which tags the version; this file is written by hand.
 - pnpm 12, Node `^24.11.0 || ^26.0.0`, TypeScript 6 and 7, ESLint 10 and `tsx --test`.
 - Removed HigherGov's OpenAPI spec from the fixtures, and replaced the federal contacts in the
   HigherGov captures with synthetic ones.
+
+## [2.0.0] - 2026-11-21
+
+### Security
+- Hosted HTTP requires a verified bearer token on every `/mcp` request, and remote callers use only
+  their own keys: sealed in their OAuth token, then their `X-*-Api-Key` headers, never the server's
+  environment. `MCP_TRANSPORT=http` refuses to start without `MCP_REQUIRE_OAUTH=true` (with
+  `OAUTH_TOKEN_SECRET` and `MCP_PUBLIC_BASE_URL`) or the loopback-only `MCP_ALLOW_INSECURE_HTTP=true`,
+  and the Lambda function answers `503` on `/mcp` without `API_KEY_BUCKET`. **Breaking** for
+  deployments that relied on header-only access or on the server's own keys.
+- Update vulnerable production dependencies (MCP SDK 1.32.2, axios, express, body-parser,
+  fast-xml-parser, ajv).
+- Redact provider keys (raw, JSON-escaped and URL-encoded) from upstream error text, and truncate
+  upstream error bodies.
 
 ## [1.0.2] - 2026-08-27
 
@@ -58,7 +62,8 @@ Release workflow, which tags the version; this file is written by hand.
 - HigherGov contract, opportunity, document and forecast lookups now match the real API.
 - The default OAuth client-registration scope is `mcp:tools`.
 
-[Unreleased]: https://github.com/blencorp/capture-mcp-server/compare/v1.0.2...HEAD
+[Unreleased]: https://github.com/blencorp/capture-mcp-server/compare/v2.0.0...HEAD
+[2.0.0]: https://github.com/blencorp/capture-mcp-server/compare/v1.0.2...v2.0.0
 [1.0.2]: https://github.com/blencorp/capture-mcp-server/compare/v1.0.1...v1.0.2
 [1.0.1]: https://github.com/blencorp/capture-mcp-server/compare/v1.0.0...v1.0.1
 [1.0.0]: https://github.com/blencorp/capture-mcp-server/releases/tag/v1.0.0
