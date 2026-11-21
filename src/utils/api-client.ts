@@ -79,7 +79,7 @@ export class ApiClient {
         success: true
       };
     } catch (error) {
-      return this.handleError(error as AxiosError);
+      return this.handleError(error as AxiosError, [params.api_key]);
     }
   }
 
@@ -166,7 +166,7 @@ export class ApiClient {
         success: true
       };
     } catch (error) {
-      return this.handleError(error as AxiosError);
+      return this.handleError(error as AxiosError, [apiKey]);
     }
   }
 
@@ -197,7 +197,7 @@ export class ApiClient {
         success: true
       };
     } catch (error) {
-      return this.handleError(error as AxiosError);
+      return this.handleError(error as AxiosError, [apiKey]);
     }
   }
 
@@ -224,20 +224,40 @@ export class ApiClient {
 
       return { data: response.data, success: true };
     } catch (error) {
-      return this.handleError(error as AxiosError);
+      return this.handleError(error as AxiosError, [apiKey]);
     }
   }
 
-  private static handleError(error: AxiosError): ApiResponse {
+  /**
+   * Upstream error text goes to the assistant, so it must never carry a provider key: a provider
+   * may echo the caller's key in its error body or URL. Removes the keys used for this call and
+   * any `api_key=` query value.
+   */
+  static redactSecrets(text: string, secrets: unknown[] = []): string {
+    let out = text;
+    for (const secret of secrets) {
+      if (typeof secret !== 'string' || secret.length === 0) continue;
+      // The key as written, and as it appears inside a JSON-encoded body.
+      for (const form of [secret, JSON.stringify(secret).slice(1, -1)]) out = out.split(form).join('[REDACTED]');
+    }
+    return out.replace(/(api[_-]?key=)[^&\s"'\\]+/gi, '$1[REDACTED]');
+  }
+
+  private static readonly MAX_ERROR_BODY = 500;
+
+  private static handleError(error: AxiosError, secrets: unknown[] = []): ApiResponse {
+    const redact = (text: string) => this.redactSecrets(text, secrets);
     if (error.response) {
       // API returned an error response
       const status = error.response.status;
       const message = error.response.data || error.message;
-      
+      const body = redact(typeof message === 'string' ? message : JSON.stringify(message) ?? '');
+      const bounded = body.length > this.MAX_ERROR_BODY ? `${body.slice(0, this.MAX_ERROR_BODY)}…` : body;
+
       return {
         data: null,
         success: false,
-        error: `API Error ${status}: ${JSON.stringify(message)}`
+        error: `API Error ${status}: ${bounded}`
       };
     } else if (error.request) {
       // Request was made but no response received
@@ -251,7 +271,7 @@ export class ApiClient {
       return {
         data: null,
         success: false,
-        error: `Request error: ${error.message}`
+        error: redact(`Request error: ${error.message}`)
       };
     }
   }
