@@ -191,8 +191,8 @@ importers:
         specifier: ^3.939.0
         version: 3.1173.0
       '@codegenie/serverless-express':
-        specifier: ^4.17.0
-        version: 4.17.0
+        specifier: ^5.0.0
+        version: 5.0.0
       '@modelcontextprotocol/sdk':
         specifier: ^1.32.2
         version: 1.32.2(zod@4.6.7)
@@ -473,9 +473,9 @@ packages:
   '@cacheable/utils@2.5.0':
     resolution: {integrity: sha512-buipgOVDkkPXNR5+xBpDw7Zk2n1EvU7qBJCNUcL7rhQ//kfpOXPAvQ511Os0vpLYJ1pZnvudNytkQt2hst3wqA==}
 
-  '@codegenie/serverless-express@4.17.0':
-    resolution: {integrity: sha512-KebLJ34yHNWFoC9D+iF1Ft+6T8hj0mdylP9d2SFERNuVPOc6UqAvgxm9mY6r2V3wCJ+BPpG2vEHihpUtCT3dEg==}
-    engines: {node: '>=18'}
+  '@codegenie/serverless-express@5.0.0':
+    resolution: {integrity: sha512-7+PvSBj4KmPC8PVFDoXZp2cwTr13YIgFsZT55uJhpt7Ml1hJ3IK1Xnw36hr6GYVzLDrEW26oBZt50jamfu6kkw==}
+    engines: {node: '>=24'}
 
   '@emnapi/core@2.0.0-beta.2':
     resolution: {integrity: sha512-MzCVoWtcg4Pm2B3je5mMvYMvj3MmBKw+fU7vbsJc9/iT8ip6/eYIHo/Dsm/mr+wsHB6SEyJDuxB09Yy6r/8+4A==}
@@ -3576,7 +3576,7 @@ snapshots:
       hashery: 1.5.1
       keyv: 5.6.0
 
-  '@codegenie/serverless-express@4.17.0': {}
+  '@codegenie/serverless-express@5.0.0': {}
 
   '@emnapi/core@2.0.0-beta.2':
     dependencies:
