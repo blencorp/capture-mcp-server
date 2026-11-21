@@ -2,7 +2,7 @@
 // (docs/fix-plan.md) against the fixed tools. Requires live API keys —
 // run manually before a release, never in CI:
 //
-//   TANGO_API_KEY=... HIGHERGOV_API_KEY=... npm run smoke
+//   TANGO_API_KEY=... HIGHERGOV_API_KEY=... pnpm smoke
 
 import { tangoTools } from '../src/tools/tango-tools.js';
 import { highergovTools } from '../src/tools/highergov-tools.js';

@@ -1,3 +1,4 @@
+/* eslint-disable no-template-curly-in-string -- literal ${...} placeholders for the MCP client's env substitution */
 /**
  * Sync Config Script for Capture MCP Server
  * 
@@ -5,8 +6,8 @@
  * for use by the manage-keys.ts script.
  * 
  * Usage:
- *   npm run sync-config
- *   npm run sync-config -- --stack-name CustomStackName
+ *   pnpm sync-config
+ *   pnpm sync-config --stack-name CustomStackName
  * 
  * Options:
  *   --stack-name  CloudFormation stack name (default: CaptureServerless)
@@ -184,8 +185,8 @@ function showHelp(): void {
 Sync Config - Reads CloudFormation stack outputs and saves to .capture-mcp.json
 
 Usage:
-  npm run sync-config
-  npm run sync-config -- --stack-name CustomStackName --region us-west-2
+  pnpm sync-config
+  pnpm sync-config --stack-name CustomStackName --region us-west-2
 
 Options:
   --stack-name  CloudFormation stack name (default: ${DEFAULT_STACK_NAME})
@@ -196,7 +197,7 @@ The config file (.capture-mcp.json) will be created in the project root.
 This file is gitignored and contains deployment-specific values.
 
 After running this command, you can use manage-keys without setting env vars:
-  npm run manage-keys -- create --owner "John Doe"
+  pnpm manage-keys create --owner "John Doe"
 `);
 }
 
@@ -297,12 +298,12 @@ async function syncConfig(stackName: string, region: string): Promise<void> {
       console.log(`   ${hostedManifestPath}`);
       console.log('');
       console.log('To create the hosted .mcpb bundle:');
-      console.log('  npm run package:hosted');
+      console.log('  pnpm package:hosted');
       console.log('');
     }
 
     console.log('You can now use manage-keys without setting environment variables:');
-    console.log('  npm run manage-keys -- create --owner "John Doe"');
+    console.log('  pnpm manage-keys create --owner "John Doe"');
 
   } catch (error: unknown) {
     if (error && typeof error === 'object') {

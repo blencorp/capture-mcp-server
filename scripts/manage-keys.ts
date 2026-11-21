@@ -4,7 +4,7 @@
  * Manages API keys stored in S3 for the "Dirt Cheap" serverless deployment method.
  * 
  * Configuration:
- *   The CLI reads config from .capture-mcp.json (created by `npm run sync-config`)
+ *   The CLI reads config from .capture-mcp.json (created by `pnpm sync-config`)
  *   or falls back to environment variables:
  *   - API_KEY_BUCKET: S3 bucket name for API keys
  *   - API_KEY_PREFIX: Object key prefix (default: "api-keys/")
@@ -27,12 +27,12 @@
  *     Verifies an API key is valid and shows its metadata.
  * 
  * Usage:
- *   npm run manage-keys -- create --owner "John Doe"
- *   npm run manage-keys -- create --owner "Jane Smith" --expires "2025-12-31"
- *   npm run manage-keys -- list
- *   npm run manage-keys -- revoke 47a4477fec8c44f1   # by hash prefix (admin-friendly)
- *   npm run manage-keys -- revoke cap_abc123...      # by actual key
- *   npm run manage-keys -- verify cap_abc123...
+ *   pnpm manage-keys create --owner "John Doe"
+ *   pnpm manage-keys create --owner "Jane Smith" --expires "2025-12-31"
+ *   pnpm manage-keys list
+ *   pnpm manage-keys revoke 47a4477fec8c44f1   # by hash prefix (admin-friendly)
+ *   pnpm manage-keys revoke cap_abc123...      # by actual key
+ *   pnpm manage-keys verify cap_abc123...
  */
 
 import { 
@@ -160,7 +160,7 @@ function checkConfig(): void {
     console.error('Error: API key bucket is not configured.');
     console.error('');
     console.error('Option 1 - Sync from deployed stack (recommended):');
-    console.error('  npm run sync-config');
+    console.error('  pnpm sync-config');
     console.error('');
     console.error('Option 2 - Set environment variable manually:');
     console.error('  export API_KEY_BUCKET=your-bucket-name');
@@ -183,7 +183,7 @@ async function createKey(owner: string, expiresStr?: string): Promise<void> {
 
   if (!owner) {
     console.error('Error: --owner is required');
-    console.error('Usage: npx ts-node scripts/manage-keys.ts create --owner "John Doe" [--expires "2025-12-31"]');
+    console.error('Usage: pnpm manage-keys create --owner "John Doe" [--expires "2025-12-31"]');
     process.exit(1);
   }
 
@@ -373,10 +373,10 @@ async function revokeKey(keyOrHash: string): Promise<void> {
     console.error('Error: API key or hash is required');
     console.error('');
     console.error('Usage:');
-    console.error('  npm run manage-keys -- revoke <api-key>      # e.g., cap_abc123...');
-    console.error('  npm run manage-keys -- revoke <hash-prefix>  # e.g., 47a4477fec8c44f1');
+    console.error('  pnpm manage-keys revoke <api-key>      # e.g., cap_abc123...');
+    console.error('  pnpm manage-keys revoke <hash-prefix>  # e.g., 47a4477fec8c44f1');
     console.error('');
-    console.error('Tip: Use `npm run manage-keys -- list` to see hash prefixes');
+    console.error('Tip: Use `pnpm manage-keys list` to see hash prefixes');
     process.exit(1);
   }
 
@@ -394,7 +394,7 @@ async function revokeKey(keyOrHash: string): Promise<void> {
     const found = await findKeyByHashPrefix(keyOrHash);
     if (!found) {
       console.error(`Error: No key found with hash prefix "${keyOrHash}"`);
-      console.error('Use `npm run manage-keys -- list` to see available keys.');
+      console.error('Use `pnpm manage-keys list` to see available keys.');
       process.exit(1);
     }
     objectKey = found;
@@ -448,7 +448,7 @@ async function verifyKey(apiKey: string): Promise<void> {
 
   if (!apiKey) {
     console.error('Error: API key is required');
-    console.error('Usage: npx ts-node scripts/manage-keys.ts verify <api-key>');
+    console.error('Usage: pnpm manage-keys verify <api-key>');
     process.exit(1);
   }
 
@@ -510,7 +510,7 @@ function showHelp(): void {
 API Key Management CLI for Capture MCP Server
 
 Usage:
-  npm run manage-keys -- <command> [options]
+  pnpm manage-keys <command> [options]
 
 Commands:
   create --owner "Name" [--expires "YYYY-MM-DD"]
@@ -541,22 +541,22 @@ Examples:
   export API_KEY_BUCKET=my-capture-api-keys
 
   # Create a key that never expires
-  npm run manage-keys -- create --owner "John Doe"
+  pnpm manage-keys create --owner "John Doe"
 
   # Create a key that expires at end of 2025
-  npm run manage-keys -- create --owner "Jane Smith" --expires "2025-12-31"
+  pnpm manage-keys create --owner "Jane Smith" --expires "2025-12-31"
 
   # List all keys
-  npm run manage-keys -- list
+  pnpm manage-keys list
 
   # Verify a key
-  npm run manage-keys -- verify cap_abc123def456...
+  pnpm manage-keys verify cap_abc123def456...
 
   # Revoke a key (by hash prefix from 'list' output)
-  npm run manage-keys -- revoke 47a4477fec8c44f1
+  pnpm manage-keys revoke 47a4477fec8c44f1
 
   # Revoke a key (by actual API key)
-  npm run manage-keys -- revoke cap_abc123def456...
+  pnpm manage-keys revoke cap_abc123def456...
 `);
 }
 

@@ -1,6 +1,6 @@
 // Capture raw upstream payloads as fixtures for field-mapping tests.
 //
-// Usage:  TANGO_API_KEY=... HIGHERGOV_API_KEY=... npm run capture-fixtures
+// Usage:  TANGO_API_KEY=... HIGHERGOV_API_KEY=... pnpm capture-fixtures
 //
 // Requires live API keys, so it never runs in CI. Output lands in
 // fixtures/raw/*.json. After a capture, compare the raw keys against the

@@ -4,27 +4,29 @@
   "description": "AI-native Model Context Protocol server for SAM.gov, USASpending.gov, and Tango federal procurement data.",
   "main": "dist/server.js",
   "scripts": {
-    "build": "tsc && cp package.json dist/",
-    "build:lambda": "npm run build && cp package-lock.json dist/ && cd dist && npm ci --omit=dev && cd ..",
+    "build": "tsc -p tsconfig.build.json",
+    "build:lambda": "pnpm build && node scripts/stage-lambda.mjs",
     "start": "node dist/server.js",
-    "dev": "node --import ./ts-node.register.mjs src/server.ts",
-    "manage-keys": "node --import ./ts-node.register.mjs scripts/manage-keys.ts",
-    "capture-fixtures": "node --import ./ts-node.register.mjs scripts/capture-fixtures.ts",
-    "release-version": "node --import ./ts-node.register.mjs scripts/release-version.ts",
-    "smoke": "node --import ./ts-node.register.mjs scripts/smoke.ts",
-    "sync-config": "node --import ./ts-node.register.mjs scripts/sync-config.ts",
+    "dev": "tsx src/server.ts",
+    "manage-keys": "tsx scripts/manage-keys.ts",
+    "capture-fixtures": "tsx scripts/capture-fixtures.ts",
+    "release-version": "tsx scripts/release-version.ts",
+    "smoke": "tsx scripts/smoke.ts",
+    "sync-config": "tsx scripts/sync-config.ts",
+    "typecheck": "tsc --noEmit",
+    "lint": "eslint .",
     "cdk:bootstrap": "cd infrastructure && npx cdk bootstrap",
-    "cdk:deploy:yolo": "npm run build:lambda && cd infrastructure && npx cdk deploy CaptureServerless --require-approval never",
-    "cdk:deploy": "npm run build:lambda && cd infrastructure && npx cdk deploy CaptureServerless",
+    "cdk:deploy:yolo": "pnpm build:lambda && cd infrastructure && npx cdk deploy CaptureServerless --require-approval never",
+    "cdk:deploy": "pnpm build:lambda && cd infrastructure && npx cdk deploy CaptureServerless",
     "cdk:destroy:yolo": "cd infrastructure && npx cdk destroy CaptureServerless --force",
     "cdk:destroy": "cd infrastructure && npx cdk destroy CaptureServerless",
-    "cdk:synth": "npm run build:lambda && cd infrastructure && npx cdk synth CaptureServerless",
+    "cdk:synth": "pnpm build:lambda && cd infrastructure && npx cdk synth CaptureServerless",
     "cdk:ls": "cd infrastructure && npx cdk ls",
     "cdk:test": "cd infrastructure && npm test",
-    "test": "npm run build && ./scripts/run-tests.sh",
-    "package": "npm run build && npm ci --omit=dev && zip -r capture-mcp-server.mcpb dist/ node_modules/ manifest.json icon.png && npm install",
+    "test": "pnpm build && tsx --test \"src/**/*.test.ts\"",
+    "package": "pnpm build && pnpm install --prod --frozen-lockfile && zip -r capture-mcp-server.mcpb dist/ node_modules/ manifest.json icon.png && pnpm install --frozen-lockfile",
     "package:hosted": "mkdir -p .tmp-hosted && cp manifest-hosted.json .tmp-hosted/manifest.json && cp icon.png .tmp-hosted/ && cd .tmp-hosted && zip -r ../capture-mcp-server-hosted.mcpb manifest.json icon.png && cd .. && rm -rf .tmp-hosted",
-    "package:dxt": "npm run build && zip -r capture-mcp-server.dxt dist/ manifest.json icon.png"
+    "package:dxt": "pnpm build && zip -r capture-mcp-server.dxt dist/ manifest.json icon.png"
   },
   "keywords": [
     "mcp",
@@ -45,7 +47,7 @@
   },
   "homepage": "https://github.com/blencorp/capture-mcp-server#readme",
   "engines": {
-    "node": ">=20"
+    "node": "^24.11.0 || ^26.0.0"
   },
   "type": "module",
   "dependencies": {
@@ -54,16 +56,21 @@
     "@aws-sdk/client-cloudformation": "^3.939.0",
     "@aws-sdk/client-s3": "^3.939.0",
     "@codegenie/serverless-express": "^4.17.0",
-    "@modelcontextprotocol/sdk": "^1.20.2",
+    "@modelcontextprotocol/sdk": "^1.32.2",
     "axios": "^1.13.0",
     "express": "^5.1.0"
   },
   "devDependencies": {
+    "@eslint/js": "^10.0.1",
     "@types/aws-lambda": "^8.10.147",
     "@types/express": "^5.0.0",
-    "@types/node": "^24.9.1",
-    "nodemon": "^3.1.10",
-    "ts-node": "^10.9.2",
-    "typescript": "^5.9.3"
-  }
+    "@types/node": "^24.19.2",
+    "@typescript/native": "npm:typescript@^7.0.2",
+    "eslint": "^10.14.0",
+    "globals": "^17.14.0",
+    "tsx": "^4.23.15",
+    "typescript": "npm:@typescript/typescript6@^6.0.2",
+    "typescript-eslint": "^8.73.0"
+  },
+  "packageManager": "pnpm@12.21.0"
 }

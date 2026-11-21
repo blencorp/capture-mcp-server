@@ -61,3 +61,5 @@ temp/
 
 # Claude Code settings (contains local configuration)
 .claude/
+# pnpm
+.pnpm-store/
