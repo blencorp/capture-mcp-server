@@ -1,6 +1,8 @@
 # Railway deployment config for capture-mcp-server.
-# Builds the root Dockerfile, which carries its own start command, port and health check, so the
-# service is unchanged when Railway stops reading this file (2026-12-01).
+# Builds the root Dockerfile, which carries its own start command and port, so the service still
+# starts when Railway stops reading this file (2026-12-01). The deploy health check (/health, 30 s)
+# and restart policy below are Railway service settings, not part of the image: before the cutoff,
+# move them to .railway/railway.ts (`railway config migrate`) or set them in the service settings.
 # Auth: set MCP_REQUIRE_OAUTH=true, OAUTH_TOKEN_SECRET and MCP_PUBLIC_BASE_URL; HTTP mode refuses to start without auth.
 
 [build]
