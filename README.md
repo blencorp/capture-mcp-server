@@ -1123,7 +1123,7 @@ The workflow installs the Railway CLI, runs `railway up --service capture-mcp-se
 
 ### Auth posture
 
-HTTP mode fails closed. It starts only with `MCP_REQUIRE_OAUTH=true` (and `OAUTH_TOKEN_SECRET`), or — for one user on their own machine — with `MCP_ALLOW_INSECURE_HTTP=true`, which binds `127.0.0.1` unless `HOST` is set and uses that process's own API keys.
+HTTP mode fails closed. It starts only with `MCP_REQUIRE_OAUTH=true` (and `OAUTH_TOKEN_SECRET`), or — for one user on their own machine — with `MCP_ALLOW_INSECURE_HTTP=true`, which listens on loopback only (a non-loopback `HOST` refuses to start) and uses that process's own API keys.
 
 With OAuth, every `POST /mcp` needs a valid bearer token; the server advertises protected-resource metadata. The client redirects the user to `/oauth/authorize`, where the user picks which providers they have keys for (SAM.gov, Tango, HigherGov) and pastes those keys. The server seals them into the access token; only tools whose keys were authorized appear in that user's tool list. Keys are never exposed as tool arguments.
 

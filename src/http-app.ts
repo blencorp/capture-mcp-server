@@ -69,6 +69,25 @@ function parsePositiveInt(value: string | undefined): number | undefined {
   return Number.isFinite(parsed) && parsed > 0 ? parsed : undefined;
 }
 
+const LOOPBACK_HOSTS = new Set(['127.0.0.1', '::1', 'localhost']);
+
+/**
+ * The address to listen on. Unauthenticated (single-user) HTTP serves the operator's own keys,
+ * so it may only listen on loopback; a non-loopback HOST is a startup error, not an override.
+ */
+export function listenHost(auth: HttpAuth, env: NodeJS.ProcessEnv): string {
+  if (auth.mode === 'insecure') {
+    const host = env.HOST || '127.0.0.1';
+    if (!LOOPBACK_HOSTS.has(host)) {
+      throw new Error(
+        `MCP_ALLOW_INSECURE_HTTP serves this process's API keys without authentication, so it binds loopback only (HOST=${host} refused). Use MCP_REQUIRE_OAUTH=true to serve other hosts.`,
+      );
+    }
+    return host;
+  }
+  return env.HOST || '0.0.0.0';
+}
+
 export function createMcpServer(): Server {
   return new Server({ name: SERVER_NAME, version: SERVER_VERSION }, { capabilities: { tools: {} } });
 }

@@ -94,7 +94,7 @@ The server automatically registers only the tools for which API keys are availab
 ### Remote Auth (HTTP mode)
 
 `MCP_TRANSPORT=http` fails closed (`httpAuthFromEnv` in `src/http-app.ts`): it needs `MCP_REQUIRE_OAUTH=true` + `OAUTH_TOKEN_SECRET`,
-or the explicit single-user `MCP_ALLOW_INSECURE_HTTP=true` (binds 127.0.0.1 unless `HOST` is set).
+or the explicit single-user `MCP_ALLOW_INSECURE_HTTP=true` (loopback only: a non-loopback `HOST` is a startup error, `listenHost`).
 - `src/auth/mcp-oauth.ts` implements an OAuth 2.1 server with PKCE, dynamic client registration, and AES-256-GCM sealed access/refresh tokens. Each token carries a `keys: { sam?, tango?, highergov? }` map sealed against `OAUTH_TOKEN_SECRET`.
 - `GET/POST /oauth/authorize` renders a multi-provider authorization page; users pick checkboxes per provider and supply only the keys they have.
 - `POST /mcp` always requires a verified bearer token. Provider-key headers never authenticate a caller; they only add the caller's own key for a provider.

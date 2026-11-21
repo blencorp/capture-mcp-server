@@ -41,7 +41,15 @@ const metrics = new Metrics({
 /**
  * Creates the Express app for the Lambda handler
  */
-function createApp(): express.Application {
+export type LambdaAppOptions = {
+  /**
+   * Authenticates /mcp callers. Defaults to S3 API-key auth when API_KEY_BUCKET is set; with no
+   * authenticator the app refuses MCP requests. Tests inject a fake.
+   */
+  authenticate?: express.RequestHandler;
+};
+
+export function createApp(options: LambdaAppOptions = {}): express.Application {
   const app = express();
   app.use(express.json());
 
@@ -60,17 +68,18 @@ function createApp(): express.Application {
       status: 'healthy', 
       transport: 'lambda', 
       version: SERVER_VERSION,
-      authMode: process.env.API_KEY_BUCKET ? 's3-api-key' : 'unconfigured'
+      authMode: options.authenticate ? 'custom' : process.env.API_KEY_BUCKET ? 's3-api-key' : 'unconfigured'
     });
   });
 
-  // Add S3 API key authentication if API_KEY_BUCKET is configured
-  if (process.env.API_KEY_BUCKET) {
-    logger.info('S3 API key authentication enabled', {
-      bucket: process.env.API_KEY_BUCKET,
-      prefix: process.env.API_KEY_PREFIX || 'api-keys/'
+  const authenticate =
+    options.authenticate ?? (process.env.API_KEY_BUCKET ? createS3ApiKeyMiddleware() : undefined);
+  if (authenticate) {
+    logger.info('MCP authentication enabled', {
+      mode: options.authenticate ? 'custom' : 's3-api-key',
+      prefix: process.env.API_KEY_PREFIX || 'api-keys/',
     });
-    app.use(createS3ApiKeyMiddleware());
+    app.use(authenticate);
   } else {
     // Fail closed: an unauthenticated function would be open to anyone who finds its URL.
     logger.error('API_KEY_BUCKET is not set; refusing MCP requests');

@@ -3,7 +3,7 @@
 import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio.js';
 
 import { resolveRequestKeys } from './auth/request-keys.js';
-import { createHttpApp, createMcpServer, httpAuthFromEnv } from './http-app.js';
+import { createHttpApp, createMcpServer, httpAuthFromEnv, listenHost } from './http-app.js';
 import { registerToolHandlers } from './mcp-handlers.js';
 
 // Transport mode: 'stdio' (default) or 'http'
@@ -31,15 +31,14 @@ async function runStdioMode(): Promise<void> {
 
 async function runHttpMode(): Promise<void> {
   const auth = httpAuthFromEnv(process.env, HTTP_PORT);
-  // Without auth, listen on loopback only unless HOST explicitly says otherwise.
-  const host = process.env.HOST || (auth.mode === 'insecure' ? '127.0.0.1' : '0.0.0.0');
+  const host = listenHost(auth, process.env);
   const app = createHttpApp({ auth });
 
   app
     .listen(HTTP_PORT, host, () => {
       console.error(`Capture MCP Server running in HTTP mode on ${host}:${HTTP_PORT} (auth: ${auth.mode})`);
       if (auth.mode === 'insecure') {
-        console.error('WARNING: no authentication. Anyone who can reach this port uses this server\'s API keys.');
+        console.error('WARNING: no authentication; serving this process\'s API keys on loopback only.');
       }
       logKeyStatus();
     })
