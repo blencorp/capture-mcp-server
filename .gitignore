@@ -63,3 +63,7 @@ temp/
 .claude/
 # pnpm
 .pnpm-store/
+
+# Playwright
+test-results/
+playwright-report/

@@ -1,12 +1,14 @@
 import js from '@eslint/js';
+import reactHooks from 'eslint-plugin-react-hooks';
 import globals from 'globals';
 import tseslint from 'typescript-eslint';
 
 // Correctness and security rules, not style (formatting is not linted). Type-aware rules run on
 // server code, where an unhandled promise can drop an error or leave a request hanging.
 export default tseslint.config(
-  // infrastructure/ (the CDK app) is its own npm project with its own tsconfig and tests.
-  { ignores: ['dist/**', 'node_modules/**', 'infrastructure/**', 'fixtures/**', 'docs/**', '.local/**'] },
+  // infrastructure/ (the CDK app) is its own npm project with its own tsconfig and tests; site/
+  // (the documentation site) is its own pnpm project.
+  { ignores: ['dist/**', 'node_modules/**', 'infrastructure/**', 'fixtures/**', 'docs/**', 'site/**', '.local/**'] },
 
   js.configs.recommended,
   ...tseslint.configs.recommended,
@@ -48,11 +50,18 @@ export default tseslint.config(
     },
   },
 
+  // The landing page (React): hooks rules and browser globals.
+  {
+    files: ['web/**/*.{ts,tsx}'],
+    plugins: { 'react-hooks': reactHooks },
+    languageOptions: { globals: { ...globals.browser } },
+    rules: reactHooks.configs.recommended.rules,
+  },
+
   { files: ['**/*.cjs'], languageOptions: { sourceType: 'commonjs', globals: { ...globals.node } } },
 
-  // TEMPORARY: the v1 tool and client code types upstream payloads as `any` (about 300 uses).
-  // They are replaced by typed payloads when the tools move to the v2 SDK and the instance-based
-  // ApiClient (package B); remove this block then. See "Lint" in CLAUDE.md.
+  // TEMPORARY: the tool and client code types upstream payloads as `any` (about 300 uses). Replace
+  // them with typed payloads, then remove this block.
   {
     files: ['src/tools/**/*.ts', 'src/utils/**/*.ts'],
     rules: { '@typescript-eslint/no-explicit-any': 'off' },
@@ -61,7 +70,7 @@ export default tseslint.config(
   // Tests and scripts may use any, and test doubles often stub with empty functions. Scripts and
   // test harnesses are command-line programs, so they may log to stdout.
   {
-    files: ['src/**/*.test.ts', 'src/characterization/**/*.ts', 'src/**/__fixtures__/**/*.ts', 'scripts/**/*.{ts,mjs,mts}'],
+    files: ['src/**/*.test.ts', 'src/**/__fixtures__/**/*.ts', 'scripts/**/*.{ts,mjs,mts}'],
     rules: {
       '@typescript-eslint/no-explicit-any': 'off',
       '@typescript-eslint/no-empty-function': 'off',

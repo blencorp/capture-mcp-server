@@ -1,0 +1,29 @@
+{
+  "$comment": "Shared portal kit (scripts/portal-kit.mjs). The kit is owned by uspto-mcp-server; other servers copy these files unchanged together with this manifest.",
+  "source": "https://github.com/blen-labs/uspto-mcp-server",
+  "files": {
+    "web/src/assets/blen-logo.png": "ed0b7bcef0910ce09e298e4476f323aaa51e717c666762f97ca03cca21b7f77e",
+    "web/src/components/kit/brand.ts": "0f3601b95263077fb8090a69d2806e534d0201e58ed1b1f0a000229d9963c3d7",
+    "web/src/components/kit/copy-field.tsx": "ce1a943e2e11ff62c0c334a2c8bc0f99e8e32076195166e35971abfa70bfaf73",
+    "web/src/components/kit/error-page.tsx": "e9e3ab40411a2120f9d84f613fb484a20c054e8419e2601a72e7093ee06eeff6",
+    "web/src/components/kit/field.tsx": "dcf7671c3f8dd5f562cc406f98fc41418dddf81b0d5d8f2d5ac77e908c408032",
+    "web/src/components/kit/landing.tsx": "86f4bc83d0420face49d1b8b79b75aecda490dcd84c48c3e386ee07b3fe1e53e",
+    "web/src/components/kit/notice.tsx": "56a47ce4bbb43dcac461410f32d61fc8158e923688f30b5020f11e8f2cb0629f",
+    "web/src/components/kit/page.tsx": "c6504dfeb456deb4d78163b1efb6e6b6a5996381b47bca7b16ecbcf9c73b9c87",
+    "web/src/components/kit/shell.tsx": "7cd6a437bb3357d0b202d868e9431565e4eb4b4a7990fb5a786cef653d543738",
+    "web/src/components/kit/site-footer.tsx": "27fb4231d0a7079e4887a0715a3ddd91be65d9a5dacb0871c6342b8513790598",
+    "web/src/components/kit/site-header.tsx": "40e464f0658877d310bff92605bbd275fd83b6c2b67522d6e4be528e4f0cfde4",
+    "web/src/components/kit/use-document-title.ts": "305c3ff8d569776c7bb845cc90b9eb85285a0443801b568535aa360494a509ac",
+    "web/src/components/kit/use-signed-in.ts": "f53e35b728a0b7ea2e9929541c726c0525f3bb1333e0dc081a301697f85ce89e",
+    "web/src/components/ui/alert.tsx": "8d6d907569f300f3225954bb43841a8561b708270f2b03a8aacf7b11332c5310",
+    "web/src/components/ui/badge.tsx": "8a2c1d5440ac2e69cd0f86317ce600f1981aeefc8fb1788c630ea51975b2ba84",
+    "web/src/components/ui/button.tsx": "a9d0d5e5e590e169f3b2a20c16ff9a497b5256b4cc6020bd05d67d36f7a5e54e",
+    "web/src/components/ui/card.tsx": "2983cc2b190cc69a3b801fc4cb85a871e7d24e57cdb28297a0e08378d9e90292",
+    "web/src/components/ui/input.tsx": "1086078db171a88626883867a8df4b8a5e60c279837dafa7a82d8ff365aadd31",
+    "web/src/components/ui/label.tsx": "0debcc8bb8be50bcaf8ffd9ea7950df38769623cdd79cad87be46b5250c9cd76",
+    "web/src/components/ui/radio-group.tsx": "21b90a5e6b09a1c50f4c9f433034a5b882cb6eea5010458d86ae56ce9e54d13f",
+    "web/src/components/ui/separator.tsx": "195f5040af05eef3216d5c88e4ee2fa8e76317104a999b9aa24c8a2355bdaa13",
+    "web/src/index.css": "6b480bf67bc2e5c5b05d816bff2e6ad9b826ff3294126fa1f046061521e2edbb",
+    "web/src/lib/utils.ts": "74e8fe9d0d680c442ed6adb13e7d119d6c210c19ae6c114313b2a72552be0883"
+  }
+}
