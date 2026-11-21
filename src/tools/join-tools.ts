@@ -12,7 +12,7 @@ export const joinTools = {
           properties: {
             api_key: {
               type: "string", 
-              description: "SAM.gov API key (optional if SAM_GOV_API_KEY env var is set)"
+              description: "SAM.gov API key (optional; the server supplies your key)"
             },
             uei: {
               type: "string",
@@ -38,7 +38,7 @@ export const joinTools = {
           properties: {
             api_key: {
               type: "string",
-              description: "SAM.gov API key (optional if SAM_GOV_API_KEY env var is set)"
+              description: "SAM.gov API key (optional; the server supplies your key)"
             },
             opportunity_id: {
               type: "string", 

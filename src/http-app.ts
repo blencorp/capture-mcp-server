@@ -45,9 +45,14 @@ export function httpAuthFromEnv(env: NodeJS.ProcessEnv, port: number): HttpAuth 
     if (!tokenSecret) {
       throw new Error('MCP_REQUIRE_OAUTH=true needs OAUTH_TOKEN_SECRET (used to seal access tokens).');
     }
+    // OAuth metadata tells remote clients where to authorize; without a configured public URL it
+    // would advertise http://localhost, which no remote client can reach.
+    if (!(env.MCP_PUBLIC_BASE_URL || env.PUBLIC_URL)?.trim()) {
+      throw new Error('MCP_REQUIRE_OAUTH=true needs MCP_PUBLIC_BASE_URL (the https origin clients use, e.g. https://capture.example.com).');
+    }
     return {
       mode: 'oauth',
-      publicBaseUrl: getOAuthPublicBaseUrl(port),
+      publicBaseUrl: getOAuthPublicBaseUrl(port, env),
       tokenSecret,
       accessTokenTtlSeconds: parsePositiveInt(env.OAUTH_ACCESS_TOKEN_TTL_SECONDS),
       refreshTokenTtlSeconds: parsePositiveInt(env.OAUTH_REFRESH_TOKEN_TTL_SECONDS),
@@ -75,7 +80,7 @@ const LOOPBACK_HOSTS = new Set(['127.0.0.1', '::1', 'localhost']);
  * The address to listen on. Unauthenticated (single-user) HTTP serves the operator's own keys,
  * so it may only listen on loopback; a non-loopback HOST is a startup error, not an override.
  */
-export function listenHost(auth: HttpAuth, env: NodeJS.ProcessEnv): string {
+export function listenHost(auth: HttpAuth, env: NodeJS.ProcessEnv): string | undefined {
   if (auth.mode === 'insecure') {
     const host = env.HOST || '127.0.0.1';
     if (!LOOPBACK_HOSTS.has(host)) {
@@ -85,7 +90,9 @@ export function listenHost(auth: HttpAuth, env: NodeJS.ProcessEnv): string {
     }
     return host;
   }
-  return env.HOST || '0.0.0.0';
+  // undefined lets Node pick its default (dual-stack `::`, falling back to IPv4), as before; a
+  // hard-coded '0.0.0.0' would drop IPv6 clients such as Railway's private network.
+  return env.HOST || undefined;
 }
 
 export function createMcpServer(): Server {
@@ -97,6 +104,19 @@ export function createHttpApp({ auth, env = process.env }: HttpAppOptions): expr
   app.set('trust proxy', 1);
   app.use(express.json());
   app.use(express.urlencoded({ extended: false }));
+
+  if (auth.mode === 'insecure') {
+    // Unauthenticated and serving the operator's keys: refuse requests whose Host header is not
+    // loopback, so a DNS-rebinding page in the user's browser cannot reach it.
+    app.use((req: Request, res: Response, next: express.NextFunction) => {
+      const hostname = (req.headers.host ?? '').replace(/:\d+$/, '').replace(/^\[|\]$/g, '');
+      if (!LOOPBACK_HOSTS.has(hostname)) {
+        res.status(403).json({ jsonrpc: '2.0', error: { code: -32000, message: 'Forbidden host' }, id: null });
+        return;
+      }
+      next();
+    });
+  }
 
   app.get('/health', (_req: Request, res: Response) => {
     res.json({ status: 'healthy', transport: 'http', version: SERVER_VERSION, authMode: auth.mode });

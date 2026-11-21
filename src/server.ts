@@ -34,18 +34,18 @@ async function runHttpMode(): Promise<void> {
   const host = listenHost(auth, process.env);
   const app = createHttpApp({ auth });
 
-  app
-    .listen(HTTP_PORT, host, () => {
-      console.error(`Capture MCP Server running in HTTP mode on ${host}:${HTTP_PORT} (auth: ${auth.mode})`);
-      if (auth.mode === 'insecure') {
-        console.error('WARNING: no authentication; serving this process\'s API keys on loopback only.');
-      }
-      logKeyStatus();
-    })
-    .on('error', error => {
-      console.error('Server error:', error);
-      process.exit(1);
-    });
+  const onListening = () => {
+    console.error(`Capture MCP Server running in HTTP mode on ${host ?? '[::]'}:${HTTP_PORT} (auth: ${auth.mode})`);
+    if (auth.mode === 'insecure') {
+      console.error('WARNING: no authentication; serving this process\'s API keys on loopback only.');
+    }
+    logKeyStatus();
+  };
+  const server = host === undefined ? app.listen(HTTP_PORT, onListening) : app.listen(HTTP_PORT, host, onListening);
+  server.on('error', error => {
+    console.error('Server error:', error);
+    process.exit(1);
+  });
 }
 
 async function main(): Promise<void> {

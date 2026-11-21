@@ -59,7 +59,13 @@ test('httpAuthFromEnv: HTTP refuses to start without authentication or an explic
   assert.throws(() => httpAuthFromEnv({}, 3000), /needs authentication/);
   assert.throws(() => httpAuthFromEnv({ MCP_REQUIRE_OAUTH: 'true' }, 3000), /OAUTH_TOKEN_SECRET/);
   assert.equal(httpAuthFromEnv({ MCP_ALLOW_INSECURE_HTTP: 'true' }, 3000).mode, 'insecure');
-  assert.equal(httpAuthFromEnv({ MCP_REQUIRE_OAUTH: 'true', OAUTH_TOKEN_SECRET: 's' }, 3000).mode, 'oauth');
+  assert.throws(() => httpAuthFromEnv({ MCP_REQUIRE_OAUTH: 'true', OAUTH_TOKEN_SECRET: 's' }, 3000), /MCP_PUBLIC_BASE_URL/);
+  const oauth = httpAuthFromEnv(
+    { MCP_REQUIRE_OAUTH: 'true', OAUTH_TOKEN_SECRET: 's', MCP_PUBLIC_BASE_URL: 'https://capture.example.test/mcp' },
+    3000,
+  );
+  assert.equal(oauth.mode, 'oauth');
+  assert.equal(oauth.mode === 'oauth' && oauth.publicBaseUrl.href, 'https://capture.example.test/');
 });
 
 test('oauth mode: a provider-key header does not stand in for a bearer token', async () => {
@@ -204,5 +210,5 @@ test('listenHost: single-user HTTP refuses non-loopback addresses', () => {
   assert.equal(listenHost({ mode: 'insecure' }, {}), '127.0.0.1');
   assert.equal(listenHost({ mode: 'insecure' }, { HOST: '::1' }), '::1');
   assert.throws(() => listenHost({ mode: 'insecure' }, { HOST: '0.0.0.0' }), /loopback only/);
-  assert.equal(listenHost({ mode: 'oauth', publicBaseUrl: BASE, tokenSecret: SECRET }, {}), '0.0.0.0');
+  assert.equal(listenHost({ mode: 'oauth', publicBaseUrl: BASE, tokenSecret: SECRET }, {}), undefined);
 });

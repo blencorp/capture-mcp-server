@@ -62,6 +62,9 @@ function writeManifestVersion(path: string, version: string): boolean {
 
 function writeMarkerVersion(path: string, version: string): boolean {
   const raw = readFileSync(path, 'utf8');
+  if (!raw.includes('x-release-version')) {
+    throw new Error(`${path} has no line marked x-release-version; the released version would drift from package.json`);
+  }
   const updated = raw
     .split('\n')
     .map(line => (line.includes('x-release-version') ? line.replace(/(['"])\d+\.\d+\.\d+\1/, `'${version}'`) : line))

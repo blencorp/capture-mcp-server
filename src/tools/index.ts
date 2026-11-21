@@ -62,7 +62,7 @@ export interface ApiKeyConfig {
   hasSamApiKey: boolean;
   hasTangoApiKey: boolean;
   hasHigherGovApiKey: boolean;
-  // Actual key values (from headers or env vars) for injection into tool calls
+  // Actual key values (resolved per request) for injection into tool calls
   samApiKey?: string;
   tangoApiKey?: string;
   higherGovApiKey?: string;
