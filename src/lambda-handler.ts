@@ -7,15 +7,13 @@
  * Environment Variables:
  * - POWERTOOLS_SERVICE_NAME: Service name for Powertools (default: capture-mcp-server)
  * - POWERTOOLS_LOG_LEVEL: Log level (default: INFO)
- * - API_KEY_BUCKET: S3 bucket for API key validation (optional, enables auth when set)
+ * - API_KEY_BUCKET: S3 bucket for API key validation (REQUIRED: without it /mcp answers 503)
  * - API_KEY_PREFIX: S3 object key prefix (default: "api-keys/")
- * - SAM_GOV_API_KEY: Default SAM.gov API key (optional)
- * - TANGO_API_KEY: Default Tango API key (optional)
- * 
+ *
  * Headers:
- * - X-Api-Key: Server access API key (required when API_KEY_BUCKET is configured)
- * - X-Sam-Api-Key: SAM.gov API key for tool access
- * - X-Tango-Api-Key: Tango API key for tool access
+ * - X-Api-Key: Server access API key (required)
+ * - X-Sam-Api-Key / X-Tango-Api-Key / X-Highergov-Api-Key: the caller's OWN provider keys.
+ *   The function never falls back to keys in its environment: provider keys are personal.
  */
 
 import { Logger } from '@aws-lambda-powertools/logger';
@@ -23,14 +21,11 @@ import { Metrics, MetricUnit } from '@aws-lambda-powertools/metrics';
 import type { APIGatewayProxyEventV2, APIGatewayProxyResultV2, Context } from 'aws-lambda';
 import { configure as serverlessExpress } from '@codegenie/serverless-express';
 import express, { Request, Response, NextFunction } from 'express';
-import { Server } from "@modelcontextprotocol/sdk/server/index.js";
 import { StreamableHTTPServerTransport } from "@modelcontextprotocol/sdk/server/streamableHttp.js";
-import {
-  CallToolRequestSchema,
-  ListToolsRequestSchema,
-  Tool,
-} from "@modelcontextprotocol/sdk/types.js";
-import { initializeTools, callTool, ApiKeyConfig } from './tools/index.js';
+import { headerKeys, resolveRequestKeys } from './auth/request-keys.js';
+import { createMcpServer } from './http-app.js';
+import { registerToolHandlers } from './mcp-handlers.js';
+import { SERVER_VERSION } from './version.js';
 import { createS3ApiKeyMiddleware, AuthenticatedRequest } from './middleware/s3-api-key.js';
 
 // Initialize Powertools
@@ -42,87 +37,6 @@ const metrics = new Metrics({
   serviceName: process.env.POWERTOOLS_SERVICE_NAME || 'capture-mcp-server',
   namespace: process.env.POWERTOOLS_METRICS_NAMESPACE || 'CaptureMCP',
 });
-
-/**
- * API key overrides from HTTP headers
- */
-interface ApiKeyOverrides {
-  samKey?: string;
-  tangoKey?: string;
-  higherGovKey?: string;
-}
-
-/**
- * Creates and configures the MCP server
- */
-function createMcpServer(): Server {
-  return new Server(
-    {
-      name: "Capture MCP Server",
-      version: "1.0.0",
-    },
-    {
-      capabilities: {
-        tools: {},
-      },
-    }
-  );
-}
-
-/**
- * Sets up request handlers on the MCP server
- */
-async function setupHandlers(
-  server: Server, 
-  config: ApiKeyConfig,
-  apiKeyOverrides?: ApiKeyOverrides
-): Promise<Tool[]> {
-  const tools = await initializeTools(config);
-
-  server.setRequestHandler(ListToolsRequestSchema, async () => {
-    return { tools };
-  });
-
-  server.setRequestHandler(CallToolRequestSchema, async (request) => {
-    const { name, arguments: args } = request.params;
-    
-    logger.info('Tool call started', { toolName: name });
-    
-    try {
-      const result = await callTool(name, args ?? {}, apiKeyOverrides);
-      const structured =
-        result !== null && typeof result === 'object' && !Array.isArray(result) ? result : undefined;
-      const textPayload =
-        structured !== undefined
-          ? JSON.stringify(structured, null, 2)
-          : result === undefined
-            ? 'undefined'
-            : String(result);
-
-      logger.info('Tool call completed', { toolName: name, success: true });
-      
-      return {
-        content: [{ type: "text", text: textPayload }],
-        ...(structured ? { structuredContent: structured } : {}),
-      };
-    } catch (error) {
-      const errorMessage = error instanceof Error ? error.message : 'Unknown error';
-      
-      logger.error('Tool call failed', { toolName: name, error: errorMessage });
-      
-      return { 
-        content: [{ 
-          type: "text", 
-          text: JSON.stringify({ error: errorMessage }, null, 2) 
-        }],
-        structuredContent: { error: errorMessage },
-        isError: true 
-      };
-    }
-  });
-
-  return tools;
-}
 
 /**
  * Creates the Express app for the Lambda handler
@@ -145,8 +59,8 @@ function createApp(): express.Application {
     res.json({ 
       status: 'healthy', 
       transport: 'lambda', 
-      version: '1.0.0',
-      authMode: process.env.API_KEY_BUCKET ? 's3-api-key' : 'none'
+      version: SERVER_VERSION,
+      authMode: process.env.API_KEY_BUCKET ? 's3-api-key' : 'unconfigured'
     });
   });
 
@@ -158,7 +72,15 @@ function createApp(): express.Application {
     });
     app.use(createS3ApiKeyMiddleware());
   } else {
-    logger.warn('S3 API key authentication DISABLED - API_KEY_BUCKET not set');
+    // Fail closed: an unauthenticated function would be open to anyone who finds its URL.
+    logger.error('API_KEY_BUCKET is not set; refusing MCP requests');
+    app.use('/mcp', (_req: Request, res: Response) => {
+      res.status(503).json({
+        jsonrpc: '2.0',
+        error: { code: -32603, message: 'Server authentication is not configured' },
+        id: null,
+      });
+    });
   }
 
   // MCP endpoint
@@ -173,39 +95,18 @@ function createApp(): express.Application {
     
     try {
       const server = createMcpServer();
-      
-      // Extract API keys from headers
-      const headerSamKey = req.get('X-Sam-Api-Key') || req.get('x-sam-api-key');
-      const headerTangoKey = req.get('X-Tango-Api-Key') || req.get('x-tango-api-key');
-      const headerHigherGovKey = req.get('X-Highergov-Api-Key') || req.get('x-highergov-api-key');
-
-      const samApiKey = headerSamKey || process.env.SAM_GOV_API_KEY;
-      const tangoApiKey = headerTangoKey || process.env.TANGO_API_KEY;
-      const higherGovApiKey = headerHigherGovKey || process.env.HIGHERGOV_API_KEY;
-
-      const config: ApiKeyConfig = {
-        hasSamApiKey: !!samApiKey,
-        hasTangoApiKey: !!tangoApiKey,
-        hasHigherGovApiKey: !!higherGovApiKey,
-        samApiKey,
-        tangoApiKey,
-        higherGovApiKey
-      };
-
-      const apiKeyOverrides: ApiKeyOverrides = {
-        samKey: samApiKey,
-        tangoKey: tangoApiKey,
-        higherGovKey: higherGovApiKey
-      };
-
-      // Log API key sources
-      logger.debug('API Key Sources', {
-        samSource: headerSamKey ? 'header' : samApiKey ? 'env' : 'none',
-        tangoSource: headerTangoKey ? 'header' : tangoApiKey ? 'env' : 'none',
-        higherGovSource: headerHigherGovKey ? 'header' : higherGovApiKey ? 'env' : 'none',
-      });
-
-      await setupHandlers(server, config, apiKeyOverrides);
+      // Only the caller's own provider keys, from their headers; never this function's env.
+      await registerToolHandlers(
+        server,
+        resolveRequestKeys({ kind: 'caller', headers: headerKeys(name => req.get(name)) }),
+        {
+          started: toolName => logger.info('Tool call started', { toolName }),
+          finished: (toolName, error) =>
+            error
+              ? logger.error('Tool call failed', { toolName, error })
+              : logger.info('Tool call completed', { toolName, success: true }),
+        },
+      );
 
       const transport = new StreamableHTTPServerTransport({
         sessionIdGenerator: undefined,

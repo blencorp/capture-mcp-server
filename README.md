@@ -1103,10 +1103,10 @@ The server runs in HTTP mode (StreamableHTTP transport) when `MCP_TRANSPORT=http
    - `MCP_TRANSPORT=http` (required — switches from stdio)
    - `NODE_ENV=production`
    - `NPM_CONFIG_PRODUCTION=false` (required so `npm ci` installs devDependencies; the build step needs `tsc`)
-   - `MCP_REQUIRE_OAUTH=true` (enables the per-user authorization flow for Claude remote-connector users)
+   - `MCP_REQUIRE_OAUTH=true` (required — HTTP mode refuses to start without authentication)
    - `MCP_PUBLIC_BASE_URL=https://<your-domain>` (for example, `https://capture.mcp.blencorp.com`)
    - `OAUTH_TOKEN_SECRET=<random secret>` (protects encrypted per-user provider credentials — generate with `openssl rand -base64 48`)
-   - `SAM_GOV_API_KEY`, `TANGO_API_KEY`, and/or `HIGHERGOV_API_KEY` only if you want server-wide access to those tools as a fallback. Usually unset for shared deployments; each user supplies their own keys during OAuth authorization.
+   - Do **not** set `SAM_GOV_API_KEY`, `TANGO_API_KEY` or `HIGHERGOV_API_KEY`: provider keys are personal, and the hosted server never uses its own keys for callers. Each user supplies their own keys during OAuth authorization.
    - **Do not set `PORT`** — Railway injects it.
 3. Deploy. Nixpacks installs dependencies, `railway.toml` runs `npm run build`, and the service starts via `node dist/server.js`, with healthcheck on `GET /health`.
 4. Add a custom domain in Settings → Domains (e.g. `capture.mcp.blencorp.com`) and point a CNAME at the value Railway shows.
@@ -1123,13 +1123,11 @@ The workflow installs the Railway CLI, runs `railway up --service capture-mcp-se
 
 ### Auth posture
 
-The hosted server accepts two parallel auth modes when `MCP_REQUIRE_OAUTH=true`:
+HTTP mode fails closed. It starts only with `MCP_REQUIRE_OAUTH=true` (and `OAUTH_TOKEN_SECRET`), or — for one user on their own machine — with `MCP_ALLOW_INSECURE_HTTP=true`, which binds `127.0.0.1` unless `HOST` is set and uses that process's own API keys.
 
-**1. OAuth (for Claude and other interactive MCP clients).** `POST /mcp` requires a bearer token and advertises protected-resource metadata. The client redirects the user to `/oauth/authorize`, where the user picks which providers they have keys for (SAM.gov, Tango, HigherGov) via checkboxes and pastes the keys for those providers. The server seals all selected keys into one access token; only tools whose keys were authorized appear in the client's tool list. Keys are never exposed as tool arguments.
+With OAuth, every `POST /mcp` needs a valid bearer token; the server advertises protected-resource metadata. The client redirects the user to `/oauth/authorize`, where the user picks which providers they have keys for (SAM.gov, Tango, HigherGov) and pastes those keys. The server seals them into the access token; only tools whose keys were authorized appear in that user's tool list. Keys are never exposed as tool arguments.
 
-**2. Header passthrough (for programmatic API callers).** Requests that include `X-Sam-Api-Key`, `X-Tango-Api-Key`, and/or `X-Highergov-Api-Key` headers bypass the bearer-token gate. Only the tools whose keys are present get registered for that request. The provider key itself is the trust anchor — same model as the OAuth flow, just without the browser dance.
-
-If `MCP_REQUIRE_OAUTH` is not set, HTTP mode runs unauthenticated: public USASpending tools are visible without any credential, and keyed tools light up from server env vars or request headers.
+A signed-in caller may also send `X-Sam-Api-Key`, `X-Tango-Api-Key` or `X-Highergov-Api-Key` headers to use their own key for a provider they did not authorize. These headers only choose which upstream key a request uses; they never authenticate the caller, and the server never falls back to keys in its own environment.
 
 ### Smoke test after deploy
 
@@ -1143,20 +1141,12 @@ curl -i https://<your-domain>/mcp \
   -H 'Accept: application/json, text/event-stream' \
   -d '{"jsonrpc":"2.0","id":1,"method":"tools/list"}'
 
-# 2) Header passthrough — list HigherGov tools without going through OAuth.
-curl -X POST https://<your-domain>/mcp \
+# 2) A provider-key header does not replace the bearer token: this is also 401.
+curl -i https://<your-domain>/mcp \
   -H 'Content-Type: application/json' \
   -H 'Accept: application/json, text/event-stream' \
   -H "X-Highergov-Api-Key: $HIGHERGOV_API_KEY" \
   -d '{"jsonrpc":"2.0","id":1,"method":"tools/list"}'
-
-# 3) Header passthrough — call a tool directly.
-curl -X POST https://<your-domain>/mcp \
-  -H 'Content-Type: application/json' \
-  -H 'Accept: application/json, text/event-stream' \
-  -H "X-Highergov-Api-Key: $HIGHERGOV_API_KEY" \
-  -d '{"jsonrpc":"2.0","id":1,"method":"tools/call",
-       "params":{"name":"search_highergov_forecasts","arguments":{"keyword":"cyber"}}}'
 ```
 
 After a Claude user completes OAuth authorization, `tools/list` returns the USASpending tools plus the provider tools enabled by that user's keys.

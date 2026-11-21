@@ -1,6 +1,6 @@
 # Railway deployment config for capture-mcp-server.
 # Runs the server in HTTP mode (StreamableHTTP transport) on Railway-injected $PORT.
-# Auth note: set MCP_REQUIRE_OAUTH=true for remote MCP connector auth.
+# Auth: set MCP_REQUIRE_OAUTH=true, OAUTH_TOKEN_SECRET and MCP_PUBLIC_BASE_URL; HTTP mode refuses to start without auth.
 
 [build]
 builder = "NIXPACKS"

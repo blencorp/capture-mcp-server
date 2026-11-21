@@ -543,9 +543,9 @@ export const tangoTools = {
   },
 
   requireKey(api_key: any): string {
-    const key = api_key || process.env.TANGO_API_KEY;
+    const key = api_key;
     if (!key) {
-      throw new Error("Tango API key is required. Please provide it as a parameter or set TANGO_API_KEY environment variable");
+      throw new Error("Tango API key is required. The server injects the caller's key; locally, set TANGO_API_KEY.");
     }
     return key;
   },
@@ -568,10 +568,10 @@ export const tangoTools = {
       cursor
     } = args;
 
-    const tangoApiKey = api_key || process.env.TANGO_API_KEY;
+    const tangoApiKey = api_key;
 
     if (!tangoApiKey) {
-      throw new Error("Tango API key is required. Please provide it as a parameter or set TANGO_API_KEY environment variable");
+      throw new Error("Tango API key is required. The server injects the caller's key; locally, set TANGO_API_KEY.");
     }
 
     let setAsideCodes: string[];
@@ -729,10 +729,10 @@ export const tangoTools = {
       cursor
     } = args;
 
-    const tangoApiKey = api_key || process.env.TANGO_API_KEY;
+    const tangoApiKey = api_key;
 
     if (!tangoApiKey) {
-      throw new Error("Tango API key is required. Please provide it as a parameter or set TANGO_API_KEY environment variable");
+      throw new Error("Tango API key is required. The server injects the caller's key; locally, set TANGO_API_KEY.");
     }
 
     const params: Record<string, any> = {
@@ -820,10 +820,10 @@ export const tangoTools = {
   async getVendorProfile(args: any): Promise<any> {
     const { api_key, uei, include_contracts = false, include_grants = false } = args;
 
-    const tangoApiKey = api_key || process.env.TANGO_API_KEY;
+    const tangoApiKey = api_key;
 
     if (!tangoApiKey) {
-      throw new Error("Tango API key is required. Please provide it as a parameter or set TANGO_API_KEY environment variable");
+      throw new Error("Tango API key is required. The server injects the caller's key; locally, set TANGO_API_KEY.");
     }
 
     if (!uei) {
@@ -923,10 +923,10 @@ export const tangoTools = {
       cursor
     } = args;
 
-    const tangoApiKey = api_key || process.env.TANGO_API_KEY;
+    const tangoApiKey = api_key;
 
     if (!tangoApiKey) {
-      throw new Error("Tango API key is required. Please provide it as a parameter or set TANGO_API_KEY environment variable");
+      throw new Error("Tango API key is required. The server injects the caller's key; locally, set TANGO_API_KEY.");
     }
 
     const params: Record<string, any> = {
@@ -1018,10 +1018,10 @@ export const tangoTools = {
       award_type = 'all'
     } = args;
 
-    const tangoApiKey = api_key || process.env.TANGO_API_KEY;
+    const tangoApiKey = api_key;
 
     if (!tangoApiKey) {
-      throw new Error("Tango API key is required. Please provide it as a parameter or set TANGO_API_KEY environment variable");
+      throw new Error("Tango API key is required. The server injects the caller's key; locally, set TANGO_API_KEY.");
     }
 
     const agencyResolved = resolveAgencyCode(agency);

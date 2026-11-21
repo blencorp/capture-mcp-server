@@ -15,7 +15,8 @@ import {
   contractPage,
 } from './__fixtures__/highergov-contract.fixture.js';
 
-process.env.HIGHERGOV_API_KEY = process.env.HIGHERGOV_API_KEY || 'test-key';
+// The server injects the caller's key as api_key; tools never read keys from the environment.
+const callTool = (name: string, args: Record<string, any> = {}) => highergovTools.callTool(name, { api_key: 'test-key', ...args });
 
 function stubHighergovGet(handler: (endpoint: string, params: Record<string, any>) => any) {
   const original = ApiClient.highergovGet;
@@ -94,7 +95,7 @@ test('search_highergov_contracts filters non-matching agencies client-side and s
     data: contractPage([documentedContractRecord, interiorContractRecord, dojContractRecord], { count: 3120 }),
   }));
   try {
-    const out: any = await highergovTools.callTool('search_highergov_contracts', {
+    const out: any = await callTool('search_highergov_contracts', {
       agency: 'Department of Veterans Affairs',
       naics: ['541511'],
     });
@@ -118,7 +119,7 @@ test('search_highergov_contracts keeps total when the upstream results all match
     data: contractPage([documentedContractRecord], { count: 42 }),
   }));
   try {
-    const out: any = await highergovTools.callTool('search_highergov_contracts', {
+    const out: any = await callTool('search_highergov_contracts', {
       agency: 'VA',
       naics: ['541511'],
     });
@@ -136,7 +137,7 @@ test('search_highergov_contracts warns instead of pretending when agency cannot 
     data: contractPage([alienContractRecord]),
   }));
   try {
-    const out: any = await highergovTools.callTool('search_highergov_contracts', {
+    const out: any = await callTool('search_highergov_contracts', {
       agency: 'VA',
       naics: ['541511'],
     });
@@ -160,7 +161,7 @@ test('search_highergov_contracts applies set_aside and pop_end bounds client-sid
     data: contractPage([documentedContractRecord, laterPop]),
   }));
   try {
-    const out: any = await highergovTools.callTool('search_highergov_contracts', {
+    const out: any = await callTool('search_highergov_contracts', {
       naics: ['541511'],
       set_aside: ['sdvosbs'],
       pop_end_before: '2027-01-01',
@@ -182,7 +183,7 @@ test('search_highergov_contracts surfaces next_cursor from the next URL', async 
     }),
   }));
   try {
-    const out: any = await highergovTools.callTool('search_highergov_contracts', { naics: ['541511'] });
+    const out: any = await callTool('search_highergov_contracts', { naics: ['541511'] });
     assert.equal(out.next_cursor, '2');
   } finally {
     restore();
@@ -192,7 +193,7 @@ test('search_highergov_contracts surfaces next_cursor from the next URL', async 
 test('search_highergov_contracts rejects garbled date bounds as bad_request', async () => {
   const restore = stubHighergovGet(() => ({ success: true, data: contractPage([]) }));
   try {
-    const out: any = await highergovTools.callTool('search_highergov_contracts', {
+    const out: any = await callTool('search_highergov_contracts', {
       naics: ['541511'],
       pop_end_before: 'not-a-date',
     });
@@ -246,7 +247,7 @@ test('search_highergov_opportunities filters the set-aside bundle and drops clos
     return { success: true, data: oppPage };
   });
   try {
-    const out: any = await highergovTools.callTool('search_highergov_opportunities', {
+    const out: any = await callTool('search_highergov_opportunities', {
       set_aside: ['8a'],
       naics: ['5415'],
       agency_key: 3600,
@@ -291,7 +292,7 @@ test('search_highergov_opportunities walks posted_date day by day with a resumab
     };
   });
   try {
-    const out: any = await highergovTools.callTool('search_highergov_opportunities', {
+    const out: any = await callTool('search_highergov_opportunities', {
       posted_after: dayBefore,
       limit: 200,
     });
@@ -307,7 +308,7 @@ test('search_highergov_opportunities walks posted_date day by day with a resumab
 
     // A cursor resumes mid-walk without repeating earlier days.
     calls.length = 0;
-    const resumed: any = await highergovTools.callTool('search_highergov_opportunities', {
+    const resumed: any = await callTool('search_highergov_opportunities', {
       posted_after: dayBefore,
       cursor: `${today}|1`,
       limit: 200,
@@ -320,7 +321,7 @@ test('search_highergov_opportunities walks posted_date day by day with a resumab
 });
 
 test('search_highergov_opportunities requires posted_after or agency_key (upstream demands a binding filter)', async () => {
-  const out: any = await highergovTools.callTool('search_highergov_opportunities', { naics: ['5415'] });
+  const out: any = await callTool('search_highergov_opportunities', { naics: ['5415'] });
   assert.equal(out.error.code, 'bad_request');
   assert.match(out.error.message, /posted_after.*agency_key/);
 });
@@ -331,7 +332,7 @@ test('search_highergov_contracts sends agency_key upstream as awarding_agency_ke
     return { success: true, data: contractPage([documentedContractRecord]) };
   });
   try {
-    const out: any = await highergovTools.callTool('search_highergov_contracts', { agency_key: 3600 });
+    const out: any = await callTool('search_highergov_contracts', { agency_key: 3600 });
     assert.equal(out.results.length, 1);
     assert.equal(out.filters.upstream.awarding_agency_key, 3600);
   } finally {
@@ -368,7 +369,7 @@ test('search_highergov_people binds email upstream and applies agency client-sid
     return { success: true, data: peoplePage };
   });
   try {
-    const out: any = await highergovTools.callTool('search_highergov_people', {
+    const out: any = await callTool('search_highergov_people', {
       agency: 'Department of Veterans Affairs',
       role_keywords: ['contracting'],
     });
@@ -401,9 +402,9 @@ test('get_highergov_person looks up by contact_email and rejects non-email ids',
     };
   });
   try {
-    const out: any = await highergovTools.callTool('get_highergov_person', { id: 'jordan.sample@va.gov' });
+    const out: any = await callTool('get_highergov_person', { id: 'jordan.sample@va.gov' });
     assert.equal(out.phone, '202-555-0100');
-    const bad: any = await highergovTools.callTool('get_highergov_person', { id: 'not-an-email' });
+    const bad: any = await callTool('get_highergov_person', { id: 'not-an-email' });
     assert.equal(bad.error.code, 'bad_request');
   } finally {
     restore();
@@ -418,7 +419,7 @@ test('search_highergov_forecasts sends the documented last_modified_date param, 
     return { success: true, data: { results: [], next: null } };
   });
   try {
-    const out: any = await highergovTools.callTool('search_highergov_forecasts', {
+    const out: any = await callTool('search_highergov_forecasts', {
       saved_search_id: 'SS1',
       since: '2026-08-20T12:34:56Z',
     });
@@ -429,7 +430,7 @@ test('search_highergov_forecasts sends the documented last_modified_date param, 
 });
 
 test('search_highergov_opportunities requires at least one filter', async () => {
-  const out: any = await highergovTools.callTool('search_highergov_opportunities', {});
+  const out: any = await callTool('search_highergov_opportunities', {});
   assert.equal(out.error.code, 'bad_request');
 });
 
@@ -473,7 +474,7 @@ test('get_opportunity_documents merges notice attachments with the document inde
     return { success: false, error: 'API Error 404: {}' };
   });
   try {
-    const out: any = await highergovTools.callTool('get_opportunity_documents', { id: 'doc-test-opp-1' });
+    const out: any = await callTool('get_opportunity_documents', { id: 'doc-test-opp-1' });
     assert.equal(out.documents.length, 2);
     assert.deepEqual(
       out.documents.map((d: any) => d.url).sort(),

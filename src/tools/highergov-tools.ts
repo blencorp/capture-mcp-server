@@ -98,7 +98,7 @@ function classifyUpstreamError(err: string | undefined): ReturnType<typeof error
 }
 
 function getApiKey(args: any): string {
-  const key = args?.api_key || process.env.HIGHERGOV_API_KEY;
+  const key = args?.api_key;
   if (!key) {
     throw new MissingHigherGovApiKeyError();
   }

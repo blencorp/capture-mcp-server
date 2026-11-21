@@ -139,11 +139,10 @@ export const samTools = {
   async searchEntities(args: any): Promise<any> {
     const { api_key, query, state, naics, uei, limit = 10 } = args;
     
-    // Use environment variable if API key not provided in args
-    const samApiKey = api_key || process.env.SAM_GOV_API_KEY;
+    const samApiKey = api_key;
     
     if (!samApiKey) {
-      throw new Error("SAM.gov API key is required. Please provide it as a parameter or set SAM_GOV_API_KEY environment variable");
+      throw new Error("SAM.gov API key is required. The server injects the caller's key; locally, set SAM_GOV_API_KEY.");
     }
 
     const params: any = {
@@ -193,11 +192,10 @@ export const samTools = {
   async getOpportunities(args: any): Promise<any> {
     const { api_key, posted_from, posted_to, keyword, set_aside, state, limit = 10 } = args;
     
-    // Use environment variable if API key not provided in args
-    const samApiKey = api_key || process.env.SAM_GOV_API_KEY;
+    const samApiKey = api_key;
     
     if (!samApiKey) {
-      throw new Error("SAM.gov API key is required. Please provide it as a parameter or set SAM_GOV_API_KEY environment variable");
+      throw new Error("SAM.gov API key is required. The server injects the caller's key; locally, set SAM_GOV_API_KEY.");
     }
     
     if (!posted_from || !posted_to) {
@@ -254,11 +252,10 @@ export const samTools = {
   async getEntityDetails(args: any): Promise<any> {
     const { api_key, uei } = args;
     
-    // Use environment variable if API key not provided in args
-    const samApiKey = api_key || process.env.SAM_GOV_API_KEY;
+    const samApiKey = api_key;
     
     if (!samApiKey) {
-      throw new Error("SAM.gov API key is required. Please provide it as a parameter or set SAM_GOV_API_KEY environment variable");
+      throw new Error("SAM.gov API key is required. The server injects the caller's key; locally, set SAM_GOV_API_KEY.");
     }
     
     if (!uei) {
@@ -320,11 +317,10 @@ export const samTools = {
   async checkExclusions(args: any): Promise<any> {
     const { api_key, uei, entity_name } = args;
     
-    // Use environment variable if API key not provided in args
-    const samApiKey = api_key || process.env.SAM_GOV_API_KEY;
+    const samApiKey = api_key;
     
     if (!samApiKey) {
-      throw new Error("SAM.gov API key is required. Please provide it as a parameter or set SAM_GOV_API_KEY environment variable");
+      throw new Error("SAM.gov API key is required. The server injects the caller's key; locally, set SAM_GOV_API_KEY.");
     }
 
     const params: any = {
