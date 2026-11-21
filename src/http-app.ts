@@ -196,7 +196,7 @@ export function createHttpApp({ auth, env = process.env, webRoot, docsRoot }: Ht
     res.status(status).set('Content-Security-Policy', PORTAL_CSP).type('html').send(html);
   };
   app.get(Object.keys(PRERENDERED_ROUTES), async (req, res) => {
-    await sendPage(res, 200, PRERENDERED_ROUTES[req.path.replace(/(?<=.)\/$/, '')]);
+    await sendPage(res, 200, PRERENDERED_ROUTES[req.path.toLowerCase().replace(/(?<=.)\/$/, '')]);
   });
   app.get(PORTAL_ROUTES, async (_req, res) => {
     await sendPage(res);
