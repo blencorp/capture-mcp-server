@@ -76,7 +76,7 @@ describe('ServerlessStack', () => {
 
     it('uses Node.js 20 runtime', () => {
       template.hasResourceProperties('AWS::Lambda::Function', {
-        Runtime: 'nodejs20.x',
+        Runtime: 'nodejs24.x',
       });
     });
 
