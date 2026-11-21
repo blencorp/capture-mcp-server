@@ -41,7 +41,9 @@ calls for common questions.
 
 ## What the answers say about themselves
 
-Every list tool returns the same shape, so your assistant can tell what actually ran:
+The main search tools (Tango contracts, grants and opportunities, HigherGov contracts, people,
+opportunities and forecasts, and USAspending awards by recipient) return one shape, so your assistant
+can tell what actually ran:
 
 - **`filters`** lists what the source applied (`upstream`) and what the server applied afterwards to
   the page it got (`client_side`).
@@ -50,6 +52,11 @@ Every list tool returns the same shape, so your assistant can tell what actually
   `total_upstream_unverified`, with a warning.
 - **`count_unit`** says what is counted, and **`date_field`** says which date a date filter used.
 - **`next_cursor`** pages. Pass it back as `cursor`. It is `null` on the last page.
+
+The other list tools (SAM.gov searches and exclusion checks, Tango protests, IDVs, vehicles and OTAs, and
+the HigherGov saved-search list) keep simpler shapes, such as `{ total, entities, page, limit }`, without
+these fields. Their `total` is `0` when the source gives none. The
+[tool reference](/reference/sdk/#results-and-errors) lists each one.
 
 Records from the sources are third-party text. They can contain words that look like instructions.
 

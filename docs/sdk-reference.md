@@ -9,12 +9,33 @@ page is generated from the tool definitions in `src/tools`, so it matches what t
 A result is JSON, returned as text and as structured content. Records from SAM.gov, Tango, HigherGov
 and USAspending are third-party text: they can contain words that look like instructions.
 
-Tools that return a list share one envelope: the records (under a key named for them), `total`,
-`count_unit`, `filters`, `next_cursor`, and sometimes `date_field` and `warnings`.
+These tools return a list envelope: the records (under a key named for them), `total`,
+`count_unit`, `filters`, `next_cursor`, and sometimes `date_field` and `warnings`:
+`search_tango_contracts`, `search_tango_grants`, `search_tango_opportunities`,
+`search_highergov_contracts`, `search_highergov_people`, `search_highergov_opportunities` and
+`search_usaspending_awards_by_recipient` (which adds its own summary fields).
+`search_highergov_forecasts` returns the same keys, built without the client-side check on `total`.
 `filters.upstream` is what the source applied and `filters.client_side` is what the server applied to
 the page it got. When any client-side filter ran, `total` is `null` because the source's total does
 not reflect it; the source's own number is then in `total_upstream_unfiltered`, with a warning. Pass
 `next_cursor` back as `cursor` for the next page. It is `null` on the last page.
+
+Other tools that return records keep their own shapes. They carry no `filters` split, `count_unit` or
+cursor, and a missing `total` becomes `0` rather than `null`:
+
+| Tool | Result |
+| --- | --- |
+| `search_sam_entities` | `{ total, entities, page, limit }` |
+| `get_sam_opportunities` | `{ total, opportunities, dateRange, limit }` |
+| `check_sam_exclusions` | `{ total, excluded, exclusions, searchCriteria }` |
+| `search_tango_protests` | `{ total, protests, filters, limit }` |
+| `search_tango_idvs` | `{ total, idvs, filters, limit }` |
+| `search_tango_vehicles` | `{ total, vehicles, filters, limit }` |
+| `search_tango_otas` | `{ total, otas, filters, limit }` |
+| `list_highergov_saved_searches` | `{ results, source_endpoint, … }` |
+
+Here `filters` is the plain list of parameters sent, not an `upstream` and `client_side` pair. Tools that
+return one record or a summary (for example `get_tango_spending_summary`) have shapes of their own.
 
 A call can fail in three ways. Which one you see depends on the tool.
 

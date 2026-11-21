@@ -32,7 +32,7 @@ Add it as a custom connector (a remote MCP server) in Claude, ChatGPT, Cursor, V
 | [Tango](https://tango.makegov.com) (contracts, grants, vendors, protests, IDVs, vehicles, OTAs, metrics) | 12 | Tango |
 | [HigherGov](https://www.highergov.com) (forecasts, opportunities, contracts, contacts, documents) | 9 | HigherGov |
 
-The server lists only the tools whose key the connection has. On your own computer with no keys the 7 reference and USAspending tools work; the hosted connection asks for at least one key. Every list tool echoes which filters the source applied and which the server applied itself, says what its `total` counts, and returns `null` when a total cannot be trusted. [`docs/sdk-reference.md`](./docs/sdk-reference.md) lists every tool and argument, and [`examples/`](./examples/) holds example calls.
+The server lists only the tools whose key the connection has. On your own computer with no keys the 7 reference and USAspending tools work; the hosted connection asks for at least one key. The main search tools (Tango contracts, grants and opportunities; HigherGov contracts, people, opportunities and forecasts; USAspending awards by recipient) echo which filters the source applied and which the server applied itself, say what their `total` counts, and return `null` when a total cannot be trusted. The other list tools (SAM.gov, and Tango protests, IDVs, vehicles and OTAs) return a plain `{ total, records, … }` shape. [`docs/sdk-reference.md`](./docs/sdk-reference.md) lists every tool and argument, and [`examples/`](./examples/) holds example calls.
 
 ## API keys
 
