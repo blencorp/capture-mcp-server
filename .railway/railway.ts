@@ -3,6 +3,9 @@ import { defineRailway, github, project, service } from 'railway/iac';
 // repositories export their own partial name.
 // See https://docs.railway.com/infrastructure-as-code#multi-repo-projects
 export const partial = 'capture-mcp-server';
+// This file is the only Railway settings file (railway.toml is gone). Auth is not declared here:
+// HTTP mode refuses to start without MCP_REQUIRE_OAUTH=true, OAUTH_TOKEN_SECRET and
+// MCP_PUBLIC_BASE_URL, which stay set as service variables in Railway.
 export default defineRailway(() => {
   const captureMcpServer = service('capture-mcp-server', {
     // The repository is linked, with no branch: deploy-railway.yml deploys with `railway up` after CI.

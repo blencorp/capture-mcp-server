@@ -1,8 +1,7 @@
 # syntax=docker/dockerfile:1
 # Hosted HTTP image. Railway builds this file from the repository root; it carries its own start
-# command, health check and port, so it does not depend on railway.toml (which Railway stops reading
-# on 2026-12-01). HTTP mode refuses to start without auth: set MCP_REQUIRE_OAUTH=true,
-# OAUTH_TOKEN_SECRET and MCP_PUBLIC_BASE_URL.
+# command, health check and port. Railway settings live in .railway/railway.ts. HTTP mode refuses
+# to start without auth: set MCP_REQUIRE_OAUTH=true, OAUTH_TOKEN_SECRET and MCP_PUBLIC_BASE_URL.
 
 # Base images are pinned by digest; Dependabot (docker ecosystem) proposes digest bumps.
 FROM node:26-trixie-slim@sha256:e6bedef217677b276c591795e169840edd9096dbf13f29df8ef8d1856b8820bc AS build
