@@ -18,8 +18,7 @@ export function SiteFooter() {
               {/* The link text names BLEN; the logo is decoration. */}
               <img src={blenLogo} alt="" width={40} height={16} className="h-4 w-auto" />
               <span>
-                Built with <span aria-hidden="true">❤️</span>
-                <span className="sr-only">love</span> by BLEN
+                Built with <span role="img" aria-label="love">❤️</span> by BLEN
               </span>
             </a>
           </li>

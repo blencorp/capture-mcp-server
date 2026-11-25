@@ -11,11 +11,11 @@ const path = markdownPath(Astro.locals.starlightRoute.entry.id);
 <div class="site-footer">
   <a class="signature" href="https://www.blencorp.com">
     <span>
-      Built with <span aria-hidden="true">❤️</span><span class="sr-only">love</span> by
+      Built with <span role="img" aria-label="love">❤️</span> by
     </span>
     <BlenLogo height={18} />
   </a>
-  <p class="links">
+  <p>
     <a href="https://www.blencorp.com/mcp">Work with BLEN</a>
   </p>
   <p>
@@ -58,16 +58,5 @@ const path = markdownPath(Astro.locals.starlightRoute.entry.id);
   }
   .signature span {
     color: var(--sl-color-gray-3);
-  }
-  .sr-only {
-    position: absolute;
-    width: 1px;
-    height: 1px;
-    margin: -1px;
-    padding: 0;
-    overflow: hidden;
-    clip: rect(0, 0, 0, 0);
-    white-space: nowrap;
-    border: 0;
   }
 </style>

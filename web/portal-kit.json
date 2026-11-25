@@ -11,7 +11,7 @@
     "web/src/components/kit/notice.tsx": "56a47ce4bbb43dcac461410f32d61fc8158e923688f30b5020f11e8f2cb0629f",
     "web/src/components/kit/page.tsx": "c6504dfeb456deb4d78163b1efb6e6b6a5996381b47bca7b16ecbcf9c73b9c87",
     "web/src/components/kit/shell.tsx": "7cd6a437bb3357d0b202d868e9431565e4eb4b4a7990fb5a786cef653d543738",
-    "web/src/components/kit/site-footer.tsx": "4eebdad91da3d7de75070d8236c222e82a9f9c3366b0f4bc14bb3626519e8bc5",
+    "web/src/components/kit/site-footer.tsx": "dd89e5ad080eab2cd089abdf7049a45f4986d08ae7251adf9a61d14c02a6bb1a",
     "web/src/components/kit/site-header.tsx": "b849823c4c5c8784266d29abb9baf3f4302e9dd1dec02d0ec1a13baf52c3e403",
     "web/src/components/kit/use-document-title.ts": "305c3ff8d569776c7bb845cc90b9eb85285a0443801b568535aa360494a509ac",
     "web/src/components/kit/use-signed-in.ts": "789eb558061ab13cf245c0ada0f4dea9d8cb09f762bc6e8f3e804ead125f5b0b",
