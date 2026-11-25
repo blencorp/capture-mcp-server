@@ -150,6 +150,22 @@ export function Landing({ accountUrl, publicUrl }: { accountUrl: string; publicU
           </p>
         </div>
       </section>
+
+      <section aria-labelledby="teams-title" className="border-t">
+        <div className={container}>
+          <div className="bg-card grid justify-items-start gap-3 rounded-lg border p-6">
+            <h2 id="teams-title" className={h2}>
+              Want an MCP server for your team?
+            </h2>
+            <p className="text-muted-foreground max-w-2xl text-sm">
+              BLEN builds and runs MCP servers like this one for teams and agencies.
+            </p>
+            <Button asChild>
+              <a href="https://www.blencorp.com/mcp">Talk to BLEN</a>
+            </Button>
+          </div>
+        </div>
+      </section>
     </Page>
   );
 }

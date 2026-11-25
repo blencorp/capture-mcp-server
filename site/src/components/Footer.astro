@@ -10,9 +10,14 @@ const path = markdownPath(Astro.locals.starlightRoute.entry.id);
 <Default><slot /></Default>
 <div class="site-footer">
   <a class="signature" href="https://www.blencorp.com">
-    <span>Built by</span>
+    <span>
+      Built with <span aria-hidden="true">❤️</span><span class="sr-only">love</span> by
+    </span>
     <BlenLogo height={18} />
   </a>
+  <p class="links">
+    <a href="https://www.blencorp.com/mcp">Work with BLEN</a>
+  </p>
   <p>
     For assistants: <a href={withBase('/llms.txt')}>llms.txt</a>,{' '}
     <a href={withBase('/llms-full.txt')}>llms-full.txt</a>{
@@ -53,5 +58,16 @@ const path = markdownPath(Astro.locals.starlightRoute.entry.id);
   }
   .signature span {
     color: var(--sl-color-gray-3);
+  }
+  .sr-only {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    margin: -1px;
+    padding: 0;
+    overflow: hidden;
+    clip: rect(0, 0, 0, 0);
+    white-space: nowrap;
+    border: 0;
   }
 </style>
