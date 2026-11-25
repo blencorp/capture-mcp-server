@@ -97,9 +97,12 @@ docker run --rm -p 8080:8080 \
 ### Railway
 
 Railway builds the same `Dockerfile` from the repository root. Set the three variables in the service
-settings. The image carries its own start command and port, but not Railway's deploy health check,
-which `railway.toml` declares (`/health`, 30 seconds) and Railway stops reading on 2026-12-01. Set the
-health check in the service settings or in infrastructure as code before then.
+settings. The service itself (Dockerfile build, start command, the `/health` check with a 30-second
+timeout, restart on failure up to three times, one replica, and the custom domain) is declared in
+`.railway/railway.ts`, the only Railway settings file; Railway no longer reads `railway.toml`. Apply
+changes to it with `railway config apply`. Secrets stay set in Railway, not in that file. The project
+name, domain and region in it are BLEN's production values: change them for your own deployment, or
+set the same health check, start command and restart policy in your service settings.
 
 ## AWS Lambda
 
