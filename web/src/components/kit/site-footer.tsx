@@ -3,11 +3,11 @@ import blenLogo from '@/assets/blen-logo.png';
 
 // The maker's signature on every page; intentionally fixed, not operator-configurable.
 const BLEN_URL = 'https://www.blencorp.com';
-const BLEN_CONTACT_URL = 'https://www.blencorp.com/connect';
+const BLEN_CONTACT_URL = 'https://www.blencorp.com/mcp';
 
 const link = 'hover:text-foreground underline underline-offset-4';
 
-/** "Built by BLEN", the docs and source, a way to reach BLEN, and the service policies. */
+/** "Built with love by BLEN", the docs and source, a way to reach BLEN, and the service policies. */
 export function SiteFooter() {
   return (
     <footer className="text-muted-foreground border-t">
@@ -17,7 +17,9 @@ export function SiteFooter() {
             <a href={BLEN_URL} className="hover:text-foreground inline-flex items-center gap-2">
               {/* The link text names BLEN; the logo is decoration. */}
               <img src={blenLogo} alt="" width={40} height={16} className="h-4 w-auto" />
-              <span>Built by BLEN</span>
+              <span>
+                Built with <span role="img" aria-label="love">❤️</span> by BLEN
+              </span>
             </a>
           </li>
           <li><a href={brand.docsUrl} className={link}>Docs</a></li>

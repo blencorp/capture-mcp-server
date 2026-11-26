@@ -130,3 +130,11 @@ See [`CONTRIBUTING.md`](./CONTRIBUTING.md) and the [Code of Conduct](./CODE_OF_C
 ## Hosted service policies
 
 The BLEN-hosted service is governed by the [Privacy Policy](./legal/privacy-policy.md) and the [Terms of Service](./legal/terms.md), also served at `/privacy-policy` and `/terms`.
+
+## For teams
+
+Want an MCP server for your team's or agency's data, or help running this one? [Talk to BLEN](https://www.blencorp.com/mcp).
+
+---
+
+Built with ❤️ by [BLEN](https://www.blencorp.com).

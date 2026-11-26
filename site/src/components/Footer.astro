@@ -10,9 +10,14 @@ const path = markdownPath(Astro.locals.starlightRoute.entry.id);
 <Default><slot /></Default>
 <div class="site-footer">
   <a class="signature" href="https://www.blencorp.com">
-    <span>Built by</span>
+    <span>
+      Built with <span role="img" aria-label="love">❤️</span> by
+    </span>
     <BlenLogo height={18} />
   </a>
+  <p>
+    <a href="https://www.blencorp.com/mcp">Work with BLEN</a>
+  </p>
   <p>
     For assistants: <a href={withBase('/llms.txt')}>llms.txt</a>,{' '}
     <a href={withBase('/llms-full.txt')}>llms-full.txt</a>{
