@@ -6,8 +6,12 @@ import { deriveSecret, type KeyRing } from './key-ring.js';
 const CLIENT_PREFIX = 'capcli.v1';
 const CLIENT_AAD = Buffer.from('capture-mcp-client-v1');
 const CLIENT_SECRET_PURPOSE = 'capture-mcp-client-secret-v1';
-/** A registration is valid for as long as the longest refresh token it could renew. */
-const CLIENT_LIFETIME_SECONDS = 90 * 24 * 60 * 60;
+/**
+ * A registration lasts twice the longest refresh token. Tokens never outlive their client (the
+ * provider clamps their expiry to it), but a client that authorizes late in its life still gets a
+ * useful token.
+ */
+const CLIENT_LIFETIME_SECONDS = 180 * 24 * 60 * 60;
 /** The sealed client id travels in URLs and forms, so the registration it carries is kept small. */
 const MAX_CLIENT_ID_LENGTH = 2048;
 
@@ -46,12 +50,22 @@ export class SealedClientsStore implements OAuthRegisteredClientsStore {
   ) {}
 
   getClient(clientId: string): OAuthClientInformationFull | undefined {
+    const found = this.read(clientId);
+    return found && describe(found.registration, clientId, found.key);
+  }
+
+  /** When the registration behind `clientId` expires (epoch seconds), or undefined if it is not a live one. */
+  expiresAt(clientId: string): number | undefined {
+    return this.read(clientId)?.registration.exp;
+  }
+
+  private read(clientId: string): { registration: Registration; key: Buffer } | undefined {
     if (clientId.length > MAX_CLIENT_ID_LENGTH) return undefined;
     try {
       const { plaintext, key } = this.ring.open(CLIENT_PREFIX, CLIENT_AAD, clientId);
       const registration = JSON.parse(plaintext) as unknown;
       if (!isRegistration(registration) || registration.exp * 1000 <= this.now()) return undefined;
-      return describe(registration, clientId, key);
+      return { registration, key };
     } catch {
       return undefined; // not a client id this server issued (or one it can no longer open)
     }

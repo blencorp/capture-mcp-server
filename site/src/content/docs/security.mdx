@@ -30,7 +30,7 @@ text.
 - Hosted access uses OAuth 2.1 with PKCE and dynamic client registration. Every `/mcp` request needs
   a valid bearer token. Provider-key headers never authenticate a caller: they only add the
   caller's own key for a source.
-- Access tokens last an hour and refresh tokens 90 days, unless the operator sets shorter lifetimes. A refreshed token never outlives the 90 days of its first refresh token. A token must carry the `mcp:tools` scope.
+- Access tokens last an hour and refresh tokens 90 days, unless the operator sets shorter lifetimes. A refreshed token never outlives the 90 days of its first refresh token, nor the 180-day registration of the assistant it was issued to. A token must carry the `mcp:tools` scope.
 - A hosted caller uses only keys it supplied. The server never uses a key from its own environment to
   answer one. On your own computer, over stdio or loopback HTTP, the environment keys are yours.
 - Single-user HTTP (`MCP_ALLOW_INSECURE_HTTP`) refuses to listen on anything but loopback, and

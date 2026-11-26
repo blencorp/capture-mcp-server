@@ -83,7 +83,7 @@ test('OAuth flow issues a bearer token that carries all provider keys', async ()
     refreshTokenTtlSeconds: 7200,
   });
   const client = makeClient();
-  await provider.clientsStore.registerClient?.(client);
+  provider.clientsStore.registerClient(client);
 
   const { response, redirects } = makeRedirectCapture();
   await provider.authorize(client, makeAuthorizationParams(), response);
@@ -131,7 +131,7 @@ test('partial provider selection only seals the chosen keys', async () => {
     tokenSecret: 'test-secret',
   });
   const client = makeClient();
-  await provider.clientsStore.registerClient?.(client);
+  provider.clientsStore.registerClient(client);
 
   const tokens = await runFullFlow(provider, client, { highergov: 'hg_only' });
   const authInfo = await provider.verifyAccessToken(tokens.access_token);
@@ -144,7 +144,7 @@ test('refresh token preserves the original provider keys', async () => {
     tokenSecret: 'test-secret',
   });
   const client = makeClient();
-  await provider.clientsStore.registerClient?.(client);
+  provider.clientsStore.registerClient(client);
 
   const tokens = await runFullFlow(provider, client, { sam: 'sam_key', tango: 'tango_key' });
   assert.ok(tokens.refresh_token);
@@ -163,7 +163,7 @@ test('sealed access tokens cannot be verified with a different token secret', as
     tokenSecret: 'second-secret',
   });
   const client = makeClient();
-  await provider.clientsStore.registerClient?.(client);
+  provider.clientsStore.registerClient(client);
 
   const tokens = await runFullFlow(provider, client, { highergov: 'hg_key' });
 
@@ -179,7 +179,7 @@ test('completeAuthorization rejects an empty key set', async () => {
     tokenSecret: 'test-secret',
   });
   const client = makeClient();
-  await provider.clientsStore.registerClient?.(client);
+  provider.clientsStore.registerClient(client);
 
   const { response, redirects } = makeRedirectCapture();
   await provider.authorize(client, makeAuthorizationParams(), response);
@@ -198,7 +198,7 @@ test('completeAuthorization trims whitespace-only keys and rejects if none remai
     tokenSecret: 'test-secret',
   });
   const client = makeClient();
-  await provider.clientsStore.registerClient?.(client);
+  provider.clientsStore.registerClient(client);
 
   const { response, redirects } = makeRedirectCapture();
   await provider.authorize(client, makeAuthorizationParams(), response);
@@ -291,7 +291,7 @@ test('a payload of the wrong shape is rejected even when it authenticates', asyn
 // ---- Lifetimes, secret rotation and revocation ------------------------------------------------
 
 async function flow(provider: McpOAuthProvider, client = makeClient(), keys: Record<string, string> = { sam: 'sam_key' }) {
-  await provider.clientsStore.registerClient?.(client);
+  provider.clientsStore.registerClient(client);
   return { client, tokens: await runFullFlow(provider, client, keys) };
 }
 
@@ -351,7 +351,7 @@ test('key ring: tokens sealed with a retired secret open while it is listed, new
   const { client, tokens: oldTokens } = await flow(oldProvider);
 
   const rotated = providerAt('new-secret', { previousTokenSecrets: ['old-secret'] });
-  await rotated.clientsStore.registerClient?.(client);
+  rotated.clientsStore.registerClient(client);
   await rotated.verifyAccessToken(oldTokens.access_token);
 
   // A refresh re-seals under the current secret: the old secret no longer opens what it issues.
@@ -391,7 +391,7 @@ test('revoking a token rejects it on that instance, and only for the client it w
 test('authorize refuses a scope the server does not grant, and defaults to mcp:tools when none is asked for', async () => {
   const provider = providerAt('secret');
   const client = { ...makeClient(), scope: 'mcp:tools admin' };
-  await provider.clientsStore.registerClient?.(client);
+  provider.clientsStore.registerClient(client);
 
   await assert.rejects(
     () => provider.authorize(client, { ...makeAuthorizationParams(), scopes: ['admin'] }, makeRedirectCapture().response),
@@ -430,7 +430,7 @@ test('pending authorizations expire', async () => {
   let now = 1_800_000_000_000;
   const provider = new McpOAuthProvider({ baseUrl: BASE_URL, tokenSecret: 'secret', now: () => now });
   const client = makeClient();
-  await provider.clientsStore.registerClient?.(client);
+  provider.clientsStore.registerClient(client);
   const { response, redirects } = makeRedirectCapture();
   await provider.authorize(client, makeAuthorizationParams(), response);
   const requestId = new URL(redirects[0]!).searchParams.get('request_id')!;
@@ -512,12 +512,12 @@ test('a tampered, foreign or oversized client id is not a client', () => {
   return rejectsToken(providerAt('secret'), client_id);
 });
 
-test('a registration expires after 90 days', () => {
+test('a registration expires after 180 days', () => {
   let now = NOW_MS;
   const store = storeFor('secret', [], () => now);
   const { client_id, client_secret_expires_at } = store.registerClient(REGISTRATION);
-  assert.equal(client_secret_expires_at, Math.floor(NOW_MS / 1000) + 90 * 86_400);
-  now += 90 * 86_400_000 - 1_000;
+  assert.equal(client_secret_expires_at, Math.floor(NOW_MS / 1000) + 180 * 86_400);
+  now += 180 * 86_400_000 - 1_000;
   assert.ok(store.getClient(client_id));
   now += 2_000;
   assert.equal(store.getClient(client_id), undefined);
@@ -536,4 +536,39 @@ test('registrations follow the key ring: kept through a rotation, invalid once t
 test('a registration that is too large to carry in a client id is refused', () => {
   const redirect_uris = Array.from({ length: 40 }, (_, i) => `https://client.example.test/callback/${i}/${'x'.repeat(40)}`);
   assert.throws(() => storeFor('secret').registerClient({ ...REGISTRATION, redirect_uris }), /too large/);
+});
+
+test('a token never outlives its client registration, and refresh works until then', async () => {
+  let now = 1_800_000_000_000;
+  const provider = new McpOAuthProvider({ baseUrl: BASE_URL, tokenSecret: 'secret', now: () => now });
+  const client = provider.clientsStore.registerClient(REGISTRATION);
+  const registrationEnd = now + 180 * 86_400_000;
+
+  now += 170 * 86_400_000; // authorize ten days before the registration ends
+  const tokens = await runFullFlow(provider, client, { sam: 'k' });
+  assert.equal(tokens.expires_in, 3600);
+
+  now = registrationEnd - 10_000;
+  const refreshed = await provider.exchangeRefreshToken(client, tokens.refresh_token!);
+  assert.equal(refreshed.expires_in, 10, 'the access token is clamped to the registration');
+
+  now = registrationEnd + 1_000;
+  // Both the new refresh token and the access token ended with the client, not 90 days later.
+  await assert.rejects(() => provider.exchangeRefreshToken(client, refreshed.refresh_token!), /expired/);
+  await assert.rejects(() => provider.verifyAccessToken(refreshed.access_token), /expired/);
+  assert.equal(provider.clientsStore.getClient(client.client_id), undefined);
+});
+
+test('a flood of access-token revocations cannot evict a revoked refresh token', async () => {
+  const provider = providerAt('secret');
+  const client = makeClient();
+  const exp = PAYLOAD.exp;
+  const refresh = sealToken('secret', { ...PAYLOAD, kind: 'refresh', jti: 'refresh-1', clientId: client.client_id, exp });
+  await provider.revokeToken(client, { token: refresh });
+
+  for (let i = 0; i <= 10_000; i++) {
+    const access = sealToken('secret', { ...PAYLOAD, jti: `access-${i}`, clientId: client.client_id, exp });
+    await provider.revokeToken(client, { token: access });
+  }
+  await assert.rejects(() => provider.exchangeRefreshToken(client, refresh), /revoked/);
 });

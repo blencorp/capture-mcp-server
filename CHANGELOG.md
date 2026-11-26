@@ -19,8 +19,8 @@ Release workflow, which tags the version; this file is written by hand.
 - **Breaking:** no tool takes an `api_key` argument any more; a call that includes one is rejected as
   an unknown parameter.
 - **Breaking:** access tokens last 1 hour (at most 1 day) and a refreshed refresh token keeps its
-  original 90-day expiry. Client registrations are sealed into the `client_id`, so ids issued before
-  this change are not recognized and assistants register once more.
+  original 90-day expiry. Client registrations (180 days; a token never outlives its client) are sealed into
+  the `client_id`, so ids issued before this change are not recognized and assistants register once more.
 - `/mcp` has a per-address request budget (`MCP_IP_RPS`, `MCP_IP_BURST`, `429` with `Retry-After`),
   and the SDK's OAuth endpoint limiters use the same client address (`MCP_CLIENT_IP_HEADER`; set
   `x-real-ip` on Railway). Express's `trust proxy` is no longer set.

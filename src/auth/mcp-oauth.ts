@@ -5,7 +5,6 @@ import type {
   OAuthTokenRevocationRequest,
   OAuthTokens,
 } from '@modelcontextprotocol/sdk/shared/auth.js';
-import type { OAuthRegisteredClientsStore } from '@modelcontextprotocol/sdk/server/auth/clients.js';
 import type {
   AuthorizationParams,
   OAuthServerProvider,
@@ -101,7 +100,7 @@ export type McpOAuthProviderOptions = {
 };
 
 export class McpOAuthProvider implements OAuthServerProvider {
-  readonly clientsStore: OAuthRegisteredClientsStore;
+  readonly clientsStore: SealedClientsStore;
 
   private readonly baseUrl: URL;
   private readonly keyRing: KeyRing;
@@ -112,7 +111,9 @@ export class McpOAuthProvider implements OAuthServerProvider {
   private readonly pendingAuthorizations: ExpiringMap<PendingAuthorization>;
   private readonly authorizationCodes: ExpiringMap<AuthorizationCodeRecord>;
   /** Revoked token ids, kept until the token would have expired anyway. In memory, per instance. */
-  private readonly revokedTokenIds: ExpiringMap<true>;
+  private readonly revokedAccessTokenIds: ExpiringMap<true>;
+  /** Refresh tokens outlive access tokens by months, so they are kept apart: a flood of short-lived revocations cannot evict one. */
+  private readonly revokedRefreshTokenIds: ExpiringMap<true>;
 
   constructor(options: McpOAuthProviderOptions) {
     if (!options.tokenSecret.trim()) {
@@ -129,7 +130,8 @@ export class McpOAuthProvider implements OAuthServerProvider {
     this.now = options.now ?? (() => Date.now());
     this.pendingAuthorizations = new ExpiringMap(MAX_PENDING_AUTHORIZATIONS, this.now);
     this.authorizationCodes = new ExpiringMap(MAX_AUTHORIZATION_CODES, this.now);
-    this.revokedTokenIds = new ExpiringMap(MAX_REVOKED_TOKENS, this.now);
+    this.revokedAccessTokenIds = new ExpiringMap(MAX_REVOKED_TOKENS, this.now);
+    this.revokedRefreshTokenIds = new ExpiringMap(MAX_REVOKED_TOKENS, this.now);
     this.clientsStore = new SealedClientsStore(this.keyRing, this.now);
   }
 
@@ -227,7 +229,7 @@ export class McpOAuthProvider implements OAuthServerProvider {
     }
 
     this.authorizationCodes.delete(authorizationCode);
-    return this.issueTokens(codeRecord, this.nowSeconds() + this.refreshTokenTtlSeconds);
+    return this.issueTokens(codeRecord, this.refreshExpiry(client, this.nowSeconds() + this.refreshTokenTtlSeconds));
   }
 
   async exchangeRefreshToken(
@@ -254,7 +256,7 @@ export class McpOAuthProvider implements OAuthServerProvider {
 
     // The new refresh token keeps the original expiry: refreshing renews the access token, never
     // the grant, so a chain of refreshed tokens still ends when the first refresh token would have.
-    return this.issueTokens({ ...payload, scopes: requestedScopes }, payload.exp);
+    return this.issueTokens({ ...payload, scopes: requestedScopes }, this.refreshExpiry(client, payload.exp));
   }
 
   async verifyAccessToken(token: string): Promise<AuthInfo> {
@@ -281,15 +283,24 @@ export class McpOAuthProvider implements OAuthServerProvider {
       const payload = this.unsealToken(request.token);
       // RFC 7009: only the client a token was issued to may revoke it.
       if (payload.clientId === client.client_id) {
-        this.revokedTokenIds.set(payload.jti, true, payload.exp * 1000);
+        this.revokedIds(payload.kind).set(payload.jti, true, payload.exp * 1000);
       }
     } catch {
       // RFC 7009 treats unknown tokens as successfully revoked.
     }
   }
 
+  private revokedIds(kind: TokenKind): ExpiringMap<true> {
+    return kind === 'access' ? this.revokedAccessTokenIds : this.revokedRefreshTokenIds;
+  }
+
   private nowSeconds(): number {
     return Math.floor(this.now() / 1000);
+  }
+
+  /** A token never outlives its client registration, or a valid token would fail refresh with invalid_client. */
+  private refreshExpiry(client: OAuthClientInformationFull, refreshExp: number): number {
+    return Math.min(refreshExp, this.clientsStore.expiresAt(client.client_id) ?? refreshExp);
   }
 
   /** An access token that lives at most the access TTL, and a refresh token that ends at `refreshExp`. */
@@ -329,7 +340,7 @@ export class McpOAuthProvider implements OAuthServerProvider {
     if (payload.kind !== expectedKind) {
       throw new InvalidTokenError(`Invalid ${expectedKind} token`);
     }
-    if (this.revokedTokenIds.has(payload.jti)) {
+    if (this.revokedIds(payload.kind).has(payload.jti)) {
       throw new InvalidTokenError('Token has been revoked');
     }
     // An access token also lives at most the current access TTL from when it was issued, so

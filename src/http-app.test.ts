@@ -343,7 +343,7 @@ async function tokenFor(keys: Record<string, string>): Promise<string> {
     response_types: ['code'],
     scope: 'mcp:tools',
   };
-  await provider.clientsStore.registerClient?.(client);
+  provider.clientsStore.registerClient(client);
   const redirects: string[] = [];
   const res: any = { redirect: (a: number | string, b?: string) => redirects.push(typeof a === 'number' ? String(b) : a) };
   await provider.authorize(

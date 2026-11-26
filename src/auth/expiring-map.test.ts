@@ -46,3 +46,16 @@ test('expired entries free room before anything live is evicted', () => {
 test('a ceiling below one entry is a configuration error', () => {
   assert.throws(() => new ExpiringMap(0, () => 0), /positive integer/);
 });
+
+test('at the ceiling an expired entry anywhere is evicted before a live one', () => {
+  let now = 0;
+  const map = new ExpiringMap<string>(3, () => now);
+  map.set('long', 'a', 10_000); // oldest, long-lived
+  map.set('short', 'b', 100); // expires behind it, so the front sweep cannot reach it
+  map.set('long2', 'c', 10_000);
+  now = 200;
+  map.set('new', 'd', 10_000);
+  assert.equal(map.get('long'), 'a', 'the live oldest entry survives');
+  assert.equal(map.get('short'), undefined);
+  assert.equal(map.size, 3);
+});

@@ -58,7 +58,7 @@ The server keeps a short-lived record in process memory while you connect: your
 pending authorization (10 minutes) and the one-time authorization code. These are
 not written to disk and are lost when the process restarts, in which case you
 connect again. Your client's registration is not stored: it is sealed inside the
-client identifier the server gave your client (90 days). Token revocation is
+client identifier the server gave your client (180 days; a token never outlives it). Token revocation is
 tracked in memory, so it is best-effort: another instance or a restart
 forgets it. To stop a leaked token from being used, rotate the key with its
 provider; the operator can also invalidate every token at once by changing the

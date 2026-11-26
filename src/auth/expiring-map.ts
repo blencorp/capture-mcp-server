@@ -6,8 +6,9 @@
  * Entries are expected to share a lifetime, so they expire in insertion order and expired ones are
  * dropped from the front in constant time per call. An entry with a longer lifetime than those
  * before it is only dropped when it reaches the front, but `get` never returns an expired entry.
- * At the ceiling the oldest entry is evicted to make room: a flood costs the oldest state, never
- * unbounded memory.
+ * At the ceiling expired entries go first (wherever they sit), then the oldest live entry: a flood
+ * costs the oldest state, never unbounded memory. Mixed lifetimes belong in separate maps, so a
+ * short-lived flood cannot evict a long-lived entry.
  */
 export class ExpiringMap<V> {
   private readonly entries = new Map<string, { value: V; expiresAtMs: number }>();
@@ -43,6 +44,7 @@ export class ExpiringMap<V> {
   set(key: string, value: V, expiresAtMs: number): void {
     this.entries.delete(key); // re-inserting moves the key to the newest position
     this.dropExpired();
+    if (this.entries.size >= this.maxEntries) this.dropAllExpired(); // an expired entry is evicted before any live one
     while (this.entries.size >= this.maxEntries) {
       const oldest = this.entries.keys().next();
       if (oldest.done) break;
@@ -53,6 +55,14 @@ export class ExpiringMap<V> {
 
   delete(key: string): void {
     this.entries.delete(key);
+  }
+
+  /** Drops every expired entry wherever it sits; linear, so only used when the map is full. */
+  private dropAllExpired(): void {
+    const now = this.now();
+    for (const [key, entry] of this.entries) {
+      if (entry.expiresAtMs <= now) this.entries.delete(key);
+    }
   }
 
   /** Drops expired entries from the oldest end, stopping at the first one still live. */
