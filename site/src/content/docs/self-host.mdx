@@ -94,13 +94,19 @@ with it or with any secret in `OAUTH_TOKEN_SECRET_PREVIOUS`. Setting either vari
 1. Generate a new secret with `openssl rand -base64 48`.
 2. Set `OAUTH_TOKEN_SECRET` to it and `OAUTH_TOKEN_SECRET_PREVIOUS` to the old one, and restart.
    Existing tokens keep working, and every refresh seals the new tokens with the new secret.
-3. After the longest refresh token has expired (90 days by default), unset
-   `OAUTH_TOKEN_SECRET_PREVIOUS`. A token still sealed with the old secret stops working, and its
-   owner connects again.
+3. Keep the old secret in `OAUTH_TOKEN_SECRET_PREVIOUS` for **180 days** after the rotation (after
+   the last time it sealed anything), then remove it. That is how long a client registration lasts,
+   and a client ID sealed under the old secret is only readable with it: dropping it earlier makes
+   that client's refresh fail with `invalid_client` even when its token is still valid, and its
+   owner has to connect again. The 90-day refresh token alone is not the deadline.
+
+The list holds at most three previous secrets and each stays for 180 days, so rotate no more often
+than every 60 days. A fourth secret is a startup error: wait for the oldest to expire first, or use
+the emergency path.
 
 **Emergency revocation** (a secret or a token leaked): set `OAUTH_TOKEN_SECRET` to a new value,
-leave `OAUTH_TOKEN_SECRET_PREVIOUS` unset, and restart. Every token stops working at once and
-everyone connects again. Do not list a leaked secret as a previous one, because anyone who has it
+leave `OAUTH_TOKEN_SECRET_PREVIOUS` unset, and restart. Every registration and token stops working
+at once and everyone connects again; that is the price of dropping a secret early. Do not list a leaked secret as a previous one, because anyone who has it
 can forge tokens it opens. Rotate the keys with their sources too, since a leaked token held them.
 
 The server can revoke a single token (`/revoke`), but only in that instance's memory: a restart, or

@@ -298,9 +298,18 @@ export class McpOAuthProvider implements OAuthServerProvider {
     return Math.floor(this.now() / 1000);
   }
 
-  /** A token never outlives its client registration, or a valid token would fail refresh with invalid_client. */
+  /**
+   * The refresh token's expiry, clamped to the client registration's: a token never outlives its
+   * client, or a valid token would fail refresh with invalid_client. The registration is read
+   * again here, at issuance, because it can expire between the client authenticating and the
+   * tokens being issued; one that can no longer be validated gets no tokens.
+   */
   private refreshExpiry(client: OAuthClientInformationFull, refreshExp: number): number {
-    return Math.min(refreshExp, this.clientsStore.expiresAt(client.client_id) ?? refreshExp);
+    const clientExp = this.clientsStore.expiresAt(client.client_id);
+    if (clientExp === undefined) {
+      throw new InvalidGrantError('Client registration is no longer valid');
+    }
+    return Math.min(refreshExp, clientExp);
   }
 
   /** An access token that lives at most the access TTL, and a refresh token that ends at `refreshExp`. */

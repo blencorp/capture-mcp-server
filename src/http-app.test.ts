@@ -269,6 +269,35 @@ test('oauth mode: a restart keeps registered clients, so refresh keeps working; 
   }
 });
 
+test('oauth mode: an old-key registration holding a new-key refresh token keeps refreshing while the old key is kept', async () => {
+  const before = await listen({ mode: 'oauth', publicBaseUrl: BASE, tokenSecret: 'key-1' });
+  let session: Awaited<ReturnType<typeof connect>>;
+  try {
+    session = await connect(before.url);
+  } finally {
+    await before.close();
+  }
+  const { client } = session;
+
+  // After the rotation the client id is still sealed under key-1, but a refresh issues key-2 tokens.
+  const rotating = await listen({ mode: 'oauth', publicBaseUrl: BASE, tokenSecret: 'key-2', previousTokenSecrets: ['key-1'] });
+  const dropped = await listen({ mode: 'oauth', publicBaseUrl: BASE, tokenSecret: 'key-2' });
+  try {
+    const first: any = await (await refresh(rotating.url, client, session.tokens.refresh_token)).json();
+    assert.ok(first.refresh_token);
+    const again = await refresh(rotating.url, client, first.refresh_token);
+    assert.equal(again.status, 200, 'the new-key token keeps refreshing for an old-key client');
+
+    // Dropping key-1 before the client's registration has expired strands it, whatever key the token has.
+    const stranded = await refresh(dropped.url, client, first.refresh_token);
+    assert.equal(stranded.status, 400);
+    assert.equal(((await stranded.json()) as any).error, 'invalid_client');
+  } finally {
+    await rotating.close();
+    await dropped.close();
+  }
+});
+
 test('oauth mode: the credential page carries a content security policy and is not cached', async () => {
   const server = await listen({ mode: 'oauth', publicBaseUrl: BASE, tokenSecret: SECRET });
   const expectLockedDown = (res: Response) => {
@@ -332,18 +361,13 @@ const SECRET = 'test-secret';
 
 async function tokenFor(keys: Record<string, string>): Promise<string> {
   const provider = new McpOAuthProvider({ baseUrl: BASE, tokenSecret: SECRET });
-  const client: any = {
-    client_id: 'test-client',
-    client_secret: 'secret',
-    client_id_issued_at: 1,
-    client_secret_expires_at: 0,
+  const client: any = provider.clientsStore.registerClient({
     redirect_uris: ['https://client.example.test/callback'],
     token_endpoint_auth_method: 'client_secret_post',
     grant_types: ['authorization_code', 'refresh_token'],
     response_types: ['code'],
     scope: 'mcp:tools',
-  };
-  provider.clientsStore.registerClient(client);
+  } as any);
   const redirects: string[] = [];
   const res: any = { redirect: (a: number | string, b?: string) => redirects.push(typeof a === 'number' ? String(b) : a) };
   await provider.authorize(
