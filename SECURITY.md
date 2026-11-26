@@ -21,7 +21,7 @@ We try to respond within **3 business days**. A typical timeline for a confirmed
 In scope:
 
 - **Auth bypass.** Any request to `/mcp` in OAuth mode that reaches a tool handler without a valid
-  bearer token, or a Lambda request that does so without a valid access key.
+  bearer token with the `mcp:tools` scope.
 - **Key exposure.** Any way for a result, a log or an error to reveal a provider API key, for the
   operator's environment keys to serve a remote caller, or for one caller's key to serve another's.
 - **Token forgery or replay.** Forging or modifying a sealed access or refresh token, or using one
@@ -35,8 +35,8 @@ In scope:
 Out of scope (please file a normal issue instead):
 
 - Provider rate limits and quotas, which belong to SAM.gov, Tango and HigherGov.
-- Denial of service through lawful but expensive queries. The server adds no limit to `/mcp`, so
-  put a rate-limiting proxy in front of a hosted deployment.
+- Denial of service through lawful but expensive queries. `/mcp` has a per-address request budget,
+  but volumetric attacks belong to the proxy or platform in front of the server.
 - Issues that only occur with `MCP_ALLOW_INSECURE_HTTP=true`, which is documented as single-user and
   loopback-only.
 
@@ -44,13 +44,17 @@ Out of scope (please file a normal issue instead):
 
 - **Fails closed.** HTTP mode refuses to start without OAuth (`MCP_REQUIRE_OAUTH=true` with
   `OAUTH_TOKEN_SECRET` and `MCP_PUBLIC_BASE_URL`) or the explicit loopback opt-in, which refuses
-  other addresses and other Host headers. The Lambda function answers `503` on `/mcp` until its key
-  bucket is configured.
+  other addresses and other Host headers.
 - **Keys are the caller's own.** A remote caller's keys come from its OAuth token (sealed with
-  AES-256-GCM under `OAUTH_TOKEN_SECRET`) and then from its `X-*-Api-Key` headers. They never come
+  AES-256-GCM under `OAUTH_TOKEN_SECRET`, which may be rotated with `OAUTH_TOKEN_SECRET_PREVIOUS`) and then from its `X-*-Api-Key` headers. They never come
   from the server's environment, and a header never authenticates a caller.
-- **Nothing is stored.** The server has no database. Registered OAuth clients, pending
-  authorizations and revoked token IDs live in process memory.
+- **Nothing is stored.** The server has no database. Pending authorizations, authorization
+  codes and revoked token IDs live in process memory, each with an expiry and a size ceiling.
+  Client registrations are sealed into the client ID (AES-256-GCM under the token key ring, secrets
+  derived from it), so a restart or another instance validates them.
+- **Revocation is stateless.** Access tokens last an hour. Rotating `OAUTH_TOKEN_SECRET` without
+  keeping the old secret invalidates every token at once. Revoking a single token is best-effort:
+  it is remembered in one instance's memory only.
 - **Tools are read-only,** with strict argument schemas that refuse unknown arguments.
 - A key reaches only the source it belongs to. SAM.gov and HigherGov take it as a URL query
   parameter, and Tango as a header.

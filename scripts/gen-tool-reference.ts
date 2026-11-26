@@ -30,10 +30,9 @@ function typeOf(schema: Schema): string {
   return schema.type ?? 'value';
 }
 
-/** The `api_key` argument is the server's own plumbing (see the intro), so the tables leave it out. */
 function inputTable(tool: Tool): string {
   const schema = tool.inputSchema as Schema;
-  const properties = Object.entries(schema.properties ?? {}).filter(([name]) => name !== 'api_key');
+  const properties = Object.entries(schema.properties ?? {});
   if (properties.length === 0) return 'It takes no arguments.';
   const required = new Set(schema.required ?? []);
   return [
@@ -156,12 +155,11 @@ reference and USAspending tools. The two tools that join SAM.gov with USAspendin
 key. On the hosted server, the keys are the ones you entered when you connected. On your own
 computer, they are the ones in the server's environment.
 
-## The \`api_key\` argument
+## Keys are not arguments
 
-Most tools list an optional \`api_key\` argument. You do not need it: the server fills it in with the
-connection's key for the tool's source. Never ask your assistant to put a key in it, because anything
-in a tool call is visible to the assistant and its client. A key passed this way is used instead of
-the connection's key.
+No tool takes an API key as an argument, and a call that includes one is rejected. The server adds the
+connection's key for the tool's source itself, so a key never passes through your assistant or its
+client.
 
 ## Tools
 

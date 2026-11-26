@@ -20,7 +20,7 @@ labels: question
 ## Environment
 
 - Server version: <!-- the version your MCP client shows, or git SHA -->
-- Transport: <!-- stdio | http | lambda -->
+- Transport: <!-- stdio | http -->
 - MCP client: <!-- Claude Desktop, Cursor, VS Code, custom, etc. -->
 
 > **Security issue?** Please use a GitHub Security Advisory instead — see [SECURITY.md](https://github.com/blencorp/capture-mcp-server/blob/main/SECURITY.md).

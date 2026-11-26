@@ -1,5 +1,5 @@
 // Live smoke test: replays the exact probes that exposed the P0 bugs
-// (docs/fix-plan.md) against the fixed tools. Requires live API keys —
+// against the fixed tools. Requires live API keys —
 // run manually before a release, never in CI:
 //
 //   TANGO_API_KEY=... HIGHERGOV_API_KEY=... pnpm smoke

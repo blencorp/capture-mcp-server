@@ -33,7 +33,7 @@ calls for common questions.
    required one, or a value of the wrong type is refused with a `bad_request`, and nothing reaches the
    source.
 3. **Adds your key.** The server fills in the tool's `api_key` argument with your key for that
-   source, unless the caller passed one.
+   source. No tool declares that argument, so a call that includes one is refused in step 2.
 4. **Waits its turn.** Each source has a pacing queue (see below).
 5. **Calls the source.** The server sends one request, with a 30 second limit.
 6. **Answers.** The result is JSON, as text and as structured content. A failure says why; the

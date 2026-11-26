@@ -2,7 +2,7 @@
 
 Working notes on what each upstream API actually honors. Both Tango and
 HigherGov **silently ignore unknown query parameters**, which is the root cause
-behind most of the P0 bugs (see docs/fix-plan.md) — a guessed parameter name
+behind most of the P0 bugs — a guessed parameter name
 fails invisibly. Every parameter a tool sends must have a row here.
 
 Statuses: **verified** (observed live), **unverified** (best documented guess —

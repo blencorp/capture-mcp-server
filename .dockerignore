@@ -7,7 +7,6 @@ test-results
 .env
 .env.*
 !.env.example
-infrastructure
 fixtures
 docs/*
 !docs/sdk-reference.md

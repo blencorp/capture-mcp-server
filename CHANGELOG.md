@@ -14,6 +14,18 @@ Release workflow, which tags the version; this file is written by hand.
   accessibility job and an image check; a scheduled dependency audit; Dependabot.
 
 ### Changed
+- **Breaking:** the AWS Lambda deployment is removed (`infrastructure/`, the Lambda handler, S3
+  API-key auth, `manage-keys`, `sync-config`). Railway is the only hosted runtime.
+- **Breaking:** no tool takes an `api_key` argument any more; a call that includes one is rejected as
+  an unknown parameter.
+- **Breaking:** access tokens last 1 hour (at most 1 day) and a refreshed refresh token keeps its
+  original 90-day expiry. Client registrations (180 days; a token never outlives its client) are sealed into
+  the `client_id`, so ids issued before this change are not recognized and assistants register once more.
+- `/mcp` has a per-address request budget (`MCP_IP_RPS`, `MCP_IP_BURST`, `429` with `Retry-After`),
+  and the SDK's OAuth endpoint limiters use the same client address (`MCP_CLIENT_IP_HEADER`; set
+  `x-real-ip` on Railway). Express's `trust proxy` is no longer set.
+- `OAUTH_TOKEN_SECRET_PREVIOUS` keeps tokens and registrations working through a secret rotation. A
+  token must carry the `mcp:tools` scope, and the credential page has a content security policy.
 - The project is licensed under Apache-2.0 (it was MIT); `NOTICE` keeps the MIT notices for
   contributions made under that license.
 - pnpm 12, Node `^24.11.0 || ^26.0.0`, TypeScript 6 and 7, ESLint 10 and `tsx --test`.

@@ -17,5 +17,5 @@
     "rootDir": "."
   },
   "include": ["src/**/*.ts", "scripts/**/*.ts", ".railway/**/*.ts"],
-  "exclude": ["node_modules", "dist", "infrastructure"]
+  "exclude": ["node_modules", "dist"]
 }

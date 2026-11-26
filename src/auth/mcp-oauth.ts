@@ -1,11 +1,10 @@
-import { createCipheriv, createDecipheriv, createHash, randomBytes, randomUUID } from 'node:crypto';
+import { createHash, randomUUID } from 'node:crypto';
 import type { Response } from 'express';
 import type {
   OAuthClientInformationFull,
   OAuthTokenRevocationRequest,
   OAuthTokens,
 } from '@modelcontextprotocol/sdk/shared/auth.js';
-import type { OAuthRegisteredClientsStore } from '@modelcontextprotocol/sdk/server/auth/clients.js';
 import type {
   AuthorizationParams,
   OAuthServerProvider,
@@ -14,16 +13,34 @@ import type { AuthInfo } from '@modelcontextprotocol/sdk/server/auth/types.js';
 import {
   InvalidGrantError,
   InvalidRequestError,
+  InvalidScopeError,
   InvalidTokenError,
 } from '@modelcontextprotocol/sdk/server/auth/errors.js';
+import { DEFAULT_CLIENT_SCOPE, SealedClientsStore } from './client-registrations.js';
+import { ExpiringMap } from './expiring-map.js';
+import { KeyRing } from './key-ring.js';
+
+export { DEFAULT_CLIENT_SCOPE };
 
 const TOKEN_PREFIX = 'capmcp.v1';
 const TOKEN_AAD = Buffer.from('capture-mcp-oauth-v1');
-const DEFAULT_ACCESS_TOKEN_TTL_SECONDS = 60 * 60 * 24 * 30;
-const DEFAULT_REFRESH_TOKEN_TTL_SECONDS = 60 * 60 * 24 * 90;
+
+const SECONDS_PER_DAY = 60 * 60 * 24;
+const DEFAULT_ACCESS_TOKEN_TTL_SECONDS = 60 * 60;
+const MAX_ACCESS_TOKEN_TTL_SECONDS = SECONDS_PER_DAY;
+const DEFAULT_REFRESH_TOKEN_TTL_SECONDS = 90 * SECONDS_PER_DAY;
+const MAX_REFRESH_TOKEN_TTL_SECONDS = 90 * SECONDS_PER_DAY;
 const DEFAULT_AUTHORIZATION_TTL_MS = 10 * 60 * 1000;
 
-export const DEFAULT_CLIENT_SCOPE = 'mcp:tools';
+// Ceilings on the state an instance holds in memory for anonymous callers (client registrations
+// are not among it: they live in the client id). At a ceiling the
+// oldest entry is evicted (see ExpiringMap).
+const MAX_PENDING_AUTHORIZATIONS = 10_000;
+const MAX_AUTHORIZATION_CODES = 10_000;
+const MAX_REVOKED_TOKENS = 10_000;
+
+/** The scopes this server grants. `/mcp` requires `DEFAULT_CLIENT_SCOPE`. */
+export const SUPPORTED_SCOPES: readonly string[] = [DEFAULT_CLIENT_SCOPE];
 
 export const PROVIDER_IDS = ['sam', 'tango', 'highergov'] as const;
 export type ProviderId = typeof PROVIDER_IDS[number];
@@ -40,7 +57,6 @@ type TokenKind = 'access' | 'refresh';
 type PendingAuthorization = {
   client: OAuthClientInformationFull;
   params: AuthorizationParams;
-  expiresAtMs: number;
 };
 
 type AuthorizationCodeRecord = {
@@ -51,8 +67,9 @@ type AuthorizationCodeRecord = {
   resource?: string;
   state?: string;
   keys: ProviderKeys;
-  expiresAtMs: number;
 };
+
+type TokenGrant = Pick<AuthorizationCodeRecord, 'clientId' | 'scopes' | 'resource' | 'keys'>;
 
 type SealedTokenPayload = {
   version: 1;
@@ -66,42 +83,16 @@ type SealedTokenPayload = {
   exp: number;
 };
 
-type ClientRegistrationInput =
-  Omit<OAuthClientInformationFull, 'client_id' | 'client_id_issued_at'> &
-  Partial<Pick<OAuthClientInformationFull, 'client_id' | 'client_id_issued_at'>>;
-
-export class InMemoryOAuthClientsStore implements OAuthRegisteredClientsStore {
-  private readonly clients = new Map<string, OAuthClientInformationFull>();
-
-  constructor(initialClients: OAuthClientInformationFull[] = []) {
-    for (const client of initialClients) {
-      this.clients.set(client.client_id, client);
-    }
-  }
-
-  getClient(clientId: string): OAuthClientInformationFull | undefined {
-    return this.clients.get(clientId);
-  }
-
-  registerClient(client: ClientRegistrationInput): OAuthClientInformationFull {
-    const nowSeconds = Math.floor(Date.now() / 1000);
-    const fullClient = {
-      ...client,
-      client_id: client.client_id ?? randomUUID(),
-      client_id_issued_at: client.client_id_issued_at ?? nowSeconds,
-      // Clients registering without a scope would later fail authorization
-      // when they request the advertised mcp:tools scope.
-      scope: client.scope?.trim() ? client.scope : DEFAULT_CLIENT_SCOPE,
-    } as OAuthClientInformationFull;
-
-    this.clients.set(fullClient.client_id, fullClient);
-    return fullClient;
-  }
-}
-
 export type McpOAuthProviderOptions = {
   baseUrl: URL;
+  /** Seals new tokens, and opens tokens sealed with it. */
   tokenSecret: string;
+  /**
+   * Retired secrets that still open tokens (never seal them). Rotating `tokenSecret` while the old
+   * one is listed here keeps existing tokens working until they expire; dropping it from the list
+   * revokes every token it sealed.
+   */
+  previousTokenSecrets?: string[];
   accessTokenTtlSeconds?: number;
   refreshTokenTtlSeconds?: number;
   authorizationTtlMs?: number;
@@ -109,17 +100,20 @@ export type McpOAuthProviderOptions = {
 };
 
 export class McpOAuthProvider implements OAuthServerProvider {
-  readonly clientsStore: OAuthRegisteredClientsStore;
+  readonly clientsStore: SealedClientsStore;
 
   private readonly baseUrl: URL;
-  private readonly encryptionKey: Buffer;
+  private readonly keyRing: KeyRing;
   private readonly accessTokenTtlSeconds: number;
   private readonly refreshTokenTtlSeconds: number;
   private readonly authorizationTtlMs: number;
   private readonly now: () => number;
-  private readonly pendingAuthorizations = new Map<string, PendingAuthorization>();
-  private readonly authorizationCodes = new Map<string, AuthorizationCodeRecord>();
-  private readonly revokedTokenIds = new Set<string>();
+  private readonly pendingAuthorizations: ExpiringMap<PendingAuthorization>;
+  private readonly authorizationCodes: ExpiringMap<AuthorizationCodeRecord>;
+  /** Revoked token ids, kept until the token would have expired anyway. In memory, per instance. */
+  private readonly revokedAccessTokenIds: ExpiringMap<true>;
+  /** Refresh tokens outlive access tokens by months, so they are kept apart: a flood of short-lived revocations cannot evict one. */
+  private readonly revokedRefreshTokenIds: ExpiringMap<true>;
 
   constructor(options: McpOAuthProviderOptions) {
     if (!options.tokenSecret.trim()) {
@@ -127,12 +121,18 @@ export class McpOAuthProvider implements OAuthServerProvider {
     }
 
     this.baseUrl = options.baseUrl;
-    this.encryptionKey = createHash('sha256').update(options.tokenSecret).digest();
-    this.accessTokenTtlSeconds = options.accessTokenTtlSeconds ?? DEFAULT_ACCESS_TOKEN_TTL_SECONDS;
-    this.refreshTokenTtlSeconds = options.refreshTokenTtlSeconds ?? DEFAULT_REFRESH_TOKEN_TTL_SECONDS;
+    this.keyRing = new KeyRing(options.tokenSecret, options.previousTokenSecrets);
+    this.accessTokenTtlSeconds = boundedTtl(
+      'accessTokenTtlSeconds', options.accessTokenTtlSeconds, DEFAULT_ACCESS_TOKEN_TTL_SECONDS, MAX_ACCESS_TOKEN_TTL_SECONDS);
+    this.refreshTokenTtlSeconds = boundedTtl(
+      'refreshTokenTtlSeconds', options.refreshTokenTtlSeconds, DEFAULT_REFRESH_TOKEN_TTL_SECONDS, MAX_REFRESH_TOKEN_TTL_SECONDS);
     this.authorizationTtlMs = options.authorizationTtlMs ?? DEFAULT_AUTHORIZATION_TTL_MS;
     this.now = options.now ?? (() => Date.now());
-    this.clientsStore = new InMemoryOAuthClientsStore();
+    this.pendingAuthorizations = new ExpiringMap(MAX_PENDING_AUTHORIZATIONS, this.now);
+    this.authorizationCodes = new ExpiringMap(MAX_AUTHORIZATION_CODES, this.now);
+    this.revokedAccessTokenIds = new ExpiringMap(MAX_REVOKED_TOKENS, this.now);
+    this.revokedRefreshTokenIds = new ExpiringMap(MAX_REVOKED_TOKENS, this.now);
+    this.clientsStore = new SealedClientsStore(this.keyRing, this.now);
   }
 
   async authorize(client: OAuthClientInformationFull, params: AuthorizationParams, res: Response): Promise<void> {
@@ -140,13 +140,18 @@ export class McpOAuthProvider implements OAuthServerProvider {
       throw new InvalidRequestError('Unregistered redirect_uri');
     }
 
-    this.cleanupExpired();
+    const scopes = grantedScopes(params.scopes);
+    const unsupported = scopes.find(scope => !SUPPORTED_SCOPES.includes(scope));
+    if (unsupported) {
+      throw new InvalidScopeError(`Unsupported scope ${unsupported}`);
+    }
+
     const requestId = randomUUID();
-    this.pendingAuthorizations.set(requestId, {
-      client,
-      params,
-      expiresAtMs: this.now() + this.authorizationTtlMs,
-    });
+    this.pendingAuthorizations.set(
+      requestId,
+      { client, params: { ...params, scopes } },
+      this.now() + this.authorizationTtlMs,
+    );
 
     const credentialUrl = new URL('/oauth/authorize', this.baseUrl);
     credentialUrl.searchParams.set('request_id', requestId);
@@ -154,7 +159,6 @@ export class McpOAuthProvider implements OAuthServerProvider {
   }
 
   async completeAuthorization(requestId: string, rawKeys: ProviderKeys): Promise<string> {
-    this.cleanupExpired();
     const pending = this.pendingAuthorizations.get(requestId);
     if (!pending) {
       throw new InvalidRequestError('Authorization request expired or was not found');
@@ -167,16 +171,19 @@ export class McpOAuthProvider implements OAuthServerProvider {
 
     this.pendingAuthorizations.delete(requestId);
     const code = randomUUID();
-    this.authorizationCodes.set(code, {
-      clientId: pending.client.client_id,
-      redirectUri: pending.params.redirectUri,
-      codeChallenge: pending.params.codeChallenge,
-      scopes: pending.params.scopes ?? [],
-      resource: pending.params.resource?.href,
-      state: pending.params.state,
-      keys,
-      expiresAtMs: this.now() + this.authorizationTtlMs,
-    });
+    this.authorizationCodes.set(
+      code,
+      {
+        clientId: pending.client.client_id,
+        redirectUri: pending.params.redirectUri,
+        codeChallenge: pending.params.codeChallenge,
+        scopes: grantedScopes(pending.params.scopes),
+        resource: pending.params.resource?.href,
+        state: pending.params.state,
+        keys,
+      },
+      this.now() + this.authorizationTtlMs,
+    );
 
     const targetUrl = new URL(pending.params.redirectUri);
     targetUrl.searchParams.set('code', code);
@@ -191,7 +198,6 @@ export class McpOAuthProvider implements OAuthServerProvider {
     client: OAuthClientInformationFull,
     authorizationCode: string
   ): Promise<string> {
-    this.cleanupExpired();
     const codeRecord = this.authorizationCodes.get(authorizationCode);
     if (!codeRecord || codeRecord.clientId !== client.client_id) {
       throw new InvalidGrantError('Invalid authorization code');
@@ -207,7 +213,6 @@ export class McpOAuthProvider implements OAuthServerProvider {
     redirectUri?: string,
     resource?: URL
   ): Promise<OAuthTokens> {
-    this.cleanupExpired();
     const codeRecord = this.authorizationCodes.get(authorizationCode);
     if (!codeRecord) {
       throw new InvalidGrantError('Invalid authorization code');
@@ -224,16 +229,7 @@ export class McpOAuthProvider implements OAuthServerProvider {
     }
 
     this.authorizationCodes.delete(authorizationCode);
-    const accessToken = this.issueToken('access', codeRecord);
-    const refreshToken = this.issueToken('refresh', codeRecord);
-
-    return {
-      access_token: accessToken,
-      token_type: 'bearer',
-      expires_in: this.accessTokenTtlSeconds,
-      refresh_token: refreshToken,
-      scope: codeRecord.scopes.join(' '),
-    };
+    return this.issueTokens(codeRecord, this.refreshExpiry(client, this.nowSeconds() + this.refreshTokenTtlSeconds));
   }
 
   async exchangeRefreshToken(
@@ -250,29 +246,17 @@ export class McpOAuthProvider implements OAuthServerProvider {
       throw new InvalidGrantError('resource does not match the refresh token');
     }
 
-    const requestedScopes = scopes ?? payload.scopes;
-    const unauthorizedScope = requestedScopes.find(scope => !payload.scopes.includes(scope));
+    // Tokens issued before scopes were enforced may carry none; they were granted the default one.
+    const grantedByToken = grantedScopes(payload.scopes);
+    const requestedScopes = scopes?.length ? scopes : grantedByToken;
+    const unauthorizedScope = requestedScopes.find(scope => !grantedByToken.includes(scope));
     if (unauthorizedScope) {
       throw new InvalidGrantError(`Refresh token was not granted scope ${unauthorizedScope}`);
     }
 
-    const tokenRecord: AuthorizationCodeRecord = {
-      clientId: payload.clientId,
-      redirectUri: '',
-      codeChallenge: '',
-      scopes: requestedScopes,
-      resource: payload.resource,
-      keys: payload.keys,
-      expiresAtMs: this.now() + this.authorizationTtlMs,
-    };
-
-    return {
-      access_token: this.issueToken('access', tokenRecord),
-      token_type: 'bearer',
-      expires_in: this.accessTokenTtlSeconds,
-      refresh_token: this.issueToken('refresh', tokenRecord),
-      scope: requestedScopes.join(' '),
-    };
+    // The new refresh token keeps the original expiry: refreshing renews the access token, never
+    // the grant, so a chain of refreshed tokens still ends when the first refresh token would have.
+    return this.issueTokens({ ...payload, scopes: requestedScopes }, this.refreshExpiry(client, payload.exp));
   }
 
   async verifyAccessToken(token: string): Promise<AuthInfo> {
@@ -280,7 +264,7 @@ export class McpOAuthProvider implements OAuthServerProvider {
     return {
       token,
       clientId: payload.clientId,
-      scopes: payload.scopes,
+      scopes: grantedScopes(payload.scopes),
       expiresAt: payload.exp,
       resource: payload.resource ? new URL(payload.resource) : undefined,
       extra: {
@@ -289,32 +273,69 @@ export class McpOAuthProvider implements OAuthServerProvider {
     };
   }
 
-  async revokeToken(_client: OAuthClientInformationFull, request: OAuthTokenRevocationRequest): Promise<void> {
+  /**
+   * Best-effort: the token id is remembered in this instance's memory until the token would have
+   * expired, so a restart, another instance, or a full revocation list forgets it. Rotating the
+   * token secret is the revocation that always holds.
+   */
+  async revokeToken(client: OAuthClientInformationFull, request: OAuthTokenRevocationRequest): Promise<void> {
     try {
       const payload = this.unsealToken(request.token);
-      this.revokedTokenIds.add(payload.jti);
+      // RFC 7009: only the client a token was issued to may revoke it.
+      if (payload.clientId === client.client_id) {
+        this.revokedIds(payload.kind).set(payload.jti, true, payload.exp * 1000);
+      }
     } catch {
       // RFC 7009 treats unknown tokens as successfully revoked.
     }
   }
 
-  private issueToken(
-    kind: TokenKind,
-    codeRecord: Pick<AuthorizationCodeRecord, 'clientId' | 'scopes' | 'resource' | 'keys'>
-  ): string {
-    const issuedAt = Math.floor(this.now() / 1000);
-    const ttl = kind === 'access' ? this.accessTokenTtlSeconds : this.refreshTokenTtlSeconds;
-    return this.sealToken({
-      version: 1,
-      kind,
-      jti: randomUUID(),
-      clientId: codeRecord.clientId,
-      scopes: codeRecord.scopes,
-      keys: codeRecord.keys,
-      resource: codeRecord.resource,
-      iat: issuedAt,
-      exp: issuedAt + ttl,
-    });
+  private revokedIds(kind: TokenKind): ExpiringMap<true> {
+    return kind === 'access' ? this.revokedAccessTokenIds : this.revokedRefreshTokenIds;
+  }
+
+  private nowSeconds(): number {
+    return Math.floor(this.now() / 1000);
+  }
+
+  /**
+   * The refresh token's expiry, clamped to the client registration's: a token never outlives its
+   * client, or a valid token would fail refresh with invalid_client. The registration is read
+   * again here, at issuance, because it can expire between the client authenticating and the
+   * tokens being issued; one that can no longer be validated gets no tokens.
+   */
+  private refreshExpiry(client: OAuthClientInformationFull, refreshExp: number): number {
+    const clientExp = this.clientsStore.expiresAt(client.client_id);
+    if (clientExp === undefined) {
+      throw new InvalidGrantError('Client registration is no longer valid');
+    }
+    return Math.min(refreshExp, clientExp);
+  }
+
+  /** An access token that lives at most the access TTL, and a refresh token that ends at `refreshExp`. */
+  private issueTokens(grant: TokenGrant, refreshExp: number): OAuthTokens {
+    const issuedAt = this.nowSeconds();
+    const accessExp = Math.min(issuedAt + this.accessTokenTtlSeconds, refreshExp);
+    const sealFor = (kind: TokenKind, exp: number) =>
+      this.sealToken({
+        version: 1,
+        kind,
+        jti: randomUUID(),
+        clientId: grant.clientId,
+        scopes: grant.scopes,
+        keys: grant.keys,
+        resource: grant.resource,
+        iat: issuedAt,
+        exp,
+      });
+
+    return {
+      access_token: sealFor('access', accessExp),
+      token_type: 'bearer',
+      expires_in: accessExp - issuedAt,
+      refresh_token: sealFor('refresh', refreshExp),
+      scope: grant.scopes.join(' '),
+    };
   }
 
   private verifySealedToken(token: string, expectedKind: TokenKind): SealedTokenPayload {
@@ -328,73 +349,43 @@ export class McpOAuthProvider implements OAuthServerProvider {
     if (payload.kind !== expectedKind) {
       throw new InvalidTokenError(`Invalid ${expectedKind} token`);
     }
-    if (this.revokedTokenIds.has(payload.jti)) {
+    if (this.revokedIds(payload.kind).has(payload.jti)) {
       throw new InvalidTokenError('Token has been revoked');
     }
-    if (payload.exp < Math.floor(this.now() / 1000)) {
+    // An access token also lives at most the current access TTL from when it was issued, so
+    // tokens minted under a longer TTL stop being accepted once the TTL is shortened.
+    const exp = expectedKind === 'access' ? Math.min(payload.exp, payload.iat + this.accessTokenTtlSeconds) : payload.exp;
+    if (exp < this.nowSeconds()) {
       throw new InvalidTokenError('Token has expired');
     }
 
-    return payload;
+    return { ...payload, exp };
   }
 
   private sealToken(payload: SealedTokenPayload): string {
-    const iv = randomBytes(12);
-    const cipher = createCipheriv('aes-256-gcm', this.encryptionKey, iv);
-    cipher.setAAD(TOKEN_AAD);
-    const ciphertext = Buffer.concat([
-      cipher.update(JSON.stringify(payload), 'utf8'),
-      cipher.final(),
-    ]);
-    const tag = cipher.getAuthTag();
-
-    return [
-      TOKEN_PREFIX,
-      iv.toString('base64url'),
-      ciphertext.toString('base64url'),
-      tag.toString('base64url'),
-    ].join('.');
+    return this.keyRing.seal(TOKEN_PREFIX, TOKEN_AAD, JSON.stringify(payload));
   }
 
   private unsealToken(token: string): SealedTokenPayload {
-    const [prefix, version, encodedIv, encodedCiphertext, encodedTag] = token.split('.');
-    if (`${prefix}.${version}` !== TOKEN_PREFIX || !encodedIv || !encodedCiphertext || !encodedTag) {
-      throw new Error('Malformed token');
-    }
-
-    const decipher = createDecipheriv(
-      'aes-256-gcm',
-      this.encryptionKey,
-      Buffer.from(encodedIv, 'base64url')
-    );
-    decipher.setAAD(TOKEN_AAD);
-    decipher.setAuthTag(Buffer.from(encodedTag, 'base64url'));
-    const plaintext = Buffer.concat([
-      decipher.update(Buffer.from(encodedCiphertext, 'base64url')),
-      decipher.final(),
-    ]).toString('utf8');
-    const payload = JSON.parse(plaintext) as unknown;
-
+    const payload = JSON.parse(this.keyRing.open(TOKEN_PREFIX, TOKEN_AAD, token).plaintext) as unknown;
     if (!isSealedTokenPayload(payload)) {
       throw new Error('Invalid token payload');
     }
-
     return payload;
   }
+}
 
-  private cleanupExpired(): void {
-    const now = this.now();
-    for (const [requestId, pending] of this.pendingAuthorizations.entries()) {
-      if (pending.expiresAtMs < now) {
-        this.pendingAuthorizations.delete(requestId);
-      }
-    }
-    for (const [code, record] of this.authorizationCodes.entries()) {
-      if (record.expiresAtMs < now) {
-        this.authorizationCodes.delete(code);
-      }
-    }
+function boundedTtl(name: string, value: number | undefined, fallback: number, max: number): number {
+  const ttl = value ?? fallback;
+  if (!Number.isInteger(ttl) || ttl < 1 || ttl > max) {
+    throw new Error(`${name} must be a whole number of seconds from 1 to ${max}`);
   }
+  return ttl;
+}
+
+/** The scopes a request is granted: those it asked for, or the default scope when it asked for none. */
+function grantedScopes(requested: string[] | undefined): string[] {
+  return requested?.length ? requested : [DEFAULT_CLIENT_SCOPE];
 }
 
 function normalizeProviderKeys(rawKeys: ProviderKeys): ProviderKeys {
@@ -445,44 +436,7 @@ export function getOAuthPublicBaseUrl(port: number, env: NodeJS.ProcessEnv = pro
   return new URL(`http://localhost:${port}`);
 }
 
-export type FormFieldErrors = Partial<Record<ProviderId, string>>;
-
-export function renderAuthorizationPage(
-  requestId: string,
-  options: { error?: string; fieldErrors?: FormFieldErrors; checked?: Partial<Record<ProviderId, boolean>> } = {}
-): string {
-  const { error, fieldErrors = {}, checked = {} } = options;
-  const escapedRequestId = escapeHtml(requestId);
-  const errorMarkup = error
-    ? `<div class="error" role="alert">${escapeHtml(error)}</div>`
-    : '';
-
-  const providerRows = PROVIDER_IDS.map(id => {
-    const label = PROVIDER_LABELS[id];
-    const isChecked = checked[id] ?? false;
-    const fieldError = fieldErrors[id];
-    return `
-      <div class="provider${isChecked ? ' provider--active' : ''}" data-provider="${id}">
-        <label class="provider__toggle">
-          <input type="checkbox" name="enabled[]" value="${id}" data-toggle="${id}"${isChecked ? ' checked' : ''}>
-          <span>${label}</span>
-        </label>
-        <div class="provider__field" data-field="${id}"${isChecked ? '' : ' hidden'}>
-          <label for="${id}_api_key">${label} API key</label>
-          <input id="${id}_api_key" name="${id}_api_key" type="password" spellcheck="false" autocomplete="off">
-          ${fieldError ? `<div class="field-error">${escapeHtml(fieldError)}</div>` : ''}
-        </div>
-      </div>
-    `;
-  }).join('\n');
-
-  return `<!doctype html>
-<html lang="en">
-<head>
-  <meta charset="utf-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>Authorize GovCon Capture</title>
-  <style>
+const AUTHORIZATION_STYLE = `
     :root { color-scheme: light dark; }
     body {
       margin: 0;
@@ -559,19 +513,9 @@ export function renderAuthorizationPage(
       .provider__field label { color: #cbd5e1; }
       .provider__field input { background: #111827; color: #f9fafb; border-color: #4b5563; }
     }
-  </style>
-</head>
-<body>
-  <main>
-    <h1>Authorize GovCon Capture</h1>
-    <p>Select the providers you have API keys for. Each enabled provider unlocks its tools in Claude.</p>
-    ${errorMarkup}
-    <form method="post" action="/oauth/authorize" autocomplete="off" id="auth-form">
-      <input type="hidden" name="request_id" value="${escapedRequestId}">
-      ${providerRows}
-      <button type="submit" id="submit-btn">Authorize</button>
-    </form>
-    <script>
+`;
+
+const AUTHORIZATION_SCRIPT = `
       (function () {
         var form = document.getElementById('auth-form');
         var submitBtn = document.getElementById('submit-btn');
@@ -605,7 +549,74 @@ export function renderAuthorizationPage(
           update(id);
         });
       })();
-    </script>
+`;
+
+const cspHash = (source: string) => `'sha256-${createHash('sha256').update(source).digest('base64')}'`;
+
+/**
+ * The policy for the credential page: nothing loads except its own inline style and script,
+ * named by hash (both are fixed text), and no page may frame it. `form-action` is left out on
+ * purpose: Chrome applies it to the redirect after the form posts, and that redirect goes to the
+ * client's own callback, which is not a fixed origin.
+ */
+export const AUTHORIZATION_PAGE_CSP = [
+  "default-src 'none'",
+  `style-src ${cspHash(AUTHORIZATION_STYLE)}`,
+  `script-src ${cspHash(AUTHORIZATION_SCRIPT)}`,
+  "frame-ancestors 'none'",
+  "base-uri 'none'",
+].join('; ');
+
+export type FormFieldErrors = Partial<Record<ProviderId, string>>;
+
+export function renderAuthorizationPage(
+  requestId: string,
+  options: { error?: string; fieldErrors?: FormFieldErrors; checked?: Partial<Record<ProviderId, boolean>> } = {}
+): string {
+  const { error, fieldErrors = {}, checked = {} } = options;
+  const escapedRequestId = escapeHtml(requestId);
+  const errorMarkup = error
+    ? `<div class="error" role="alert">${escapeHtml(error)}</div>`
+    : '';
+
+  const providerRows = PROVIDER_IDS.map(id => {
+    const label = PROVIDER_LABELS[id];
+    const isChecked = checked[id] ?? false;
+    const fieldError = fieldErrors[id];
+    return `
+      <div class="provider${isChecked ? ' provider--active' : ''}" data-provider="${id}">
+        <label class="provider__toggle">
+          <input type="checkbox" name="enabled[]" value="${id}" data-toggle="${id}"${isChecked ? ' checked' : ''}>
+          <span>${label}</span>
+        </label>
+        <div class="provider__field" data-field="${id}"${isChecked ? '' : ' hidden'}>
+          <label for="${id}_api_key">${label} API key</label>
+          <input id="${id}_api_key" name="${id}_api_key" type="password" spellcheck="false" autocomplete="off">
+          ${fieldError ? `<div class="field-error">${escapeHtml(fieldError)}</div>` : ''}
+        </div>
+      </div>
+    `;
+  }).join('\n');
+
+  return `<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Authorize GovCon Capture</title>
+  <style>${AUTHORIZATION_STYLE}</style>
+</head>
+<body>
+  <main>
+    <h1>Authorize GovCon Capture</h1>
+    <p>Select the providers you have API keys for. Each enabled provider unlocks its tools in Claude.</p>
+    ${errorMarkup}
+    <form method="post" action="/oauth/authorize" autocomplete="off" id="auth-form">
+      <input type="hidden" name="request_id" value="${escapedRequestId}">
+      ${providerRows}
+      <button type="submit" id="submit-btn">Authorize</button>
+    </form>
+    <script>${AUTHORIZATION_SCRIPT}</script>
   </main>
 </body>
 </html>`;

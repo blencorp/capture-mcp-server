@@ -3,9 +3,8 @@ name: security
 # Daily dependency audit of the unchanged lockfile. CI audits only when something is pushed, so
 # an advisory published against a quiet main would otherwise surface first as an unrelated PR
 # failing its audit gate. scripts/security-audit.mjs runs the same audit as CI on the root lockfile
-# (infrastructure/ is a separate npm project and is not covered here), and also checks that every
-# `auditConfig.ignoreGhsas` exception still deserves its place (it fails once the advisory is
-# withdrawn or gets a fix).
+# and also checks that every `auditConfig.ignoreGhsas` exception still deserves its place (it
+# fails once the advisory is withdrawn or gets a fix).
 #
 # Findings open one tracking issue (or comment on it); a green run closes it. When the audit
 # service itself fails (registry or network trouble), the run retries once and then fails

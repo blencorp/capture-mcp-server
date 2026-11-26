@@ -1,4 +1,4 @@
-// Standard list-response envelope (design conventions from docs/fix-plan.md):
+// Standard list-response envelope (design conventions):
 //  - every applied filter is echoed, split into upstream vs client_side;
 //  - `total` is only populated when it is trustworthy: any client-side filter
 //    nulls it (the upstream total does not reflect the filtering) and the raw

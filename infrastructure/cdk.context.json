@@ -1,9 +1,0 @@
-{
-  "acknowledged-issue-numbers": [
-    34892
-  ],
-  "hosted-zone:account=613195100566:domainName=capturemcp.dashboard152.com:region=us-east-1": {
-    "Id": "/hostedzone/Z087683130XQV50E4KIHW",
-    "Name": "capturemcp.dashboard152.com."
-  }
-}

@@ -6,9 +6,8 @@ import tseslint from 'typescript-eslint';
 // Correctness and security rules, not style (formatting is not linted). Type-aware rules run on
 // server code, where an unhandled promise can drop an error or leave a request hanging.
 export default tseslint.config(
-  // infrastructure/ (the CDK app) is its own npm project with its own tsconfig and tests; site/
-  // (the documentation site) is its own pnpm project.
-  { ignores: ['dist/**', 'node_modules/**', 'infrastructure/**', 'fixtures/**', 'docs/**', 'site/**', '.local/**'] },
+  // site/ (the documentation site) is its own pnpm project.
+  { ignores: ['dist/**', 'node_modules/**', 'fixtures/**', 'docs/**', 'site/**', '.local/**'] },
 
   js.configs.recommended,
   ...tseslint.configs.recommended,

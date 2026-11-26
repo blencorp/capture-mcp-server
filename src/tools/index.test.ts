@@ -49,7 +49,17 @@ test('valid args flow through to the tool (with header key injection)', async ()
   }
 });
 
-test('validateToolArgs allows api_key even when the schema omits it, and union-typed props', () => {
+test('no tool schema advertises api_key, and a caller cannot pass one', async () => {
+  const catalog = await ToolCatalog.create({ hasSamApiKey: true, hasTangoApiKey: true, hasHigherGovApiKey: true });
+  for (const tool of catalog.tools) {
+    assert.ok(!('api_key' in (tool.inputSchema.properties ?? {})), `${tool.name} advertises api_key`);
+  }
+  const out: any = await catalog.call('search_tango_contracts', { api_key: 'pasted-by-a-model' }, { tangoKey: 'real-key' });
+  assert.equal(out.error.code, 'bad_request');
+  assert.match(out.error.message, /Unknown parameter\(s\).*api_key/);
+});
+
+test('validateToolArgs accepts union-typed props and rejects unknown ones', () => {
   const tool: any = {
     name: 'x',
     inputSchema: {
@@ -60,8 +70,8 @@ test('validateToolArgs allows api_key even when the schema omits it, and union-t
       required: [],
     },
   };
-  assert.equal(validateToolArgs(tool, { api_key: 'k', set_aside: ['8AN'] }), null);
-  assert.equal(validateToolArgs(tool, { api_key: 'k', set_aside: '8AN' }), null);
+  assert.equal(validateToolArgs(tool, { set_aside: ['8AN'] }), null);
+  assert.equal(validateToolArgs(tool, { set_aside: '8AN' }), null);
   assert.match(validateToolArgs(tool, { nope: 1 })!, /Unknown parameter/);
 });
 

@@ -443,7 +443,6 @@ export const highergovTools = {
         inputSchema: {
           type: 'object',
           properties: {
-            api_key: { type: 'string', description: 'HigherGov API key (optional; the server supplies your key)' },
             saved_search_id: { type: 'string', description: 'HigherGov saved-search ID (required)' },
             since: { type: 'string', description: 'ISO-8601 datetime; defaults to last 24h' },
             limit: { type: 'number', description: 'Number of results (default 50, max 200)' },
@@ -459,7 +458,6 @@ export const highergovTools = {
         inputSchema: {
           type: 'object',
           properties: {
-            api_key: { type: 'string', description: 'HigherGov API key (optional; the server supplies your key)' },
             id: { type: 'string', description: 'HigherGov opportunity ID, SAM notice ID, or HigherGov URL' },
           },
           required: ['id'],
@@ -472,7 +470,6 @@ export const highergovTools = {
         inputSchema: {
           type: 'object',
           properties: {
-            api_key: { type: 'string', description: 'HigherGov API key (optional; the server supplies your key)' },
             agency: { type: 'string', description: 'Agency name or slug. The upstream API only filters by numeric key (see agency_key), so names are enforced client-side against returned records — see warnings.' },
             agency_key: {
               type: 'number',
@@ -503,7 +500,6 @@ export const highergovTools = {
         inputSchema: {
           type: 'object',
           properties: {
-            api_key: { type: 'string', description: 'HigherGov API key (optional; the server supplies your key)' },
             id: { type: 'string', description: 'HigherGov contract ID or PIID' },
           },
           required: ['id'],
@@ -516,7 +512,6 @@ export const highergovTools = {
         inputSchema: {
           type: 'object',
           properties: {
-            api_key: { type: 'string', description: 'HigherGov API key (optional; the server supplies your key)' },
             agency: { type: 'string', description: 'Agency slug or name (applied client-side; see warnings)' },
             email: { type: 'string', description: 'Exact contact email (the only server-side filter the upstream API supports)' },
             role_keywords: { type: 'array', items: { type: 'string' }, description: 'Matched client-side against contact titles' },
@@ -533,7 +528,6 @@ export const highergovTools = {
         inputSchema: {
           type: 'object',
           properties: {
-            api_key: { type: 'string', description: 'HigherGov API key (optional; the server supplies your key)' },
             id: { type: 'string', description: 'Contact email address (person_id from search_highergov_people when it is an email)' },
           },
           required: ['id'],
@@ -546,7 +540,6 @@ export const highergovTools = {
         inputSchema: {
           type: 'object',
           properties: {
-            api_key: { type: 'string', description: 'HigherGov API key (optional; the server supplies your key)' },
             set_aside: {
               type: 'array',
               items: { type: 'string' },
@@ -572,7 +565,6 @@ export const highergovTools = {
         inputSchema: {
           type: 'object',
           properties: {
-            api_key: { type: 'string', description: 'HigherGov API key (optional; the server supplies your key)' },
           },
           required: [],
         },
@@ -584,7 +576,6 @@ export const highergovTools = {
         inputSchema: {
           type: 'object',
           properties: {
-            api_key: { type: 'string', description: 'HigherGov API key (optional; the server supplies your key)' },
             id: { type: 'string', description: 'HigherGov opportunity ID, SAM notice ID, or HigherGov URL' },
           },
           required: ['id'],

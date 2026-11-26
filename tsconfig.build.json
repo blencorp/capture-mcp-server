@@ -1,5 +1,5 @@
 {
-  // Compiles src/ to dist/ for the server, the Lambda bundle and the Docker image. Tests run from
+  // Compiles src/ to dist/ for the server and the Docker image. Tests run from
   // source with tsx and do not ship.
   "extends": "./tsconfig.json",
   "compilerOptions": {
@@ -9,5 +9,5 @@
     "sourceMap": true
   },
   "include": ["src/**/*.ts"],
-  "exclude": ["node_modules", "dist", "infrastructure", "src/**/*.test.ts", "src/**/__fixtures__/**"]
+  "exclude": ["node_modules", "dist", "src/**/*.test.ts", "src/**/__fixtures__/**"]
 }
