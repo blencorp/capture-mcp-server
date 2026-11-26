@@ -81,6 +81,6 @@ whose key you entered, such as "Find SAM.gov opportunities posted this week for 
 | `Tool "…" not found` | The same: the tool needs a key the connection does not have. | As above. |
 | `API Error 401` or `403`, or `auth_failed` | The source refused the key. The server does not check a key when you enter it. | Check the key with its source (see [Get your keys](/keys/)), then connect again. |
 | `API Error 429`, or `rate_limited` | The source's limit for the key is used up. | Wait, and ask for less. |
-| The assistant says the connection expired, or asks you to connect again | The access token ran out (1 hour) and the refresh token could not renew it: its 90 days ended, or the server restarted and forgot your assistant. | Connect again. |
+| The assistant says the connection expired, or asks you to connect again | The access token ran out (1 hour) and the refresh token could not renew it: its 90 days ended, or the operator changed the server's secret. | Connect again. |
 
 [Tool reference](/reference/sdk/#results-and-errors) describes the error shapes.

@@ -21,6 +21,7 @@ import {
   type FormFieldErrors,
 } from './auth/mcp-oauth.js';
 import { headerKeys, resolveRequestKeys, type KeySource } from './auth/request-keys.js';
+import { bucketKey, clientIp } from './client-ip.js';
 import { DOCS_PATH, docsHandler } from './docs.js';
 import { registerToolHandlers } from './mcp-handlers.js';
 import { RequestBudget } from './rate-limit.js';
@@ -46,7 +47,11 @@ export type HttpAuth =
       /** The `/mcp` budget per client address: sustained requests per second, and the burst. */
       requestsPerSecond?: number;
       requestBurst?: number;
-      /** A header the proxy overwrites with the client address; unset, the address is the peer. */
+      /**
+       * A header the proxy overwrites with the client address; unset, the address is the TCP peer.
+       * Every per-address limiter uses it. Express's `trust proxy` is not used: behind Railway the
+       * last X-Forwarded-For entry is the edge, not the client.
+       */
       clientIpHeader?: string;
     }
   | { mode: 'insecure' };
@@ -140,16 +145,6 @@ function parseHeaderName(value: string | undefined): string | undefined {
   return name;
 }
 
-/**
- * The address a request's budget is counted against: the configured proxy header (its last entry,
- * the one the nearest proxy added) or else the connection's address as Express resolves it.
- */
-function clientAddress(req: Request, header: string | undefined): string {
-  const forwarded = header ? req.get(header)?.split(',').pop()?.trim() : undefined;
-  const address = forwarded || req.ip || req.socket.remoteAddress || 'unknown';
-  return address.replace(/^::ffff:(?=\d+\.\d+\.\d+\.\d+$)/i, ''); // IPv4-mapped IPv6 is the IPv4 client
-}
-
 const LOOPBACK_HOSTS = new Set(['127.0.0.1', '::1', 'localhost']);
 
 /**
@@ -177,7 +172,6 @@ export function createMcpServer(): Server {
 
 export function createHttpApp({ auth, env = process.env, webRoot, docsRoot }: HttpAppOptions): express.Express {
   const app = express();
-  app.set('trust proxy', 1);
   app.use(express.json());
   app.use(express.urlencoded({ extended: false }));
 
@@ -247,6 +241,11 @@ export function createHttpApp({ auth, env = process.env, webRoot, docsRoot }: Ht
   let gate: express.RequestHandler[] = [];
   if (auth.mode === 'oauth') {
     const mcpResourceUrl = new URL('/mcp', auth.publicBaseUrl);
+    // One definition of "the client" for the /mcp budget and the SDK's OAuth endpoint limiters:
+    // the configured header or the peer, with IPv6 counted per /64 and IPv4-mapped IPv6 as IPv4.
+    const clientKey = (req: Request) => bucketKey(clientIp(req, auth.clientIpHeader));
+    // The limiters' own checks assume `trust proxy`, which this app does not use.
+    const perClient = { rateLimit: { keyGenerator: clientKey, validate: { xForwardedForHeader: false } } };
     const provider = new McpOAuthProvider({
       baseUrl: auth.publicBaseUrl,
       tokenSecret: auth.tokenSecret,
@@ -288,6 +287,10 @@ export function createHttpApp({ auth, env = process.env, webRoot, docsRoot }: Ht
         baseUrl: auth.publicBaseUrl,
         resourceServerUrl: mcpResourceUrl,
         scopesSupported: [...SUPPORTED_SCOPES],
+        authorizationOptions: perClient,
+        clientRegistrationOptions: perClient,
+        tokenOptions: perClient,
+        revocationOptions: perClient,
         resourceName: 'GovCon Capture',
       }),
     );
@@ -301,7 +304,7 @@ export function createHttpApp({ auth, env = process.env, webRoot, docsRoot }: Ht
     );
     gate = [
       (req, res, next) => {
-        const retryAfter = budget.spend(clientAddress(req, auth.clientIpHeader));
+        const retryAfter = budget.spend(clientKey(req));
         if (retryAfter === 0) return next();
         res
           .status(429)

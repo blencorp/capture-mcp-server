@@ -48,9 +48,10 @@ Out of scope (please file a normal issue instead):
 - **Keys are the caller's own.** A remote caller's keys come from its OAuth token (sealed with
   AES-256-GCM under `OAUTH_TOKEN_SECRET`, which may be rotated with `OAUTH_TOKEN_SECRET_PREVIOUS`) and then from its `X-*-Api-Key` headers. They never come
   from the server's environment, and a header never authenticates a caller.
-- **Nothing is stored.** The server has no database. Registered OAuth clients, pending
-  authorizations and revoked token IDs live in process memory, each with an expiry and a size
-  ceiling.
+- **Nothing is stored.** The server has no database. Pending authorizations, authorization
+  codes and revoked token IDs live in process memory, each with an expiry and a size ceiling.
+  Client registrations are sealed into the client ID (AES-256-GCM under the token key ring, secrets
+  derived from it), so a restart or another instance validates them.
 - **Revocation is stateless.** Access tokens last an hour. Rotating `OAUTH_TOKEN_SECRET` without
   keeping the old secret invalidates every token at once. Revoking a single token is best-effort:
   it is remembered in one instance's memory only.

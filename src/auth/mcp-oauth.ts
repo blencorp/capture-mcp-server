@@ -1,4 +1,4 @@
-import { createCipheriv, createDecipheriv, createHash, randomBytes, randomUUID } from 'node:crypto';
+import { createHash, randomUUID } from 'node:crypto';
 import type { Response } from 'express';
 import type {
   OAuthClientInformationFull,
@@ -17,14 +17,14 @@ import {
   InvalidScopeError,
   InvalidTokenError,
 } from '@modelcontextprotocol/sdk/server/auth/errors.js';
+import { DEFAULT_CLIENT_SCOPE, SealedClientsStore } from './client-registrations.js';
 import { ExpiringMap } from './expiring-map.js';
+import { KeyRing } from './key-ring.js';
+
+export { DEFAULT_CLIENT_SCOPE };
 
 const TOKEN_PREFIX = 'capmcp.v1';
 const TOKEN_AAD = Buffer.from('capture-mcp-oauth-v1');
-// AES-GCM envelope: a 96-bit IV and a full 128-bit tag. Node accepts GCM tags down to 4 bytes
-// unless the length is fixed, which would let a truncated tag authenticate a forged token.
-const TOKEN_IV_BYTES = 12;
-const TOKEN_TAG_BYTES = 16;
 
 const SECONDS_PER_DAY = 60 * 60 * 24;
 const DEFAULT_ACCESS_TOKEN_TTL_SECONDS = 60 * 60;
@@ -33,16 +33,13 @@ const DEFAULT_REFRESH_TOKEN_TTL_SECONDS = 90 * SECONDS_PER_DAY;
 const MAX_REFRESH_TOKEN_TTL_SECONDS = 90 * SECONDS_PER_DAY;
 const DEFAULT_AUTHORIZATION_TTL_MS = 10 * 60 * 1000;
 
-// Ceilings on the state an instance holds in memory for anonymous callers. At a ceiling the
+// Ceilings on the state an instance holds in memory for anonymous callers (client registrations
+// are not among it: they live in the client id). At a ceiling the
 // oldest entry is evicted (see ExpiringMap).
-const MAX_CLIENT_REGISTRATIONS = 10_000;
 const MAX_PENDING_AUTHORIZATIONS = 10_000;
 const MAX_AUTHORIZATION_CODES = 10_000;
 const MAX_REVOKED_TOKENS = 10_000;
-/** Secrets accepted to open tokens besides the current one: enough for an overlap, few enough to keep unsealing cheap. */
-const MAX_PREVIOUS_SECRETS = 3;
 
-export const DEFAULT_CLIENT_SCOPE = 'mcp:tools';
 /** The scopes this server grants. `/mcp` requires `DEFAULT_CLIENT_SCOPE`. */
 export const SUPPORTED_SCOPES: readonly string[] = [DEFAULT_CLIENT_SCOPE];
 
@@ -87,52 +84,6 @@ type SealedTokenPayload = {
   exp: number;
 };
 
-type ClientRegistrationInput =
-  Omit<OAuthClientInformationFull, 'client_id' | 'client_id_issued_at'> &
-  Partial<Pick<OAuthClientInformationFull, 'client_id' | 'client_id_issued_at'>>;
-
-/**
- * Client registrations, in memory and per instance. They are bounded in number and expire after
- * the longest refresh token, since a registration older than every token it could refresh is dead.
- */
-export class InMemoryOAuthClientsStore implements OAuthRegisteredClientsStore {
-  private readonly clients: ExpiringMap<OAuthClientInformationFull>;
-
-  constructor(
-    initialClients: OAuthClientInformationFull[] = [],
-    private readonly now: () => number = () => Date.now(),
-    maxClients = MAX_CLIENT_REGISTRATIONS,
-  ) {
-    this.clients = new ExpiringMap(maxClients, now);
-    for (const client of initialClients) {
-      this.add(client);
-    }
-  }
-
-  getClient(clientId: string): OAuthClientInformationFull | undefined {
-    return this.clients.get(clientId);
-  }
-
-  registerClient(client: ClientRegistrationInput): OAuthClientInformationFull {
-    const nowSeconds = Math.floor(Date.now() / 1000);
-    const fullClient = {
-      ...client,
-      client_id: client.client_id ?? randomUUID(),
-      client_id_issued_at: client.client_id_issued_at ?? nowSeconds,
-      // Clients registering without a scope would later fail authorization
-      // when they request the advertised mcp:tools scope.
-      scope: client.scope?.trim() ? client.scope : DEFAULT_CLIENT_SCOPE,
-    } as OAuthClientInformationFull;
-
-    this.add(fullClient);
-    return fullClient;
-  }
-
-  private add(client: OAuthClientInformationFull): void {
-    this.clients.set(client.client_id, client, this.now() + MAX_REFRESH_TOKEN_TTL_SECONDS * 1000);
-  }
-}
-
 export type McpOAuthProviderOptions = {
   baseUrl: URL;
   /** Seals new tokens, and opens tokens sealed with it. */
@@ -153,8 +104,7 @@ export class McpOAuthProvider implements OAuthServerProvider {
   readonly clientsStore: OAuthRegisteredClientsStore;
 
   private readonly baseUrl: URL;
-  /** The current secret's key first: it seals new tokens, and every key opens. */
-  private readonly keyRing: Buffer[];
+  private readonly keyRing: KeyRing;
   private readonly accessTokenTtlSeconds: number;
   private readonly refreshTokenTtlSeconds: number;
   private readonly authorizationTtlMs: number;
@@ -168,14 +118,9 @@ export class McpOAuthProvider implements OAuthServerProvider {
     if (!options.tokenSecret.trim()) {
       throw new Error('OAUTH_TOKEN_SECRET is required when MCP_REQUIRE_OAUTH=true');
     }
-    const previous = [...new Set((options.previousTokenSecrets ?? []).map(secret => secret.trim()))]
-      .filter(secret => secret && secret !== options.tokenSecret);
-    if (previous.length > MAX_PREVIOUS_SECRETS) {
-      throw new Error(`At most ${MAX_PREVIOUS_SECRETS} previous token secrets are accepted`);
-    }
 
     this.baseUrl = options.baseUrl;
-    this.keyRing = [options.tokenSecret, ...previous].map(secret => createHash('sha256').update(secret).digest());
+    this.keyRing = new KeyRing(options.tokenSecret, options.previousTokenSecrets);
     this.accessTokenTtlSeconds = boundedTtl(
       'accessTokenTtlSeconds', options.accessTokenTtlSeconds, DEFAULT_ACCESS_TOKEN_TTL_SECONDS, MAX_ACCESS_TOKEN_TTL_SECONDS);
     this.refreshTokenTtlSeconds = boundedTtl(
@@ -185,7 +130,7 @@ export class McpOAuthProvider implements OAuthServerProvider {
     this.pendingAuthorizations = new ExpiringMap(MAX_PENDING_AUTHORIZATIONS, this.now);
     this.authorizationCodes = new ExpiringMap(MAX_AUTHORIZATION_CODES, this.now);
     this.revokedTokenIds = new ExpiringMap(MAX_REVOKED_TOKENS, this.now);
-    this.clientsStore = new InMemoryOAuthClientsStore([], this.now);
+    this.clientsStore = new SealedClientsStore(this.keyRing, this.now);
   }
 
   async authorize(client: OAuthClientInformationFull, params: AuthorizationParams, res: Response): Promise<void> {
@@ -398,64 +343,16 @@ export class McpOAuthProvider implements OAuthServerProvider {
   }
 
   private sealToken(payload: SealedTokenPayload): string {
-    const iv = randomBytes(TOKEN_IV_BYTES);
-    const cipher = createCipheriv('aes-256-gcm', this.keyRing[0]!, iv, { authTagLength: TOKEN_TAG_BYTES });
-    cipher.setAAD(TOKEN_AAD);
-    const ciphertext = Buffer.concat([
-      cipher.update(JSON.stringify(payload), 'utf8'),
-      cipher.final(),
-    ]);
-
-    return [
-      TOKEN_PREFIX,
-      iv.toString('base64url'),
-      ciphertext.toString('base64url'),
-      cipher.getAuthTag().toString('base64url'),
-    ].join('.');
+    return this.keyRing.seal(TOKEN_PREFIX, TOKEN_AAD, JSON.stringify(payload));
   }
 
   private unsealToken(token: string): SealedTokenPayload {
-    const parts = token.split('.');
-    if (parts.length !== 5 || `${parts[0]}.${parts[1]}` !== TOKEN_PREFIX) {
-      throw new Error('Malformed token');
-    }
-    const iv = decodeBase64Url(parts[2]);
-    const ciphertext = decodeBase64Url(parts[3]);
-    const tag = decodeBase64Url(parts[4]);
-    if (iv?.length !== TOKEN_IV_BYTES || tag?.length !== TOKEN_TAG_BYTES || !ciphertext?.length) {
-      throw new Error('Malformed token envelope');
-    }
-
-    const plaintext = this.openCiphertext(iv, ciphertext, tag);
-    const payload = JSON.parse(plaintext) as unknown;
+    const payload = JSON.parse(this.keyRing.open(TOKEN_PREFIX, TOKEN_AAD, token).plaintext) as unknown;
     if (!isSealedTokenPayload(payload)) {
       throw new Error('Invalid token payload');
     }
-
     return payload;
   }
-
-  /** Opens the ciphertext with the first key in the ring that authenticates it. */
-  private openCiphertext(iv: Buffer, ciphertext: Buffer, tag: Buffer): string {
-    for (const key of this.keyRing) {
-      try {
-        const decipher = createDecipheriv('aes-256-gcm', key, iv, { authTagLength: TOKEN_TAG_BYTES });
-        decipher.setAAD(TOKEN_AAD);
-        decipher.setAuthTag(tag);
-        return Buffer.concat([decipher.update(ciphertext), decipher.final()]).toString('utf8');
-      } catch {
-        // Not sealed with this key (or tampered with): try the next one.
-      }
-    }
-    throw new Error('Token could not be authenticated');
-  }
-}
-
-/** Decodes canonical base64url only, so one token has exactly one spelling. */
-function decodeBase64Url(value: string | undefined): Buffer | undefined {
-  if (!value) return undefined;
-  const decoded = Buffer.from(value, 'base64url');
-  return decoded.toString('base64url') === value ? decoded : undefined;
 }
 
 function boundedTtl(name: string, value: number | undefined, fallback: number, max: number): number {

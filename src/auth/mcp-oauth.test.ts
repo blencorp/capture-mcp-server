@@ -6,13 +6,14 @@ import type { AuthorizationParams } from '@modelcontextprotocol/sdk/server/auth/
 import {
   AUTHORIZATION_PAGE_CSP,
   DEFAULT_CLIENT_SCOPE,
-  InMemoryOAuthClientsStore,
   McpOAuthProvider,
   getProviderKeysFromAuth,
   renderAuthorizationPage,
 } from './mcp-oauth.js';
 import { createHash } from 'node:crypto';
 import { PAYLOAD, sealToken } from './__fixtures__/sealed-token.js';
+import { KeyRing } from './key-ring.js';
+import { SealedClientsStore } from './client-registrations.js';
 
 function makeClient(): OAuthClientInformationFull {
   return {
@@ -208,27 +209,6 @@ test('completeAuthorization trims whitespace-only keys and rejects if none remai
     async () => provider.completeAuthorization(requestId, { sam: '   ', highergov: '' }),
     /at least one provider API key/
   );
-});
-
-test('registerClient defaults a missing scope to mcp:tools', () => {
-  const store = new InMemoryOAuthClientsStore();
-  const { scope: _omitted, client_id: _id, client_id_issued_at: _issuedAt, ...metadata } = makeClient();
-
-  const registered = store.registerClient(metadata);
-  assert.equal(registered.scope, DEFAULT_CLIENT_SCOPE);
-  assert.equal(store.getClient(registered.client_id)?.scope, DEFAULT_CLIENT_SCOPE);
-});
-
-test('registerClient defaults a blank scope to mcp:tools', () => {
-  const store = new InMemoryOAuthClientsStore();
-  const registered = store.registerClient({ ...makeClient(), scope: '   ' });
-  assert.equal(registered.scope, DEFAULT_CLIENT_SCOPE);
-});
-
-test('registerClient preserves an explicitly requested scope', () => {
-  const store = new InMemoryOAuthClientsStore();
-  const registered = store.registerClient({ ...makeClient(), scope: 'custom:scope' });
-  assert.equal(registered.scope, 'custom:scope');
 });
 
 test('getProviderKeysFromAuth returns empty object for missing/invalid extras', () => {
@@ -446,20 +426,6 @@ test('a refresh cannot widen the scopes the token was granted', async () => {
 
 // ---- Bounded in-memory state ------------------------------------------------------------------
 
-test('client registrations are capped and expire', () => {
-  let now = 0;
-  const store = new InMemoryOAuthClientsStore([], () => now, 2);
-  const first = store.registerClient(makeClient());
-  const second = store.registerClient({ ...makeClient(), client_id: 'second' });
-  store.registerClient({ ...makeClient(), client_id: 'third' });
-  assert.equal(store.getClient(first.client_id), undefined, 'the oldest registration is evicted at the cap');
-  assert.ok(store.getClient(second.client_id));
-  assert.ok(store.getClient('third'));
-
-  now += 90 * 86_400_000;
-  assert.equal(store.getClient('third'), undefined, 'a registration older than the longest refresh token is gone');
-});
-
 test('pending authorizations expire', async () => {
   let now = 1_800_000_000_000;
   const provider = new McpOAuthProvider({ baseUrl: BASE_URL, tokenSecret: 'secret', now: () => now });
@@ -486,4 +452,88 @@ test('the credential page policy allows exactly the page\'s own inline style and
   assert.ok(!AUTHORIZATION_PAGE_CSP.includes('unsafe-inline'));
   // Nothing else inline: no handlers or style attributes the policy would block.
   assert.ok(!/\son[a-z]+=|\sstyle=/i.test(html));
+});
+
+// ---- Stateless client registrations -----------------------------------------------------------
+
+const REGISTRATION = {
+  redirect_uris: ['https://claude.ai/api/mcp/auth_callback'],
+  token_endpoint_auth_method: 'client_secret_post',
+  grant_types: ['authorization_code', 'refresh_token'],
+  response_types: ['code'],
+  client_name: 'Claude',
+  client_secret: 'sdk-generated-and-ignored',
+};
+const storeFor = (secret: string, previous: string[] = [], now = () => NOW_MS) =>
+  new SealedClientsStore(new KeyRing(secret, previous), now);
+
+test('a registration is readable from its client id alone, by any store with the same secret', () => {
+  const registered = storeFor('secret').registerClient(REGISTRATION);
+  assert.equal(registered.scope, DEFAULT_CLIENT_SCOPE, 'a missing scope defaults to mcp:tools');
+  assert.match(registered.client_id, /^capcli\.v1\./);
+  assert.notEqual(registered.client_secret, 'sdk-generated-and-ignored');
+
+  const restarted = storeFor('secret').getClient(registered.client_id);
+  assert.deepEqual(restarted, registered);
+  assert.deepEqual(restarted?.redirect_uris, REGISTRATION.redirect_uris);
+});
+
+test('registerClient keeps an explicit scope, defaults a blank one, and gives public clients no secret', () => {
+  const store = storeFor('secret');
+  assert.equal(store.registerClient({ ...REGISTRATION, scope: 'custom:scope' }).scope, 'custom:scope');
+  assert.equal(store.registerClient({ ...REGISTRATION, scope: '   ' }).scope, DEFAULT_CLIENT_SCOPE);
+  const publicClient = store.registerClient({ ...REGISTRATION, token_endpoint_auth_method: 'none' });
+  assert.equal(publicClient.client_secret, undefined);
+  assert.equal(store.getClient(publicClient.client_id)?.client_secret, undefined);
+});
+
+test('the client secret is derived from the client id, stable, and different per client', () => {
+  const store = storeFor('secret');
+  const a = store.registerClient(REGISTRATION);
+  const b = store.registerClient(REGISTRATION);
+  assert.equal(store.getClient(a.client_id)?.client_secret, a.client_secret);
+  assert.notEqual(a.client_secret, b.client_secret);
+  assert.notEqual(storeFor('other', ['secret']).getClient(a.client_id)?.client_secret, undefined);
+});
+
+test('a tampered, foreign or oversized client id is not a client', () => {
+  const store = storeFor('secret');
+  const { client_id } = store.registerClient(REGISTRATION);
+  const [prefix, version, iv, data, tag] = client_id.split('.');
+  const bytes = Buffer.from(data!, 'base64url');
+  bytes[0] = bytes[0]! ^ 1;
+  assert.equal(store.getClient([prefix, version, iv, bytes.toString('base64url'), tag].join('.')), undefined);
+  assert.equal(store.getClient(`${client_id}x`), undefined);
+  assert.equal(store.getClient('3f2c1d9e-1111-4222-8333-444455556666'), undefined);
+  assert.equal(store.getClient(''), undefined);
+  assert.equal(store.getClient('a'.repeat(5000)), undefined);
+  // An access token is not a client id, and a client id is not an access token.
+  assert.equal(store.getClient(sealToken('secret')), undefined);
+  return rejectsToken(providerAt('secret'), client_id);
+});
+
+test('a registration expires after 90 days', () => {
+  let now = NOW_MS;
+  const store = storeFor('secret', [], () => now);
+  const { client_id, client_secret_expires_at } = store.registerClient(REGISTRATION);
+  assert.equal(client_secret_expires_at, Math.floor(NOW_MS / 1000) + 90 * 86_400);
+  now += 90 * 86_400_000 - 1_000;
+  assert.ok(store.getClient(client_id));
+  now += 2_000;
+  assert.equal(store.getClient(client_id), undefined);
+});
+
+test('registrations follow the key ring: kept through a rotation, invalid once the secret is dropped', () => {
+  const registered = storeFor('old-secret').registerClient(REGISTRATION);
+
+  const rotated = storeFor('new-secret', ['old-secret']).getClient(registered.client_id);
+  assert.equal(rotated?.client_id, registered.client_id);
+  assert.equal(rotated?.client_secret, registered.client_secret, 'the secret is derived under the key that opened the id');
+
+  assert.equal(storeFor('new-secret').getClient(registered.client_id), undefined);
+});
+
+test('a registration that is too large to carry in a client id is refused', () => {
+  const redirect_uris = Array.from({ length: 40 }, (_, i) => `https://client.example.test/callback/${i}/${'x'.repeat(40)}`);
+  assert.throws(() => storeFor('secret').registerClient({ ...REGISTRATION, redirect_uris }), /too large/);
 });

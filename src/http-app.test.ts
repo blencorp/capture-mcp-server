@@ -2,6 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import type { AddressInfo } from 'node:net';
 import type { Server as HttpServer } from 'node:http';
+import { createHash } from 'node:crypto';
 
 import { createHttpApp, httpAuthFromEnv, listenHost, type HttpAuth } from './http-app.js';
 import { McpOAuthProvider } from './auth/mcp-oauth.js';
@@ -145,6 +146,122 @@ test('oauth mode: the budget counts the address in the configured proxy header, 
     assert.equal(await as('198.51.100.9, 203.0.113.2'), 429);
   } finally {
     await server.close();
+  }
+});
+
+test('oauth mode: the budget counts IPv6 per /64 and IPv4-mapped IPv6 as IPv4', async () => {
+  const server = await listen({
+    mode: 'oauth', publicBaseUrl: BASE, tokenSecret: SECRET, requestsPerSecond: 1, requestBurst: 1, clientIpHeader: 'x-real-ip',
+  });
+  const as = (ip: string) => listTools(server.url, { authorization: 'Bearer bogus', 'x-real-ip': ip }).then(r => r.status);
+  try {
+    assert.equal(await as('2001:db8:1:2::1'), 401);
+    assert.equal(await as('2001:db8:1:2:ffff:eeee:dddd:cccc'), 429, 'the same /64 is one client');
+    assert.equal(await as('2001:db8:1:3::1'), 401, 'another /64 is another client');
+    assert.equal(await as('203.0.113.5'), 401);
+    assert.equal(await as('::ffff:203.0.113.5'), 429, 'a mapped IPv4 address is the IPv4 client');
+  } finally {
+    await server.close();
+  }
+});
+
+test('oauth mode: the SDK OAuth endpoints are limited per client address too, not per shared proxy address', async () => {
+  const server = await listen({ mode: 'oauth', publicBaseUrl: BASE, tokenSecret: SECRET, clientIpHeader: 'x-real-ip' });
+  const register = (ip: string) =>
+    fetch(`${server.url}/register`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json', 'x-real-ip': ip, 'x-forwarded-for': '10.0.0.1, 10.0.0.2' },
+      body: JSON.stringify({ redirect_uris: ['https://client.example.test/callback'] }),
+    }).then(r => r.status);
+  try {
+    // The SDK allows 20 registrations an hour per client.
+    for (let i = 0; i < 20; i++) assert.equal(await register('203.0.113.1'), 201);
+    assert.equal(await register('203.0.113.1'), 429);
+    assert.equal(await register('203.0.113.2'), 201, 'another client is unaffected');
+    for (let i = 0; i < 20; i++) assert.equal(await register(`2001:db8:9:9::${i + 1}`), 201);
+    assert.equal(await register('2001:db8:9:9:ffff::1'), 429, 'twenty addresses of one /64 are one client');
+  } finally {
+    await server.close();
+  }
+});
+
+// ---- Registrations survive a restart ----------------------------------------------------------
+
+const CALLBACK = 'https://client.example.test/callback';
+const form = (fields: Record<string, string>) => ({
+  method: 'POST',
+  headers: { 'content-type': 'application/x-www-form-urlencoded' },
+  body: new URLSearchParams(fields),
+  redirect: 'manual' as const,
+});
+
+/** Registers a client, authorizes it with PKCE, and exchanges the code, against `url`. */
+async function connect(url: string) {
+  const registered: any = await (
+    await fetch(`${url}/register`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ redirect_uris: [CALLBACK], token_endpoint_auth_method: 'client_secret_post', grant_types: ['authorization_code', 'refresh_token'] }),
+    })
+  ).json();
+  const verifier = 'v'.repeat(64);
+  const challenge = createHash('sha256').update(verifier).digest('base64url');
+  const authorize = await fetch(
+    `${url}/authorize?${new URLSearchParams({ response_type: 'code', client_id: registered.client_id, redirect_uri: CALLBACK, code_challenge: challenge, code_challenge_method: 'S256', state: 's', scope: 'mcp:tools' })}`,
+    { redirect: 'manual' },
+  );
+  assert.equal(authorize.status, 302);
+  const requestId = new URL(authorize.headers.get('location')!).searchParams.get('request_id')!;
+  const approved = await fetch(`${url}/oauth/authorize`, form({ request_id: requestId, 'enabled[]': 'sam', sam_api_key: 'sam-key' }));
+  assert.equal(approved.status, 302);
+  const code = new URL(approved.headers.get('location')!).searchParams.get('code')!;
+  const tokens: any = await (
+    await fetch(`${url}/token`, form({ grant_type: 'authorization_code', code, code_verifier: verifier, redirect_uri: CALLBACK, client_id: registered.client_id, client_secret: registered.client_secret }))
+  ).json();
+  assert.ok(tokens.refresh_token, JSON.stringify(tokens));
+  return { client: registered, tokens };
+}
+
+const refresh = (url: string, client: { client_id: string; client_secret: string }, refreshToken: string) =>
+  fetch(`${url}/token`, form({ grant_type: 'refresh_token', refresh_token: refreshToken, client_id: client.client_id, client_secret: client.client_secret }));
+
+test('oauth mode: a restart keeps registered clients, so refresh keeps working; rotation follows the key ring', async () => {
+  const before = await listen({ mode: 'oauth', publicBaseUrl: BASE, tokenSecret: 'restart-secret' });
+  let session: Awaited<ReturnType<typeof connect>>;
+  try {
+    session = await connect(before.url);
+  } finally {
+    await before.close();
+  }
+  const { client, tokens } = session;
+
+  // A new instance with the same secret: no memory of the registration, yet refresh works.
+  const restarted = await listen({ mode: 'oauth', publicBaseUrl: BASE, tokenSecret: 'restart-secret' });
+  try {
+    const res = await refresh(restarted.url, client, tokens.refresh_token);
+    assert.equal(res.status, 200);
+    const renewed: any = await res.json();
+    assert.equal((await listTools(restarted.url, { authorization: `Bearer ${renewed.access_token}` })).status, 200);
+
+    // A tampered client id, and a wrong secret, are refused.
+    const tampered = `${client.client_id.slice(0, -1)}${client.client_id.endsWith('A') ? 'B' : 'A'}`;
+    assert.equal((await refresh(restarted.url, { ...client, client_id: tampered }, tokens.refresh_token)).status, 400);
+    assert.equal((await refresh(restarted.url, { ...client, client_secret: 'wrong' }, tokens.refresh_token)).status, 400);
+  } finally {
+    await restarted.close();
+  }
+
+  // Rotation with the old secret kept: still works. Dropped: client and tokens are invalid.
+  const rotating = await listen({ mode: 'oauth', publicBaseUrl: BASE, tokenSecret: 'next-secret', previousTokenSecrets: ['restart-secret'] });
+  const revoked = await listen({ mode: 'oauth', publicBaseUrl: BASE, tokenSecret: 'next-secret' });
+  try {
+    assert.equal((await refresh(rotating.url, client, tokens.refresh_token)).status, 200);
+    const gone = await refresh(revoked.url, client, tokens.refresh_token);
+    assert.equal(gone.status, 400);
+    assert.equal(((await gone.json()) as any).error, 'invalid_client');
+  } finally {
+    await rotating.close();
+    await revoked.close();
   }
 });
 

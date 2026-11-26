@@ -66,9 +66,9 @@ Because the keys live in the token:
   it leaked.
 - **A token lasts an hour, and the refresh token 90 days.** Your assistant renews the token itself,
   but a refresh never extends the 90 days: after that, your assistant asks you to connect again.
-- **A server restart ends your assistant's ability to refresh.** The server remembers registered
-  assistants only in memory. Your access token keeps working until it expires, which is within an
-  hour, and then your assistant has to connect again.
+- **A server restart does not disconnect you.** The server stores nothing about your assistant: its
+  registration is sealed inside the client ID it was given (valid for 90 days), so refreshing keeps
+  working after a restart or a redeploy. Only a change of the server's secret ends it.
 
 ## When a key is missing, or wrong
 

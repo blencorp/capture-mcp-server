@@ -99,7 +99,7 @@ HTTP mode fails closed: it refuses to start without `MCP_REQUIRE_OAUTH=true` or 
 | `OAUTH_TOKEN_SECRET_PREVIOUS` | Comma-separated retired secrets (at most three) that still open tokens while you rotate `OAUTH_TOKEN_SECRET`. |
 | `OAUTH_ACCESS_TOKEN_TTL_SECONDS`, `OAUTH_REFRESH_TOKEN_TTL_SECONDS` | Token lifetimes; the defaults are 1 hour and 90 days, and neither may exceed 1 day and 90 days. |
 | `MCP_IP_RPS`, `MCP_IP_BURST` | The `/mcp` request budget for each client address: sustained requests per second (default 5) and burst (default 20). |
-| `MCP_CLIENT_IP_HEADER` | Behind a proxy, the header it overwrites with the client address (Railway: `x-real-ip`). Unset, the budget counts the connection's address. |
+| `MCP_CLIENT_IP_HEADER` | Behind a proxy, the header it overwrites with the client address (Railway: `x-real-ip`). Set `x-real-ip` on Railway. Unset, the limiters count the connection's address, which behind a proxy is the proxy. Applies to `/mcp` and the OAuth endpoints. |
 | `MCP_ALLOW_INSECURE_HTTP` | `true` for single-user HTTP on loopback. |
 | `PORT`, `HOST` | The listening port and address. |
 | `SAM_GOV_API_KEY`, `TANGO_API_KEY`, `HIGHERGOV_API_KEY` | Keys for stdio and single-user HTTP only. |

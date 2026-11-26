@@ -54,12 +54,12 @@ its own keys in `X-Sam-Api-Key`, `X-Tango-Api-Key` or `X-Highergov-Api-Key` head
 alongside its token; a key sealed in the token takes precedence, and the header
 keys are used the same way.
 
-The server keeps a short-lived record in process memory while you connect: the
-client's registration, your pending authorization (10 minutes) and the one-time
-authorization code. These are not written to disk and are lost when the process
-restarts. Your access token keeps working, but your client can no longer refresh
-it, so it has to connect again once the access token expires. Token revocation is
-also tracked in memory, so it is best-effort: another instance or a restart
+The server keeps a short-lived record in process memory while you connect: your
+pending authorization (10 minutes) and the one-time authorization code. These are
+not written to disk and are lost when the process restarts, in which case you
+connect again. Your client's registration is not stored: it is sealed inside the
+client identifier the server gave your client (90 days). Token revocation is
+tracked in memory, so it is best-effort: another instance or a restart
 forgets it. To stop a leaked token from being used, rotate the key with its
 provider; the operator can also invalidate every token at once by changing the
 server's token secret.
