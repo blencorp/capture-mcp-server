@@ -4,11 +4,15 @@ import type { Response } from 'express';
 import type { OAuthClientInformationFull } from '@modelcontextprotocol/sdk/shared/auth.js';
 import type { AuthorizationParams } from '@modelcontextprotocol/sdk/server/auth/provider.js';
 import {
+  AUTHORIZATION_PAGE_CSP,
   DEFAULT_CLIENT_SCOPE,
   InMemoryOAuthClientsStore,
   McpOAuthProvider,
   getProviderKeysFromAuth,
+  renderAuthorizationPage,
 } from './mcp-oauth.js';
+import { createHash } from 'node:crypto';
+import { PAYLOAD, sealToken } from './__fixtures__/sealed-token.js';
 
 function makeClient(): OAuthClientInformationFull {
   return {
@@ -234,4 +238,252 @@ test('getProviderKeysFromAuth returns empty object for missing/invalid extras', 
     getProviderKeysFromAuth({ token: 't', clientId: 'c', scopes: [], extra: { providerKeys: { sam: '  ', highergov: 'x' } } } as any),
     { highergov: 'x' }
   );
+});
+
+// ---- Sealed token envelope (AES-GCM) ----------------------------------------------------------
+
+const BASE_URL = new URL('https://capture.mcp.blencorp.com');
+const NOW_MS = PAYLOAD.iat * 1000 + 10_000;
+const providerAt = (tokenSecret: string, extra: Partial<ConstructorParameters<typeof McpOAuthProvider>[0]> = {}) =>
+  new McpOAuthProvider({ baseUrl: BASE_URL, tokenSecret, now: () => NOW_MS, ...extra });
+
+const parts = (token: string) => token.split('.');
+const rejectsToken = (provider: McpOAuthProvider, token: string) =>
+  assert.rejects(() => provider.verifyAccessToken(token), /Invalid access token/);
+
+test('a token sealed before the envelope checks still opens (16-byte tag, 12-byte IV)', async () => {
+  // Produced by the previous implementation (AES-256-GCM, no explicit tag length).
+  const legacy =
+    'capmcp.v1.-cAq7hhakBg7Wi_1.fkjz5JfKpXHXCmjCJIMJEnblTdwk6o03NXGJrpruFBJatCXqCMjCQZM6Dpv7Ir9K1Oyyct3ma2EUFT4osGXP8d8Ge6zecj2Pbf8GGd6G0jLk7D-kV000Lk33ALv73pobV1mmNWE6LlOT0YVLg9aUou4oi6T4fpuyb1zbyeNWEJgVo6EEDUd3_ZjnFvPSdmHNGyslOBDKcGeA8JGxFv9WYGhVjhebltyqggdkhf2rLUVo3X0oRMfIxr0v2m0_eg.eD4w34dN0JSq4odYmxHG4A';
+  const authInfo = await providerAt('legacy-test-secret').verifyAccessToken(legacy);
+  assert.equal(authInfo.clientId, 'legacy-client');
+  assert.deepEqual(getProviderKeysFromAuth(authInfo), { sam: 'legacy-sam-key' });
+});
+
+test('a token built the way the server builds it verifies (so the rejection tests below mean something)', async () => {
+  const authInfo = await providerAt('secret').verifyAccessToken(sealToken('secret'));
+  assert.equal(authInfo.clientId, PAYLOAD.clientId);
+});
+
+test('a truncated tag is rejected, even one that is a true prefix of the real tag', async () => {
+  const provider = providerAt('secret');
+  for (const tagBytes of [1, 4, 8, 12, 15]) {
+    await rejectsToken(provider, sealToken('secret', PAYLOAD, { tagBytes }));
+  }
+});
+
+test('an oversized tag is rejected', async () => {
+  const token = sealToken('secret');
+  const [prefix, version, iv, data, tag] = parts(token);
+  const longer = Buffer.concat([Buffer.from(tag!, 'base64url'), Buffer.alloc(1)]).toString('base64url');
+  await rejectsToken(providerAt('secret'), [prefix, version, iv, data, longer].join('.'));
+});
+
+test('a different key or different AAD is rejected', async () => {
+  await rejectsToken(providerAt('other-secret'), sealToken('secret'));
+  await rejectsToken(providerAt('secret'), sealToken('secret', PAYLOAD, { aad: 'another-purpose' }));
+});
+
+test('modified ciphertext is rejected', async () => {
+  const [prefix, version, iv, data, tag] = parts(sealToken('secret'));
+  const bytes = Buffer.from(data!, 'base64url');
+  bytes[0] = bytes[0]! ^ 1;
+  await rejectsToken(providerAt('secret'), [prefix, version, iv, bytes.toString('base64url'), tag].join('.'));
+});
+
+test('a malformed envelope is rejected: wrong IV size, extra or missing parts, non-canonical encoding', async () => {
+  const provider = providerAt('secret');
+  await rejectsToken(provider, sealToken('secret', PAYLOAD, { ivBytes: 16 }));
+  await rejectsToken(provider, sealToken('secret', PAYLOAD, { ivBytes: 8 }));
+  const good = sealToken('secret');
+  await rejectsToken(provider, `${good}.extra`);
+  await rejectsToken(provider, parts(good).slice(0, 4).join('.'));
+  await rejectsToken(provider, good.replace('capmcp.v1', 'capmcp.v2'));
+  await rejectsToken(provider, `${good}=`); // padded base64url is a second spelling of the same tag
+  await rejectsToken(provider, [...parts(good).slice(0, 3), ''].join('.'));
+  await rejectsToken(provider, 'not-a-token');
+});
+
+test('a payload of the wrong shape is rejected even when it authenticates', async () => {
+  await rejectsToken(providerAt('secret'), sealToken('secret', { ...PAYLOAD, keys: 'a string' }));
+});
+
+// ---- Lifetimes, secret rotation and revocation ------------------------------------------------
+
+async function flow(provider: McpOAuthProvider, client = makeClient(), keys: Record<string, string> = { sam: 'sam_key' }) {
+  await provider.clientsStore.registerClient?.(client);
+  return { client, tokens: await runFullFlow(provider, client, keys) };
+}
+
+test('access tokens last an hour by default and expire on time', async () => {
+  let now = 1_800_000_000_000;
+  const provider = new McpOAuthProvider({ baseUrl: BASE_URL, tokenSecret: 'secret', now: () => now });
+  const { tokens } = await flow(provider);
+  assert.equal(tokens.expires_in, 3600);
+  await provider.verifyAccessToken(tokens.access_token);
+  now += 3599_000;
+  await provider.verifyAccessToken(tokens.access_token);
+  now += 2_000;
+  await assert.rejects(() => provider.verifyAccessToken(tokens.access_token), /expired/);
+});
+
+test('an access token sealed under a longer lifetime is also capped at the current one', async () => {
+  const longLived = sealToken('secret', { ...PAYLOAD, iat: 1_700_000_000, exp: 1_700_000_000 + 30 * 86_400 });
+  // Two hours after it was issued, with the default 1 hour lifetime.
+  const provider = providerAt('secret', { now: () => (1_700_000_000 + 7_200) * 1000 });
+  await assert.rejects(() => provider.verifyAccessToken(longLived), /expired/);
+});
+
+test('lifetimes beyond the ceilings are refused at startup', () => {
+  assert.throws(() => providerAt('secret', { accessTokenTtlSeconds: 86_401 }), /accessTokenTtlSeconds/);
+  assert.throws(() => providerAt('secret', { refreshTokenTtlSeconds: 90 * 86_400 + 1 }), /refreshTokenTtlSeconds/);
+  assert.throws(() => providerAt('secret', { accessTokenTtlSeconds: 0 }), /accessTokenTtlSeconds/);
+  assert.throws(() => providerAt('secret', { accessTokenTtlSeconds: 1.5 }), /accessTokenTtlSeconds/);
+});
+
+test('refreshing renews the access token but never extends the refresh token\'s original expiry', async () => {
+  let now = 1_800_000_000_000;
+  const provider = new McpOAuthProvider({ baseUrl: BASE_URL, tokenSecret: 'secret', now: () => now });
+  const { client, tokens } = await flow(provider);
+  const firstRefreshExp = Math.floor(now / 1000) + 90 * 86_400;
+
+  now += 89 * 86_400_000;
+  const second = await provider.exchangeRefreshToken(client, tokens.refresh_token!);
+  // The new refresh token ends when the first one would have, a day from now.
+  now += 86_400_000 - 1_000;
+  const third = await provider.exchangeRefreshToken(client, second.refresh_token!);
+  assert.ok(third.expires_in! <= 1, 'the access token is capped at the refresh token\'s expiry');
+  assert.ok(Math.floor(now / 1000) < firstRefreshExp);
+
+  now += 2_000;
+  await assert.rejects(() => provider.exchangeRefreshToken(client, third.refresh_token!), /expired/);
+});
+
+test('a refresh token is not accepted as an access token, nor the reverse', async () => {
+  const provider = providerAt('secret');
+  const { tokens } = await flow(provider);
+  await rejectsToken(provider, tokens.refresh_token!);
+  await assert.rejects(() => provider.exchangeRefreshToken(makeClient(), tokens.access_token), /Invalid refresh token/);
+});
+
+test('key ring: tokens sealed with a retired secret open while it is listed, new tokens use the current one', async () => {
+  const oldProvider = providerAt('old-secret');
+  const { client, tokens: oldTokens } = await flow(oldProvider);
+
+  const rotated = providerAt('new-secret', { previousTokenSecrets: ['old-secret'] });
+  await rotated.clientsStore.registerClient?.(client);
+  await rotated.verifyAccessToken(oldTokens.access_token);
+
+  // A refresh re-seals under the current secret: the old secret no longer opens what it issues.
+  const refreshed = await rotated.exchangeRefreshToken(client, oldTokens.refresh_token!);
+  await rotated.verifyAccessToken(refreshed.access_token);
+  await rejectsToken(oldProvider, refreshed.access_token);
+  await providerAt('new-secret').verifyAccessToken(refreshed.access_token);
+});
+
+test('key ring: dropping a retired secret revokes every token it sealed (emergency revocation)', async () => {
+  const { tokens } = await flow(providerAt('leaked-secret'));
+  await rejectsToken(providerAt('new-secret'), tokens.access_token);
+});
+
+test('key ring: the list is trimmed and de-duplicated, and has a ceiling', async () => {
+  const token = sealToken('second');
+  const ring = providerAt('current', { previousTokenSecrets: [' first ', 'second', 'second', '', 'current'] });
+  await ring.verifyAccessToken(token);
+  assert.throws(() => providerAt('current', { previousTokenSecrets: ['a', 'b', 'c', 'd'] }), /At most 3/);
+});
+
+test('revoking a token rejects it on that instance, and only for the client it was issued to', async () => {
+  const provider = providerAt('secret');
+  const { client, tokens } = await flow(provider);
+
+  const stranger = { ...makeClient(), client_id: 'someone-else' };
+  await provider.revokeToken(stranger, { token: tokens.access_token });
+  await provider.verifyAccessToken(tokens.access_token);
+
+  await provider.revokeToken(client, { token: tokens.access_token });
+  await assert.rejects(() => provider.verifyAccessToken(tokens.access_token), /revoked/);
+  await provider.revokeToken(client, { token: 'garbage' }); // unknown tokens succeed silently (RFC 7009)
+});
+
+// ---- Scopes ---------------------------------------------------------------------------------
+
+test('authorize refuses a scope the server does not grant, and defaults to mcp:tools when none is asked for', async () => {
+  const provider = providerAt('secret');
+  const client = { ...makeClient(), scope: 'mcp:tools admin' };
+  await provider.clientsStore.registerClient?.(client);
+
+  await assert.rejects(
+    () => provider.authorize(client, { ...makeAuthorizationParams(), scopes: ['admin'] }, makeRedirectCapture().response),
+    /Unsupported scope admin/,
+  );
+
+  const { response, redirects } = makeRedirectCapture();
+  await provider.authorize(client, { ...makeAuthorizationParams(), scopes: undefined }, response);
+  const code = new URL(
+    await provider.completeAuthorization(new URL(redirects[0]!).searchParams.get('request_id')!, { sam: 'k' }),
+  ).searchParams.get('code')!;
+  const tokens = await provider.exchangeAuthorizationCode(client, code);
+  assert.equal(tokens.scope, DEFAULT_CLIENT_SCOPE);
+  assert.deepEqual((await provider.verifyAccessToken(tokens.access_token)).scopes, [DEFAULT_CLIENT_SCOPE]);
+});
+
+test('a token issued before scopes were enforced (none sealed) is treated as holding the default scope', async () => {
+  const provider = providerAt('secret');
+  const legacy = sealToken('secret', { ...PAYLOAD, scopes: [] });
+  assert.deepEqual((await provider.verifyAccessToken(legacy)).scopes, [DEFAULT_CLIENT_SCOPE]);
+
+  const refresh = sealToken('secret', { ...PAYLOAD, kind: 'refresh', scopes: [], clientId: 'claude-test-client' });
+  const refreshed = await provider.exchangeRefreshToken(makeClient(), refresh);
+  assert.equal(refreshed.scope, DEFAULT_CLIENT_SCOPE);
+});
+
+test('a refresh cannot widen the scopes the token was granted', async () => {
+  const provider = providerAt('secret');
+  const refresh = sealToken('secret', { ...PAYLOAD, kind: 'refresh', clientId: 'claude-test-client' });
+  await assert.rejects(() => provider.exchangeRefreshToken(makeClient(), refresh, ['mcp:tools', 'admin']), /not granted scope admin/);
+});
+
+// ---- Bounded in-memory state ------------------------------------------------------------------
+
+test('client registrations are capped and expire', () => {
+  let now = 0;
+  const store = new InMemoryOAuthClientsStore([], () => now, 2);
+  const first = store.registerClient(makeClient());
+  const second = store.registerClient({ ...makeClient(), client_id: 'second' });
+  store.registerClient({ ...makeClient(), client_id: 'third' });
+  assert.equal(store.getClient(first.client_id), undefined, 'the oldest registration is evicted at the cap');
+  assert.ok(store.getClient(second.client_id));
+  assert.ok(store.getClient('third'));
+
+  now += 90 * 86_400_000;
+  assert.equal(store.getClient('third'), undefined, 'a registration older than the longest refresh token is gone');
+});
+
+test('pending authorizations expire', async () => {
+  let now = 1_800_000_000_000;
+  const provider = new McpOAuthProvider({ baseUrl: BASE_URL, tokenSecret: 'secret', now: () => now });
+  const client = makeClient();
+  await provider.clientsStore.registerClient?.(client);
+  const { response, redirects } = makeRedirectCapture();
+  await provider.authorize(client, makeAuthorizationParams(), response);
+  const requestId = new URL(redirects[0]!).searchParams.get('request_id')!;
+  now += 11 * 60_000;
+  await assert.rejects(() => provider.completeAuthorization(requestId, { sam: 'k' }), /expired or was not found/);
+});
+
+// ---- Credential page --------------------------------------------------------------------------
+
+test('the credential page policy allows exactly the page\'s own inline style and script', () => {
+  const html = renderAuthorizationPage('request-1');
+  const hash = (source: string) => `'sha256-${createHash('sha256').update(source).digest('base64')}'`;
+  const style = /<style>([\s\S]*?)<\/style>/.exec(html)![1]!;
+  const script = /<script>([\s\S]*?)<\/script>/.exec(html)![1]!;
+  assert.match(AUTHORIZATION_PAGE_CSP, new RegExp(`style-src ${hash(style)}(;|$)`.replace(/[+/]/g, '\\$&')));
+  assert.match(AUTHORIZATION_PAGE_CSP, new RegExp(`script-src ${hash(script)}(;|$)`.replace(/[+/]/g, '\\$&')));
+  assert.match(AUTHORIZATION_PAGE_CSP, /default-src 'none'/);
+  assert.match(AUTHORIZATION_PAGE_CSP, /frame-ancestors 'none'/);
+  assert.ok(!AUTHORIZATION_PAGE_CSP.includes('unsafe-inline'));
+  // Nothing else inline: no handlers or style attributes the policy would block.
+  assert.ok(!/\son[a-z]+=|\sstyle=/i.test(html));
 });

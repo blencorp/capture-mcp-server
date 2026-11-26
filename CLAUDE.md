@@ -43,7 +43,6 @@ This is a Model Context Protocol (MCP) server that captures federal procurement 
 **Server (`src/server.ts`)**
 - MCP server using `@modelcontextprotocol/sdk` v1 (1.32.x); `src/mcp-handlers.ts` registers `tools/list` and `tools/call`
 - stdio by default; `MCP_TRANSPORT=http` serves `src/http-app.ts` (Express)
-- `src/lambda-handler.ts` is the AWS Lambda entry point
 
 **Tool Architecture (`src/tools/`)**
 - Modular tool system with six categories:
@@ -53,7 +52,7 @@ This is a Model Context Protocol (MCP) server that captures federal procurement 
   - `tango-tools.ts` - 12 Tango API tools (contracts, grants, vendor profiles, opportunities, spending summaries, GAO protests + detail, IDVs + child/task-order drill-down, vehicle catalog, OTAs, entity time-series metrics). Set-aside filtering is exact on FPDS codes; cursor pagination via the Tango `next` URL.
   - `highergov-tools.ts` - 9 HigherGov tools (forecast/opportunity/contract/people search, saved-search listing, opportunity documents, single-record lookups). Responses are normalized to lowercase agency/vehicle/set-aside slugs via `utils/highergov-slugs.ts`. `get_*` tools cache for 15 min in an in-process LRU.
   - `join-tools.ts` - 2 cross-API tools (entity+awards, opportunity+context)
-- Response conventions (see `utils/envelope.ts` and docs/fix-plan.md): every list tool echoes `filters.upstream` vs `filters.client_side`, nulls untrustworthy totals (`total_upstream_unfiltered` / `total_upstream_unverified` + warnings), labels `count_unit` and `date_field`, and returns one `next_cursor` shape. `tools/index.ts` rejects unknown/mistyped parameters with a structured bad_request. `utils/fpds-codes.ts` is the FPDS code table; `docs/upstream-api-notes.md` records which upstream params are verified to bind (run `pnpm capture-fixtures` with live keys to re-probe).
+- Response conventions (see `utils/envelope.ts`): every list tool echoes `filters.upstream` vs `filters.client_side`, nulls untrustworthy totals (`total_upstream_unfiltered` / `total_upstream_unverified` + warnings), labels `count_unit` and `date_field`, and returns one `next_cursor` shape. `tools/index.ts` rejects unknown/mistyped parameters with a structured bad_request. `utils/fpds-codes.ts` is the FPDS code table; `docs/upstream-api-notes.md` records which upstream params are verified to bind (run `pnpm capture-fixtures` with live keys to re-probe).
 - Each tool module exports `getTools()` and `callTool()` methods
 - `ToolCatalog` in `tools/index.ts` builds a per-request tool set and injects the request's key
 
@@ -104,9 +103,9 @@ Optional environment variables (configure based on which tools you need):
 - All 34 tools when all three keys are set
 
 Key sources (`src/auth/request-keys.ts`, `resolveRequestKeys`): stdio and `MCP_ALLOW_INSECURE_HTTP` (single user) use the
-process env keys, overridable by `X-*-Api-Key` headers. Remote callers (OAuth HTTP, Lambda) use ONLY their own keys —
+process env keys, overridable by `X-*-Api-Key` headers. Remote callers (OAuth HTTP) use ONLY their own keys —
 OAuth-sealed, then their headers — never the process env. Tool modules never read `process.env` for keys; `ToolCatalog`
-injects the request's key as `api_key`.
+injects the request's key as `api_key`. No tool schema advertises `api_key` and a caller-supplied one is rejected as an unknown parameter.
 
 The server automatically registers only the tools for which API keys are available.
 
@@ -114,11 +113,13 @@ The server automatically registers only the tools for which API keys are availab
 
 `MCP_TRANSPORT=http` fails closed (`httpAuthFromEnv` in `src/http-app.ts`): it needs `MCP_REQUIRE_OAUTH=true` + `OAUTH_TOKEN_SECRET`,
 or the explicit single-user `MCP_ALLOW_INSECURE_HTTP=true` (loopback only: a non-loopback `HOST` is a startup error, `listenHost`).
-- `src/auth/mcp-oauth.ts` implements an OAuth 2.1 server with PKCE, dynamic client registration, and AES-256-GCM sealed access/refresh tokens. Each token carries a `keys: { sam?, tango?, highergov? }` map sealed against `OAUTH_TOKEN_SECRET`.
-- `GET/POST /oauth/authorize` renders a multi-provider authorization page; users pick checkboxes per provider and supply only the keys they have.
-- `POST /mcp` always requires a verified bearer token. Provider-key headers never authenticate a caller; they only add the caller's own key for a provider.
+- `src/auth/mcp-oauth.ts` implements an OAuth 2.1 server with PKCE, dynamic client registration, and AES-256-GCM sealed access/refresh tokens (16-byte tag and a valid envelope required). Each token carries a `keys: { sam?, tango?, highergov? }` map sealed against `OAUTH_TOKEN_SECRET`.
+- Stateless revocation: access tokens last 1 hour (`OAUTH_ACCESS_TOKEN_TTL_SECONDS`, at most 1 day); refresh tokens keep their original 90-day expiry however often they are used. `OAUTH_TOKEN_SECRET` is a key ring: new tokens are sealed with it, and `OAUTH_TOKEN_SECRET_PREVIOUS` (comma-separated, at most 3) still opens old ones. Rotating the secret without listing the old one revokes every token; `revokeToken` is best-effort (in memory, per instance).
+- All in-memory OAuth state (`src/auth/expiring-map.ts`: client registrations, pending authorizations, codes, revocations) has an expiry and a size ceiling that evicts the oldest entry.
+- `GET/POST /oauth/authorize` renders a multi-provider authorization page (CSP by hash, `no-store`); users pick checkboxes per provider and supply only the keys they have.
+- `POST /mcp` always requires a verified bearer token with the `mcp:tools` scope, after a per-address request budget (`src/rate-limit.ts`, `MCP_IP_RPS`/`MCP_IP_BURST`, 429 with `Retry-After`). Provider-key headers never authenticate a caller; they only add the caller's own key for a provider.
 - Per-request precedence: OAuth-sealed key → caller header. Never the server's env.
-- The Lambda handler (`src/lambda-handler.ts`) answers 503 on `/mcp` unless `API_KEY_BUCKET` (S3 API-key auth) is configured, and uses only the caller's header keys.
+- The Railway-hosted HTTP server is the only hosted runtime; the AWS Lambda deployment was retired.
 - Tools are registered per request in a `ToolCatalog` (`src/tools/index.ts`); there is no module-level registry, so concurrent requests cannot see each other's tool sets.
 
 ### Web pages and docs

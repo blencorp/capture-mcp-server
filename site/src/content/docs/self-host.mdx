@@ -1,6 +1,6 @@
 ---
 title: Self-host
-description: Run the server on your computer over stdio or loopback HTTP, host it with Docker or Railway for other people, or deploy it to AWS Lambda for a team.
+description: Run the server on your computer over stdio or loopback HTTP, or host it with Docker or Railway for other people.
 ---
 
 The server is not published to npm. Run it from a checkout of the
@@ -21,7 +21,6 @@ Pick the mode by who uses it.
 | stdio | You, in a desktop assistant | Yours, from the environment | `node dist/server.js` |
 | Local HTTP | You, on your computer | Yours, from the environment | `MCP_TRANSPORT=http MCP_ALLOW_INSECURE_HTTP=true node dist/server.js` |
 | Hosted HTTP | Many people | Each person's own, entered when they connect | `MCP_TRANSPORT=http MCP_REQUIRE_OAUTH=true node dist/server.js`, with the settings below |
-| Lambda | A team | Each caller's own, sent in headers | `pnpm cdk:deploy` |
 
 SAM.gov, Tango, and HigherGov keys are personal. The server never answers one person with another's
 key, and a hosted server never uses a key from its own environment for a caller.
@@ -71,14 +70,42 @@ and the server runs the OAuth flow that [Connect your assistant](/connect/) desc
 | --- | --- |
 | `MCP_TRANSPORT` | `http`. The default, `stdio`, speaks over standard input and output. |
 | `MCP_REQUIRE_OAUTH` | `true`. Required for hosting. |
-| `OAUTH_TOKEN_SECRET` | The secret that seals tokens. Required. Generate one with `openssl rand -base64 48`. Changing it invalidates every token. |
+| `OAUTH_TOKEN_SECRET` | The secret that seals tokens. Required. Generate one with `openssl rand -base64 48`. Changing it invalidates every token, unless you keep the old one in `OAUTH_TOKEN_SECRET_PREVIOUS` (see [Rotating the secret](#rotating-the-secret)). |
+| `OAUTH_TOKEN_SECRET_PREVIOUS` | Retired secrets, separated by commas (at most three), that still open tokens but never seal them. Leave it unset except during a rotation. |
 | `MCP_PUBLIC_BASE_URL` | The public HTTPS origin your clients use, such as `https://capture.example.com`. Required. |
-| `OAUTH_ACCESS_TOKEN_TTL_SECONDS`, `OAUTH_REFRESH_TOKEN_TTL_SECONDS` | Token lifetimes. The defaults are 30 and 90 days. |
+| `OAUTH_ACCESS_TOKEN_TTL_SECONDS`, `OAUTH_REFRESH_TOKEN_TTL_SECONDS` | Token lifetimes. The defaults are 1 hour and 90 days, and the server refuses to start with more than 1 day and 90 days. A refresh token keeps its original expiry however often it is used. |
+| `MCP_IP_RPS`, `MCP_IP_BURST` | The budget for `/mcp` requests from one client address: sustained requests per second (default 5) and the burst (default 20). A request over budget gets `429` with `Retry-After`. |
+| `MCP_CLIENT_IP_HEADER` | The header your proxy overwrites with the client address, such as `x-real-ip` on Railway. Name only a header the proxy always sets itself, because a client could forge any other. Unset, the budget counts the connection's address, which behind a proxy is the proxy. |
 | `MCP_ALLOW_INSECURE_HTTP` | `true` for the single-user mode above. Not for hosting. |
 | `PORT`, `HOST` | The listening port, and address. Leave `HOST` unset when you host so that Node listens on IPv4 and IPv6. |
 
 The server serves the landing page, the policy pages, and this documentation at `/docs`. Put it
-behind HTTPS, and a proxy that limits requests, because the server adds no limit to `/mcp`.
+behind HTTPS. It limits each client address's `/mcp` requests itself, but a proxy or platform should
+still absorb floods before they reach it.
+
+### Rotating the secret
+
+Tokens are sealed, not stored, so the secret is the only thing that can revoke them all. The
+server keeps a ring of secrets: it seals new tokens with `OAUTH_TOKEN_SECRET` and opens tokens sealed
+with it or with any secret in `OAUTH_TOKEN_SECRET_PREVIOUS`. Setting either variable needs a restart.
+
+**Routine rotation** (nobody has to reconnect):
+
+1. Generate a new secret with `openssl rand -base64 48`.
+2. Set `OAUTH_TOKEN_SECRET` to it and `OAUTH_TOKEN_SECRET_PREVIOUS` to the old one, and restart.
+   Existing tokens keep working, and every refresh seals the new tokens with the new secret.
+3. After the longest refresh token has expired (90 days by default), unset
+   `OAUTH_TOKEN_SECRET_PREVIOUS`. A token still sealed with the old secret stops working, and its
+   owner connects again.
+
+**Emergency revocation** (a secret or a token leaked): set `OAUTH_TOKEN_SECRET` to a new value,
+leave `OAUTH_TOKEN_SECRET_PREVIOUS` unset, and restart. Every token stops working at once and
+everyone connects again. Do not list a leaked secret as a previous one, because anyone who has it
+can forge tokens it opens. Rotate the keys with their sources too, since a leaked token held them.
+
+The server can revoke a single token (`/revoke`), but only in that instance's memory: a restart, or
+another instance, forgets it. Treat that as a courtesy to well-behaved clients and rotate the secret
+when a token must be dead. A short access token (an hour) is what bounds the rest.
 
 ### Docker
 
@@ -97,27 +124,12 @@ docker run --rm -p 8080:8080 \
 ### Railway
 
 Railway builds the same `Dockerfile` from the repository root. Set the three variables in the service
-settings. The service itself (Dockerfile build, start command, the `/health` check with a 30-second
+settings, and `MCP_CLIENT_IP_HEADER=x-real-ip` so that the `/mcp` budget counts each client rather than Railway's proxy. The service itself (Dockerfile build, start command, the `/health` check with a 30-second
 timeout, restart on failure up to three times, one replica, and the custom domain) is declared in
 `.railway/railway.ts`, the only Railway settings file; Railway no longer reads `railway.toml`. Apply
 changes to it with `railway config apply`. Secrets stay set in Railway, not in that file. The project
 name, domain and region in it are BLEN's production values: change them for your own deployment, or
 set the same health check, start command and restart policy in your service settings.
-
-## AWS Lambda
-
-The `infrastructure/` folder is a CDK project for a team deployment: a Lambda function behind an HTTP
-API, and an S3 bucket of access keys, with an optional custom domain. It is its own npm project.
-
-```bash
-pnpm cdk:deploy
-pnpm manage-keys create --owner "Jane Doe"
-```
-
-Each caller sends two kinds of header: `X-Api-Key`, an access key from the bucket, and their own
-provider keys in `X-Sam-Api-Key`, `X-Tango-Api-Key`, and `X-Highergov-Api-Key`. The function never
-uses a provider key from its own environment, and answers `503` on `/mcp` until it has a bucket. It
-serves no landing page or documentation.
 
 ## Rules for every deployment
 

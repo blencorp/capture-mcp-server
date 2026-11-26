@@ -14,14 +14,15 @@ text.
 - The server opens a token for the request that carries it, uses the key for the one source a tool
   needs, and does not keep it.
 - A key goes only to the source it belongs to, at that source's fixed address.
-- Most tools list an optional `api_key` argument, which the server fills in. A key an assistant puts
-  there is visible to it, so never do that. It is used instead of your connection's key.
+- No tool takes an API key as an argument, and a call that includes one is refused, so a key never
+  passes through your assistant. The server adds your connection's key itself.
 - The server does not check a key when you enter it, and it has no general redaction: an error
   carries the status and body a source sent. The HigherGov tools do not pass on the URLs in which
   HigherGov embeds the key. Rotate a key with its source if you think it leaked.
-- A token cannot be revoked from the outside. The server tracks revoked tokens only in memory, so a
-  restart forgets them. Rotate the key with its source to cut off a leaked token, or change the
-  server's secret to invalidate every token.
+- A single token cannot be reliably revoked. The server remembers a revoked token only in memory,
+  in one instance, so a restart forgets it. An access token lasts an hour, which bounds a leaked
+  one. Rotate the key with its source to cut off a leaked token, or the operator can change the
+  server's secret to invalidate every token at once (see [Self-host](/self-host/#rotating-the-secret)).
 
 ## Access
 
@@ -29,13 +30,14 @@ text.
 - Hosted access uses OAuth 2.1 with PKCE and dynamic client registration. Every `/mcp` request needs
   a valid bearer token. Provider-key headers never authenticate a caller: they only add the
   caller's own key for a source.
-- Access tokens last 30 days and refresh tokens 90, unless the operator sets different lifetimes.
+- Access tokens last an hour and refresh tokens 90 days, unless the operator sets shorter lifetimes. A refreshed token never outlives the 90 days of its first refresh token. A token must carry the `mcp:tools` scope.
 - A hosted caller uses only keys it supplied. The server never uses a key from its own environment to
   answer one. On your own computer, over stdio or loopback HTTP, the environment keys are yours.
 - Single-user HTTP (`MCP_ALLOW_INSECURE_HTTP`) refuses to listen on anything but loopback, and
   refuses a request whose Host is not loopback.
-- The server adds no limit to `/mcp`, so run it behind a proxy that limits requests if you host it
-  for many people. The MCP SDK's OAuth endpoints limit each address by default (100 authorization
+- `/mcp` gives each client address a budget (a burst of 20 requests, then 5 a second), and refuses
+  the excess with `429`. The page where you enter your keys is served with a content security
+  policy and is never cached. The MCP SDK's OAuth endpoints limit each address by default (100 authorization
   requests and 50 token or revocation requests every 15 minutes, and 20 registrations an hour).
 
 ## What the server does not do

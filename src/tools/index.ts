@@ -22,7 +22,6 @@ export function validateToolArgs(tool: Tool, args: any): string | null {
   const schema: any = tool.inputSchema;
   const properties: Record<string, any> = schema?.properties ?? {};
   const allowed = new Set(Object.keys(properties));
-  allowed.add('api_key'); // injected from HTTP headers even where a schema omits it
 
   const unknown = Object.keys(args).filter(key => !allowed.has(key));
   if (unknown.length > 0) {
@@ -122,7 +121,8 @@ export class ToolCatalog {
 
   /**
    * Call a tool by name. `keys` are the provider keys this request may use; the one the tool
-   * needs is injected as `api_key` unless the caller passed one explicitly.
+   * needs is injected as `api_key`. No schema declares `api_key`, so a caller cannot pass its own
+   * (validation rejects it): keys come from the token, the headers or the environment only.
    */
   async call(name: string, args: any, keys?: ProviderKeyOverrides): Promise<any> {
     const entry = this.#entries.get(name);
@@ -136,7 +136,7 @@ export class ToolCatalog {
     }
 
     const keyForTool = entry.keyName && keys ? keys[entry.keyName] : undefined;
-    const argsWithKey = keyForTool && !args?.api_key ? { ...args, api_key: keyForTool } : args;
+    const argsWithKey = keyForTool ? { ...args, api_key: keyForTool } : args;
     return await entry.call(argsWithKey);
   }
 }

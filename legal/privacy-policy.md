@@ -25,7 +25,8 @@ authorization step (see "Your API keys" below).
   key your client sends in a request header (see below).
 - **Network metadata:** our hosting provider, Railway, handles connection
   metadata and request headers. The application uses the client address only for
-  in-memory rate limiting of its OAuth endpoints, and does not record it.
+  in-memory rate limiting of its OAuth endpoints and of `/mcp`, and does not
+  record it.
 - **Support communications:** information you voluntarily provide when
   contacting BLEN for assistance.
 
@@ -44,21 +45,24 @@ in any database. **The server does not store your keys, and it has no database
 or user accounts.** Your MCP client keeps the tokens, and the keys inside them
 come back to the server with each of your requests, where it opens the token,
 uses the key for the one source a tool needs, and discards it when the request
-ends. Access tokens last 30 days and refresh tokens 90 days, unless the operator
-sets different lifetimes.
+ends. Access tokens last 1 hour and refresh tokens 90 days, unless the operator
+sets shorter lifetimes.
 
 The server never uses a key you did not supply for anyone's request, and it does
-not use anyone's key for another person. Instead of OAuth, a client may send its
-own keys in `X-Sam-Api-Key`, `X-Tango-Api-Key` or `X-Highergov-Api-Key` headers
-alongside its token; those are used the same way.
+not use anyone's key for another person. A client that has authenticated may also send
+its own keys in `X-Sam-Api-Key`, `X-Tango-Api-Key` or `X-Highergov-Api-Key` headers
+alongside its token; a key sealed in the token takes precedence, and the header
+keys are used the same way.
 
 The server keeps a short-lived record in process memory while you connect: the
 client's registration, your pending authorization (10 minutes) and the one-time
 authorization code. These are not written to disk and are lost when the process
 restarts. Your access token keeps working, but your client can no longer refresh
 it, so it has to connect again once the access token expires. Token revocation is
-also tracked in memory. To stop a leaked token from being used, rotate the key
-with its provider.
+also tracked in memory, so it is best-effort: another instance or a restart
+forgets it. To stop a leaked token from being used, rotate the key with its
+provider; the operator can also invalidate every token at once by changing the
+server's token secret.
 
 ## What is sent to other services
 
@@ -93,7 +97,7 @@ Service.
   separated by key (by a hash of it), are not persisted to disk, and may remain
   in memory until evicted or the process exits.
 - **Rate-limit state:** pacing queues for calls to each provider, and per-address
-  counters for the OAuth endpoints, are held in process memory.
+  counters for the OAuth endpoints and `/mcp`, are held in process memory.
 - **Operational logs:** the application writes startup and error messages to
   stderr. It does not log request bodies, tokens or keys, but an error message
   can include a fragment of a provider's reply. Hosting infrastructure may collect additional network and service

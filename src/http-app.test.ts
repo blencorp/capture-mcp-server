@@ -7,6 +7,7 @@ import { createHttpApp, httpAuthFromEnv, listenHost, type HttpAuth } from './htt
 import { McpOAuthProvider } from './auth/mcp-oauth.js';
 import { resolveRequestKeys } from './auth/request-keys.js';
 import { ApiClient } from './utils/api-client.js';
+import { PAYLOAD, sealToken } from './auth/__fixtures__/sealed-token.js';
 
 const OPERATOR_ENV = {
   SAM_GOV_API_KEY: 'operator-sam',
@@ -66,6 +67,113 @@ test('httpAuthFromEnv: HTTP refuses to start without authentication or an explic
   );
   assert.equal(oauth.mode, 'oauth');
   assert.equal(oauth.mode === 'oauth' && oauth.publicBaseUrl.href, 'https://capture.example.test/');
+});
+
+test('httpAuthFromEnv: key ring, budget and proxy-header settings', () => {
+  const base = { MCP_REQUIRE_OAUTH: 'true', OAUTH_TOKEN_SECRET: 'current', MCP_PUBLIC_BASE_URL: 'https://capture.example.test' };
+  const plain = httpAuthFromEnv(base, 3000);
+  assert.ok(plain.mode === 'oauth');
+  assert.equal(plain.previousTokenSecrets, undefined);
+  assert.equal(plain.clientIpHeader, undefined);
+
+  const rotating = httpAuthFromEnv(
+    { ...base, OAUTH_TOKEN_SECRET_PREVIOUS: ' old-1 , old-2,, ', MCP_IP_RPS: '7', MCP_IP_BURST: '30', MCP_CLIENT_IP_HEADER: 'X-Real-IP' },
+    3000,
+  );
+  assert.ok(rotating.mode === 'oauth');
+  assert.deepEqual(rotating.previousTokenSecrets, ['old-1', 'old-2']);
+  assert.equal(rotating.requestsPerSecond, 7);
+  assert.equal(rotating.requestBurst, 30);
+  assert.equal(rotating.clientIpHeader, 'x-real-ip');
+
+  assert.throws(() => httpAuthFromEnv({ ...base, MCP_CLIENT_IP_HEADER: 'x real ip' }, 3000), /MCP_CLIENT_IP_HEADER/);
+});
+
+test('oauth mode: tokens sealed with a retired secret work while it is listed, and stop when it is dropped', async () => {
+  const token = sealToken('retired-secret', { ...PAYLOAD, clientId: 'test-client', iat: Math.floor(Date.now() / 1000), exp: Math.floor(Date.now() / 1000) + 600 });
+  const rotating = await listen({ mode: 'oauth', publicBaseUrl: BASE, tokenSecret: SECRET, previousTokenSecrets: ['retired-secret'] });
+  const rotated = await listen({ mode: 'oauth', publicBaseUrl: BASE, tokenSecret: SECRET });
+  try {
+    assert.equal((await listTools(rotating.url, { authorization: `Bearer ${token}` })).status, 200);
+    assert.equal((await listTools(rotated.url, { authorization: `Bearer ${token}` })).status, 401);
+  } finally {
+    await rotating.close();
+    await rotated.close();
+  }
+});
+
+test('oauth mode: a token without the mcp:tools scope is refused', async () => {
+  const now = Math.floor(Date.now() / 1000);
+  const wrongScope = sealToken(SECRET, { ...PAYLOAD, scopes: ['other:scope'], iat: now, exp: now + 600 });
+  const server = await listen({ mode: 'oauth', publicBaseUrl: BASE, tokenSecret: SECRET });
+  try {
+    const res = await listTools(server.url, { authorization: `Bearer ${wrongScope}` });
+    assert.equal(res.status, 403);
+    assert.match(res.headers.get('www-authenticate') ?? '', /insufficient_scope/);
+    const ok = sealToken(SECRET, { ...PAYLOAD, iat: now, exp: now + 600 });
+    assert.equal((await listTools(server.url, { authorization: `Bearer ${ok}` })).status, 200);
+  } finally {
+    await server.close();
+  }
+});
+
+test('oauth mode: /mcp has a request budget per client address, spent before a token is checked', async () => {
+  const server = await listen({ mode: 'oauth', publicBaseUrl: BASE, tokenSecret: SECRET, requestsPerSecond: 1, requestBurst: 2 });
+  try {
+    const statuses: number[] = [];
+    for (let i = 0; i < 3; i++) statuses.push((await listTools(server.url, { authorization: 'Bearer bogus' })).status);
+    assert.deepEqual(statuses, [401, 401, 429]);
+    const limited = await listTools(server.url, { authorization: 'Bearer bogus' });
+    assert.equal(limited.status, 429);
+    assert.ok(Number(limited.headers.get('retry-after')) >= 1);
+    assert.equal(((await limited.json()) as any).error.message.includes('Too many requests'), true);
+  } finally {
+    await server.close();
+  }
+});
+
+test('oauth mode: the budget counts the address in the configured proxy header, not the shared peer', async () => {
+  const server = await listen({
+    mode: 'oauth', publicBaseUrl: BASE, tokenSecret: SECRET, requestsPerSecond: 1, requestBurst: 1, clientIpHeader: 'x-real-ip',
+  });
+  const as = (ip: string) => listTools(server.url, { authorization: 'Bearer bogus', 'x-real-ip': ip }).then(r => r.status);
+  try {
+    assert.equal(await as('203.0.113.1'), 401);
+    assert.equal(await as('203.0.113.1'), 429);
+    assert.equal(await as('203.0.113.2'), 401, 'another client has its own budget');
+    // Only the last entry of a list is trusted: it is the one the nearest proxy added.
+    assert.equal(await as('198.51.100.9, 203.0.113.2'), 429);
+  } finally {
+    await server.close();
+  }
+});
+
+test('oauth mode: the credential page carries a content security policy and is not cached', async () => {
+  const server = await listen({ mode: 'oauth', publicBaseUrl: BASE, tokenSecret: SECRET });
+  const expectLockedDown = (res: Response) => {
+    const csp = res.headers.get('content-security-policy') ?? '';
+    assert.match(csp, /default-src 'none'/);
+    assert.match(csp, /script-src 'sha256-/);
+    assert.match(csp, /frame-ancestors 'none'/);
+    assert.equal(res.headers.get('cache-control'), 'no-store');
+  };
+  try {
+    const page = await fetch(`${server.url}/oauth/authorize?request_id=abc`);
+    assert.equal(page.status, 200);
+    expectLockedDown(page);
+    const missing = await fetch(`${server.url}/oauth/authorize`);
+    assert.equal(missing.status, 400);
+    expectLockedDown(missing);
+    const rejected = await fetch(`${server.url}/oauth/authorize`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/x-www-form-urlencoded' },
+      body: new URLSearchParams({ request_id: 'unknown', 'enabled[]': 'sam', sam_api_key: 'k' }),
+    });
+    assert.equal(rejected.status, 400);
+    expectLockedDown(rejected);
+  } finally {
+    await server.close();
+  }
 });
 
 test('oauth mode: a provider-key header does not stand in for a bearer token', async () => {

@@ -88,7 +88,7 @@ MCP_TRANSPORT=http MCP_REQUIRE_OAUTH=true \
   node dist/server.js
 ```
 
-HTTP mode fails closed: it refuses to start without `MCP_REQUIRE_OAUTH=true` or the loopback opt-in. The root `Dockerfile` builds the hosted image (Railway builds it too) and puts the landing page, the policy pages and the documentation site at `/`, `/privacy-policy`, `/terms` and `/docs`. The server adds no limit to `/mcp`, so host it behind a proxy that does. For a team on AWS, [`docs/lambda.md`](./docs/lambda.md) deploys a Lambda function with S3-backed access keys. [Self-host](https://capture.mcp.blencorp.com/docs/self-host/) describes every mode.
+HTTP mode fails closed: it refuses to start without `MCP_REQUIRE_OAUTH=true` or the loopback opt-in. The root `Dockerfile` builds the hosted image (Railway builds it too) and puts the landing page, the policy pages and the documentation site at `/`, `/privacy-policy`, `/terms` and `/docs`. [Self-host](https://capture.mcp.blencorp.com/docs/self-host/) describes every mode.
 
 ### Configuration
 
@@ -96,7 +96,10 @@ HTTP mode fails closed: it refuses to start without `MCP_REQUIRE_OAUTH=true` or 
 |---|---|
 | `MCP_TRANSPORT` | `stdio` (default) or `http`. |
 | `MCP_REQUIRE_OAUTH`, `OAUTH_TOKEN_SECRET`, `MCP_PUBLIC_BASE_URL` | Hosted HTTP; all three are required together. |
-| `OAUTH_ACCESS_TOKEN_TTL_SECONDS`, `OAUTH_REFRESH_TOKEN_TTL_SECONDS` | Token lifetimes; the defaults are 30 and 90 days. |
+| `OAUTH_TOKEN_SECRET_PREVIOUS` | Comma-separated retired secrets (at most three) that still open tokens while you rotate `OAUTH_TOKEN_SECRET`. |
+| `OAUTH_ACCESS_TOKEN_TTL_SECONDS`, `OAUTH_REFRESH_TOKEN_TTL_SECONDS` | Token lifetimes; the defaults are 1 hour and 90 days, and neither may exceed 1 day and 90 days. |
+| `MCP_IP_RPS`, `MCP_IP_BURST` | The `/mcp` request budget for each client address: sustained requests per second (default 5) and burst (default 20). |
+| `MCP_CLIENT_IP_HEADER` | Behind a proxy, the header it overwrites with the client address (Railway: `x-real-ip`). Unset, the budget counts the connection's address. |
 | `MCP_ALLOW_INSECURE_HTTP` | `true` for single-user HTTP on loopback. |
 | `PORT`, `HOST` | The listening port and address. |
 | `SAM_GOV_API_KEY`, `TANGO_API_KEY`, `HIGHERGOV_API_KEY` | Keys for stdio and single-user HTTP only. |

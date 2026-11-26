@@ -26,7 +26,7 @@ labels: bug
 ## Environment
 
 - Server version: <!-- the version your MCP client shows, or git SHA -->
-- Transport: <!-- stdio | http (hosted or self-hosted) | lambda -->
+- Transport: <!-- stdio | http (hosted or self-hosted) -->
 - Node: <!-- node -v -->
 - OS / arch: <!-- e.g. Ubuntu 22.04 x64 -->
 - MCP client: <!-- Claude Desktop, Cursor, custom, etc. -->

@@ -61,13 +61,14 @@ for the one source the tool needs, and forgets it when the request ends.
 Because the keys live in the token:
 
 - **To add, replace, or remove a key, connect again.** Disconnect the connector in your assistant and
-  add it again, and enter the keys you want. The old token keeps working until it expires, so rotate
-  a key with its source too if you think it leaked.
-- **A token lasts 30 days, and the refresh token 90.** After that, your assistant asks you to connect
-  again.
+  add it again, and enter the keys you want. The old token keeps working until it expires (an hour for
+  the access token, 90 days for the refresh token), so rotate a key with its source too if you think
+  it leaked.
+- **A token lasts an hour, and the refresh token 90 days.** Your assistant renews the token itself,
+  but a refresh never extends the 90 days: after that, your assistant asks you to connect again.
 - **A server restart ends your assistant's ability to refresh.** The server remembers registered
-  assistants only in memory. Your access token keeps working until it expires, and then your assistant
-  has to connect again.
+  assistants only in memory. Your access token keeps working until it expires, which is within an
+  hour, and then your assistant has to connect again.
 
 ## When a key is missing, or wrong
 
@@ -77,9 +78,8 @@ Because the keys live in the token:
 
 ## Keep a key working
 
-- **Keep it private.** Never put a key in a prompt or in tool arguments. Most tools list an
-  `api_key` argument, which the server fills in for you. A key passed there is visible to your
-  assistant and its client, and is used instead of your connection's key.
+- **Keep it private.** Never put a key in a prompt or in tool arguments. No tool takes a key as an
+  argument, and a call that includes one is refused: the server adds your connection's key itself.
 - **Your keys are yours.** The server never uses a key from its own environment to answer a hosted
   caller, and never gives one caller's key to another.
 - **Where the key goes.** The server sends a key only to the source it belongs to, at that source's

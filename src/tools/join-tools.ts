@@ -10,10 +10,6 @@ export const joinTools = {
         inputSchema: {
           type: "object",
           properties: {
-            api_key: {
-              type: "string", 
-              description: "SAM.gov API key (optional; the server supplies your key)"
-            },
             uei: {
               type: "string",
               description: "Unique Entity Identifier (required)"
@@ -36,10 +32,6 @@ export const joinTools = {
         inputSchema: {
           type: "object",
           properties: {
-            api_key: {
-              type: "string",
-              description: "SAM.gov API key (optional; the server supplies your key)"
-            },
             opportunity_id: {
               type: "string", 
               description: "SAM.gov opportunity/notice ID"

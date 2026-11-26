@@ -132,10 +132,6 @@ export const tangoTools = {
         inputSchema: {
           type: "object",
           properties: {
-            api_key: {
-              type: "string",
-              description: "Tango API key (optional; the server supplies your key)"
-            },
             query: {
               type: "string",
               description: "Search query for contract description or title"
@@ -201,10 +197,6 @@ export const tangoTools = {
         inputSchema: {
           type: "object",
           properties: {
-            api_key: {
-              type: "string",
-              description: "Tango API key (optional; the server supplies your key)"
-            },
             query: {
               type: "string",
               description: "Search query for grant description or title"
@@ -259,10 +251,6 @@ export const tangoTools = {
         inputSchema: {
           type: "object",
           properties: {
-            api_key: {
-              type: "string",
-              description: "Tango API key (optional; the server supplies your key)"
-            },
             uei: {
               type: "string",
               description: "Unique Entity Identifier (UEI) - required"
@@ -285,10 +273,6 @@ export const tangoTools = {
         inputSchema: {
           type: "object",
           properties: {
-            api_key: {
-              type: "string",
-              description: "Tango API key (optional; the server supplies your key)"
-            },
             query: {
               type: "string",
               description: "Search query for opportunity title or description"
@@ -339,7 +323,6 @@ export const tangoTools = {
         inputSchema: {
           type: "object",
           properties: {
-            api_key: { type: "string", description: "Tango API key (optional; the server supplies your key)" },
             query: { type: "string", description: "Full-text search across title, protester, agency, solicitation, and case number" },
             agency: { type: "string", description: "Agency identifier (name, abbreviation, CGAC/FPDS code). Use '|' for multi-value OR." },
             protester: { type: "string", description: "Protester / petitioner name (vector search)" },
@@ -363,7 +346,6 @@ export const tangoTools = {
         inputSchema: {
           type: "object",
           properties: {
-            api_key: { type: "string", description: "Tango API key (optional; the server supplies your key)" },
             case_number: { type: "string", description: "Protest case number (the `case_number` field returned by search_tango_protests, e.g., 'b-422670')" }
           },
           required: ["case_number"]
@@ -375,7 +357,6 @@ export const tangoTools = {
         inputSchema: {
           type: "object",
           properties: {
-            api_key: { type: "string", description: "Tango API key (optional; the server supplies your key)" },
             query: { type: "string", description: "Search query (description, title, PIID)" },
             vendor_name: { type: "string", description: "Vendor / contractor name (recipient)" },
             vendor_uei: { type: "string", description: "Vendor UEI" },
@@ -401,7 +382,6 @@ export const tangoTools = {
         inputSchema: {
           type: "object",
           properties: {
-            api_key: { type: "string", description: "Tango API key (optional; the server supplies your key)" },
             idv_key: { type: "string", description: "Tango IDV key (from the `key` field of a search_tango_idvs result) — required" },
             include_child_idvs: { type: "boolean", description: "Include child IDVs (sub-IDIQs under this parent). Default: true" },
             include_task_orders: { type: "boolean", description: "Include task/delivery order awards issued against this IDV. Default: true" },
@@ -417,7 +397,6 @@ export const tangoTools = {
         inputSchema: {
           type: "object",
           properties: {
-            api_key: { type: "string", description: "Tango API key (optional; the server supplies your key)" },
             query: { type: "string", description: "Search query (vehicle name, program acronym, description)" },
             vehicle_type: { type: "string", description: "Vehicle (IDV) type code; use '|' for OR (e.g., 'GWAC|BPA')" },
             type_of_idc: { type: "string", description: "Type of IDC code; use '|' for OR" },
@@ -442,7 +421,6 @@ export const tangoTools = {
         inputSchema: {
           type: "object",
           properties: {
-            api_key: { type: "string", description: "Tango API key (optional; the server supplies your key)" },
             query: { type: "string", description: "Search query (description, title, PIID)" },
             vendor_name: { type: "string", description: "Vendor / recipient name" },
             vendor_uei: { type: "string", description: "Vendor UEI" },
@@ -463,7 +441,6 @@ export const tangoTools = {
         inputSchema: {
           type: "object",
           properties: {
-            api_key: { type: "string", description: "Tango API key (optional; the server supplies your key)" },
             uei: { type: "string", description: "Unique Entity Identifier (UEI) — required" },
             months: { type: "number", description: "Lookback window in months (e.g., 12, 36, 60). Default: 36" },
             period_grouping: { type: "string", description: "Bucket size: 'month', 'quarter', or 'year'. Default: 'quarter'" },
@@ -478,10 +455,6 @@ export const tangoTools = {
         inputSchema: {
           type: "object",
           properties: {
-            api_key: {
-              type: "string",
-              description: "Tango API key (optional; the server supplies your key)"
-            },
             agency: {
               type: "string",
               description: `Awarding agency FPDS code (e.g. ${COMMON_AGENCY_CODES})`

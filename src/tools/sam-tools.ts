@@ -10,10 +10,6 @@ export const samTools = {
         inputSchema: {
           type: "object",
           properties: {
-            api_key: {
-              type: "string",
-              description: "SAM.gov API key (optional; the server supplies your key)"
-            },
             query: {
               type: "string", 
               description: "Entity name to search (e.g., 'Boeing', 'Acme Corp')"
@@ -44,10 +40,6 @@ export const samTools = {
         inputSchema: {
           type: "object",
           properties: {
-            api_key: {
-              type: "string",
-              description: "SAM.gov API key (optional; the server supplies your key)"
-            },
             posted_from: {
               type: "string",
               description: "Start date for opportunities (MM/dd/yyyy format, required)"
@@ -82,10 +74,6 @@ export const samTools = {
         inputSchema: {
           type: "object", 
           properties: {
-            api_key: {
-              type: "string",
-              description: "SAM.gov API key (optional; the server supplies your key)"
-            },
             uei: {
               type: "string",
               description: "Unique Entity Identifier (required)"
@@ -100,10 +88,6 @@ export const samTools = {
         inputSchema: {
           type: "object",
           properties: {
-            api_key: {
-              type: "string", 
-              description: "SAM.gov API key (optional; the server supplies your key)"
-            },
             uei: {
               type: "string",
               description: "Unique Entity Identifier to check"

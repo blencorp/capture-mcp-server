@@ -8,11 +8,14 @@ import { resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 import {
+  AUTHORIZATION_PAGE_CSP,
+  DEFAULT_CLIENT_SCOPE,
   getOAuthPublicBaseUrl,
   getProviderKeysFromAuth,
   McpOAuthProvider,
   PROVIDER_IDS,
   renderAuthorizationPage,
+  SUPPORTED_SCOPES,
   type ProviderId,
   type ProviderKeys,
   type FormFieldErrors,
@@ -20,6 +23,7 @@ import {
 import { headerKeys, resolveRequestKeys, type KeySource } from './auth/request-keys.js';
 import { DOCS_PATH, docsHandler } from './docs.js';
 import { registerToolHandlers } from './mcp-handlers.js';
+import { RequestBudget } from './rate-limit.js';
 import { SERVER_NAME, SERVER_VERSION } from './version.js';
 
 /**
@@ -31,7 +35,20 @@ import { SERVER_NAME, SERVER_VERSION } from './version.js';
  *   environment keys are used. `src/server.ts` binds it to loopback unless HOST says otherwise.
  */
 export type HttpAuth =
-  | { mode: 'oauth'; publicBaseUrl: URL; tokenSecret: string; accessTokenTtlSeconds?: number; refreshTokenTtlSeconds?: number }
+  | {
+      mode: 'oauth';
+      publicBaseUrl: URL;
+      tokenSecret: string;
+      /** Retired secrets that still open tokens: a rotation in progress (see docs). */
+      previousTokenSecrets?: string[];
+      accessTokenTtlSeconds?: number;
+      refreshTokenTtlSeconds?: number;
+      /** The `/mcp` budget per client address: sustained requests per second, and the burst. */
+      requestsPerSecond?: number;
+      requestBurst?: number;
+      /** A header the proxy overwrites with the client address; unset, the address is the peer. */
+      clientIpHeader?: string;
+    }
   | { mode: 'insecure' };
 
 export type HttpAppOptions = {
@@ -53,6 +70,8 @@ const PRERENDERED_ROUTES: Record<string, string> = {
 const PORTAL_CSP =
   "default-src 'none'; script-src 'self'; style-src 'self'; img-src 'self'; connect-src 'self'; form-action 'self'; frame-ancestors 'none'; base-uri 'none'";
 const PAGE_CSP = "default-src 'none'; frame-ancestors 'none'; base-uri 'none'";
+const DEFAULT_REQUESTS_PER_SECOND = 5;
+const DEFAULT_REQUEST_BURST = 20;
 
 /** A top-level page load in a browser (not fetch, not an API client). */
 function isNavigation(req: Request): boolean {
@@ -88,6 +107,10 @@ export function httpAuthFromEnv(env: NodeJS.ProcessEnv, port: number): HttpAuth 
       mode: 'oauth',
       publicBaseUrl: getOAuthPublicBaseUrl(port, env),
       tokenSecret,
+      previousTokenSecrets: env.OAUTH_TOKEN_SECRET_PREVIOUS?.split(',').map(secret => secret.trim()).filter(Boolean),
+      clientIpHeader: parseHeaderName(env.MCP_CLIENT_IP_HEADER),
+      requestsPerSecond: parsePositiveInt(env.MCP_IP_RPS),
+      requestBurst: parsePositiveInt(env.MCP_IP_BURST),
       accessTokenTtlSeconds: parsePositiveInt(env.OAUTH_ACCESS_TOKEN_TTL_SECONDS),
       refreshTokenTtlSeconds: parsePositiveInt(env.OAUTH_REFRESH_TOKEN_TTL_SECONDS),
     };
@@ -106,6 +129,25 @@ function parsePositiveInt(value: string | undefined): number | undefined {
   if (value === undefined) return undefined;
   const parsed = parseInt(value, 10);
   return Number.isFinite(parsed) && parsed > 0 ? parsed : undefined;
+}
+
+function parseHeaderName(value: string | undefined): string | undefined {
+  const name = value?.trim().toLowerCase();
+  if (!name) return undefined;
+  if (!/^[a-z0-9-]+$/.test(name)) {
+    throw new Error(`MCP_CLIENT_IP_HEADER must be a header name such as x-real-ip, not "${value}".`);
+  }
+  return name;
+}
+
+/**
+ * The address a request's budget is counted against: the configured proxy header (its last entry,
+ * the one the nearest proxy added) or else the connection's address as Express resolves it.
+ */
+function clientAddress(req: Request, header: string | undefined): string {
+  const forwarded = header ? req.get(header)?.split(',').pop()?.trim() : undefined;
+  const address = forwarded || req.ip || req.socket.remoteAddress || 'unknown';
+  return address.replace(/^::ffff:(?=\d+\.\d+\.\d+\.\d+$)/i, ''); // IPv4-mapped IPv6 is the IPv4 client
 }
 
 const LOOPBACK_HOSTS = new Set(['127.0.0.1', '::1', 'localhost']);
@@ -208,16 +250,24 @@ export function createHttpApp({ auth, env = process.env, webRoot, docsRoot }: Ht
     const provider = new McpOAuthProvider({
       baseUrl: auth.publicBaseUrl,
       tokenSecret: auth.tokenSecret,
+      previousTokenSecrets: auth.previousTokenSecrets,
       accessTokenTtlSeconds: auth.accessTokenTtlSeconds,
       refreshTokenTtlSeconds: auth.refreshTokenTtlSeconds,
     });
 
+    // The credential page holds a request id in its URL and takes API keys: lock down what it may
+    // load and keep it out of caches.
+    const sendAuthorizationPage = (res: Response, status: number, html: string) => {
+      res.status(status).set({ 'Content-Security-Policy': AUTHORIZATION_PAGE_CSP, 'Cache-Control': 'no-store' }).type('html').send(html);
+    };
+
     app.get('/oauth/authorize', (req: Request, res: Response) => {
       const requestId = typeof req.query.request_id === 'string' ? req.query.request_id : '';
-      res
-        .status(requestId ? 200 : 400)
-        .type('html')
-        .send(renderAuthorizationPage(requestId, { error: requestId ? undefined : 'Authorization request is missing.' }));
+      sendAuthorizationPage(
+        res,
+        requestId ? 200 : 400,
+        renderAuthorizationPage(requestId, { error: requestId ? undefined : 'Authorization request is missing.' }),
+      );
     });
 
     app.post('/oauth/authorize', async (req: Request, res: Response) => {
@@ -227,7 +277,7 @@ export function createHttpApp({ auth, env = process.env, webRoot, docsRoot }: Ht
         res.redirect(302, await provider.completeAuthorization(requestId, keys));
       } catch (error) {
         const message = error instanceof Error ? error.message : 'Authorization failed';
-        res.status(400).type('html').send(renderAuthorizationPage(requestId, { error: message, checked, fieldErrors }));
+        sendAuthorizationPage(res, 400, renderAuthorizationPage(requestId, { error: message, checked, fieldErrors }));
       }
     });
 
@@ -237,17 +287,30 @@ export function createHttpApp({ auth, env = process.env, webRoot, docsRoot }: Ht
         issuerUrl: auth.publicBaseUrl,
         baseUrl: auth.publicBaseUrl,
         resourceServerUrl: mcpResourceUrl,
-        scopesSupported: ['mcp:tools'],
+        scopesSupported: [...SUPPORTED_SCOPES],
         resourceName: 'GovCon Capture',
       }),
     );
 
-    // Every tool call needs a verified bearer token. Provider-key headers are never a substitute:
-    // they say which upstream key to use, not who the caller is.
+    // Every tool call needs a verified bearer token holding the tools scope. Provider-key headers
+    // are never a substitute: they say which upstream key to use, not who the caller is. The
+    // budget comes first, so a flood of bad tokens is refused before any is opened.
+    const budget = new RequestBudget(
+      auth.requestsPerSecond ?? DEFAULT_REQUESTS_PER_SECOND,
+      auth.requestBurst ?? DEFAULT_REQUEST_BURST,
+    );
     gate = [
+      (req, res, next) => {
+        const retryAfter = budget.spend(clientAddress(req, auth.clientIpHeader));
+        if (retryAfter === 0) return next();
+        res
+          .status(429)
+          .set('Retry-After', String(retryAfter))
+          .json({ jsonrpc: '2.0', error: { code: -32029, message: 'Too many requests. Slow down and retry.' }, id: null });
+      },
       requireBearerAuth({
         verifier: provider,
-        requiredScopes: [],
+        requiredScopes: [DEFAULT_CLIENT_SCOPE],
         resourceMetadataUrl: getOAuthProtectedResourceMetadataUrl(mcpResourceUrl),
       }),
     ];
