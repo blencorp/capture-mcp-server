@@ -114,10 +114,10 @@ export function httpAuthFromEnv(env: NodeJS.ProcessEnv, port: number): HttpAuth 
       tokenSecret,
       previousTokenSecrets: env.OAUTH_TOKEN_SECRET_PREVIOUS?.split(',').map(secret => secret.trim()).filter(Boolean),
       clientIpHeader: parseHeaderName(env.MCP_CLIENT_IP_HEADER),
-      requestsPerSecond: parsePositiveInt(env.MCP_IP_RPS),
-      requestBurst: parsePositiveInt(env.MCP_IP_BURST),
-      accessTokenTtlSeconds: parsePositiveInt(env.OAUTH_ACCESS_TOKEN_TTL_SECONDS),
-      refreshTokenTtlSeconds: parsePositiveInt(env.OAUTH_REFRESH_TOKEN_TTL_SECONDS),
+      requestsPerSecond: parsePositiveInt('MCP_IP_RPS', env.MCP_IP_RPS),
+      requestBurst: parsePositiveInt('MCP_IP_BURST', env.MCP_IP_BURST),
+      accessTokenTtlSeconds: parsePositiveInt('OAUTH_ACCESS_TOKEN_TTL_SECONDS', env.OAUTH_ACCESS_TOKEN_TTL_SECONDS),
+      refreshTokenTtlSeconds: parsePositiveInt('OAUTH_REFRESH_TOKEN_TTL_SECONDS', env.OAUTH_REFRESH_TOKEN_TTL_SECONDS),
     };
   }
   if (env.MCP_ALLOW_INSECURE_HTTP === 'true') {
@@ -130,10 +130,13 @@ export function httpAuthFromEnv(env: NodeJS.ProcessEnv, port: number): HttpAuth 
   );
 }
 
-function parsePositiveInt(value: string | undefined): number | undefined {
-  if (value === undefined) return undefined;
-  const parsed = parseInt(value, 10);
-  return Number.isFinite(parsed) && parsed > 0 ? parsed : undefined;
+/** Unset or empty is "use the default"; anything else must be a whole number above zero, or startup fails. */
+function parsePositiveInt(name: string, value: string | undefined): number | undefined {
+  if (value === undefined || value.trim() === '') return undefined;
+  if (!/^\d+$/.test(value.trim()) || Number(value) < 1) {
+    throw new Error(`${name} must be a whole number above zero, not "${value}".`);
+  }
+  return Number(value);
 }
 
 function parseHeaderName(value: string | undefined): string | undefined {

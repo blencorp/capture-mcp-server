@@ -88,6 +88,10 @@ test('httpAuthFromEnv: key ring, budget and proxy-header settings', () => {
   assert.equal(rotating.clientIpHeader, 'x-real-ip');
 
   assert.throws(() => httpAuthFromEnv({ ...base, MCP_CLIENT_IP_HEADER: 'x real ip' }, 3000), /MCP_CLIENT_IP_HEADER/);
+  // A mistyped number is a startup error, not a silent fall back to the default.
+  for (const bad of ['0.5', 'abc', '0', '-3']) {
+    assert.throws(() => httpAuthFromEnv({ ...base, MCP_IP_RPS: bad }, 3000), /MCP_IP_RPS/, bad);
+  }
 });
 
 test('oauth mode: tokens sealed with a retired secret work while it is listed, and stop when it is dropped', async () => {

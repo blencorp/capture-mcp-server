@@ -39,3 +39,8 @@ test('a zone id or an invalid address cannot mint extra buckets or crash', () =>
   assert.equal(bucketKey('not-an-ip'), 'not-an-ip');
   assert.equal(bucketKey(':::'), ':::');
 });
+
+test('a trusted header whose value is not an address is ignored, so it cannot mint buckets', () => {
+  assert.equal(clientIp(req('100.64.0.9', { 'x-real-ip': 'x'.repeat(5000) }), 'x-real-ip'), '100.64.0.9');
+  assert.equal(clientIp(req('100.64.0.9', { 'x-real-ip': 'not-an-ip' }), 'x-real-ip'), '100.64.0.9');
+});

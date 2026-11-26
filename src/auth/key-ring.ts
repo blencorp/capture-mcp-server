@@ -18,6 +18,9 @@ export class KeyRing {
   private readonly keys: Buffer[];
 
   constructor(secret: string, previousSecrets: string[] = []) {
+    // Previous secrets are trimmed, so the current one is too: a secret with a stray newline must
+    // keep opening the same tokens once it moves to the previous list.
+    secret = secret.trim();
     const previous = [...new Set(previousSecrets.map(value => value.trim()))].filter(value => value && value !== secret);
     if (previous.length > MAX_PREVIOUS_SECRETS) {
       throw new Error(`At most ${MAX_PREVIOUS_SECRETS} previous token secrets are accepted`);

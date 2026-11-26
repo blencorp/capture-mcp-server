@@ -1,5 +1,5 @@
 import type { IncomingMessage } from 'node:http';
-import { isIPv4, isIPv6 } from 'node:net';
+import { isIP, isIPv4, isIPv6 } from 'node:net';
 
 // Client-address helpers, ported from uspto-mcp-server (src/server/ipRateLimiter.ts).
 
@@ -19,7 +19,9 @@ export function clientIp(req: IncomingMessage, trustedHeader?: string): string {
   const entries = (Array.isArray(value) ? value.join(',') : value ?? '')
     .split(',').map(s => s.trim()).filter(Boolean);
   const candidate = entries[entries.length - 1];
-  return candidate ? normalize(candidate) : peer;
+  // A value that is not an address (a misnamed header, a proxy that passes junk through) would mint
+  // an unbounded bucket key per request: count the peer instead.
+  return candidate && isIP(candidate) ? normalize(candidate) : peer;
 }
 
 /** The 8 groups of an IPv6 address (a dotted IPv4 tail counts as two), or undefined if it is not one. */

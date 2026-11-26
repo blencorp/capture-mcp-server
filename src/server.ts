@@ -35,6 +35,9 @@ async function runHttpMode(): Promise<void> {
   const app = createHttpApp({ auth });
 
   const onListening = () => {
+    if (auth.mode === 'oauth' && !auth.clientIpHeader) {
+      console.error('WARNING: MCP_CLIENT_IP_HEADER is not set, so per-address limits count the connection peer; behind a proxy (Railway: x-real-ip) that is the proxy.');
+    }
     console.error(`Capture MCP Server running in HTTP mode on ${host ?? '[::]'}:${HTTP_PORT} (auth: ${auth.mode})`);
     if (auth.mode === 'insecure') {
       console.error('WARNING: no authentication; serving this process\'s API keys on loopback only.');
