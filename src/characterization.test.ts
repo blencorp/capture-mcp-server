@@ -291,7 +291,7 @@ test('handshake: initialize, initialized, ping and an unknown method on a bare P
     // D3: the SDK's stateless leg answers with one SSE `message` event where v1 answered with JSON.
     assert.match(init.headers.get('content-type') ?? '', /^text\/event-stream/);
     assert.deepEqual(await rpcMessage(init), {
-      result: { protocolVersion: '2025-06-18', capabilities: { tools: { listChanged: true } }, serverInfo: { name: 'Capture MCP Server', version: SERVER_VERSION } },
+      result: { protocolVersion: '2025-06-18', capabilities: { tools: { listChanged: false } }, serverInfo: { name: 'Capture MCP Server', version: SERVER_VERSION } },
       jsonrpc: '2.0',
       id: 1,
     });
@@ -324,7 +324,7 @@ test('stdio: initialize, tools/list and a tool call over the entry point', async
   try {
     const init = await send({ id: 1, method: 'initialize', params: { protocolVersion: '2025-06-18', capabilities: {}, clientInfo: { name: 'characterization', version: '1' } } });
     assert.equal(init.result.serverInfo.name, 'Capture MCP Server');
-    assert.deepEqual(init.result.capabilities, { tools: { listChanged: true } });
+    assert.deepEqual(init.result.capabilities, { tools: { listChanged: false } });
     await send({ method: 'notifications/initialized' });
     const listed = await send({ id: 2, method: 'tools/list', params: {} });
     assert.equal(listed.result.tools[0].name, 'lookup_reference_code');

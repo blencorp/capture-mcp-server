@@ -79,7 +79,11 @@ async function callTool(catalog: ToolCatalog, request: RequestKeys, name: string
  */
 export async function buildMcpServer(request: RequestKeys): Promise<McpServer> {
   const catalog = await ToolCatalog.create(request.config);
-  const server = new McpServer({ name: SERVER_NAME, version: SERVER_VERSION }, { capabilities: { tools: {} } });
+  const server = new McpServer(
+    { name: SERVER_NAME, version: SERVER_VERSION },
+    // The tool list is fixed for the life of a request, and there is no session to tell about changes.
+    { capabilities: { tools: { listChanged: false } } },
+  );
 
   for (const tool of catalog.tools) {
     server.registerTool(
