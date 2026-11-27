@@ -5,7 +5,7 @@
 Please **do not file public GitHub issues for security reports**. Instead, open a private GitHub
 Security Advisory:
 
-> <https://github.com/blencorp/capture-mcp-server/security/advisories/new>
+> <https://github.com/blen-labs/capture-mcp-server/security/advisories/new>
 
 If that is not available, write to **opensource@blencorp.com**.
 

@@ -33,3 +33,22 @@ test('desktop manifest exposes every provider key and complete tool catalog', as
   assert.equal(runtimeNames.length, 34);
   assert.deepEqual(manifestNames, runtimeNames);
 });
+
+test('the published package and the desktop bundle are consistent', () => {
+  const packageJson = readJson(new URL('../package.json', import.meta.url));
+  const manifest = readJson(new URL('../manifest.json', import.meta.url));
+
+  // The bundle's name is the package's unscoped name; both carry one license and one Node range.
+  assert.equal(packageJson.name, `@blen/${manifest.name}`);
+  assert.equal(manifest.license, packageJson.license);
+  assert.equal(manifest.compatibility.runtimes.node, packageJson.engines.node);
+
+  // The bundle starts the same file the package's bin does.
+  assert.equal(manifest.server.entry_point, packageJson.bin[manifest.name]);
+  assert.equal(manifest.server.entry_point, packageJson.main);
+  assert.deepEqual(manifest.server.mcp_config.args, [`\${__dirname}/${manifest.server.entry_point}`]);
+
+  // Public publication with provenance, and only the files users need (never tests or sources).
+  assert.deepEqual(packageJson.publishConfig, { access: 'public', provenance: true });
+  assert.deepEqual(packageJson.files, ['dist', 'README.md', 'LICENSE', 'NOTICE', 'CHANGELOG.md', 'SECURITY.md']);
+});

@@ -1,6 +1,6 @@
 # Capture MCP
 
-[![CI](https://github.com/blencorp/capture-mcp-server/actions/workflows/ci.yml/badge.svg)](https://github.com/blencorp/capture-mcp-server/actions/workflows/ci.yml)
+[![CI](https://github.com/blen-labs/capture-mcp-server/actions/workflows/ci.yml/badge.svg)](https://github.com/blen-labs/capture-mcp-server/actions/workflows/ci.yml)
 [![license: Apache-2.0](https://img.shields.io/badge/license-Apache--2.0-blue.svg)](./LICENSE)
 [![Node](https://img.shields.io/badge/node-24%20%7C%2026-339933.svg)](https://nodejs.org/)
 
@@ -46,23 +46,16 @@ Keys are personal. The server never uses a key from its own environment to answe
 
 ## Run it on your own computer
 
-The server is not published to npm. Clone the repository (Node.js 24.11 or later, or 26, and pnpm 12):
+Easiest: download `capture-mcp-server.mcpb` from the [latest release](https://github.com/blen-labs/capture-mcp-server/releases/latest) and open it in Claude Desktop. It asks for your keys when you install it.
 
-```bash
-git clone https://github.com/blencorp/capture-mcp-server.git
-cd capture-mcp-server
-pnpm install --frozen-lockfile
-pnpm build
-```
-
-Then add it to your assistant's MCP configuration, for example Claude Desktop's `claude_desktop_config.json` (**Settings → Developer → Edit Config**):
+Or run the npm package ([`@blen/capture-mcp-server`](https://www.npmjs.com/package/@blen/capture-mcp-server), Node.js 24.11 or later, or 26) by adding it to your assistant's MCP configuration, for example Claude Desktop's `claude_desktop_config.json` (**Settings → Developer → Edit Config**):
 
 ```json
 {
   "mcpServers": {
     "capture": {
-      "command": "node",
-      "args": ["/ABSOLUTE/PATH/TO/capture-mcp-server/dist/server.js"],
+      "command": "npx",
+      "args": ["-y", "@blen/capture-mcp-server"],
       "env": {
         "SAM_GOV_API_KEY": "your-sam-gov-key",
         "TANGO_API_KEY": "your-tango-key",
@@ -73,7 +66,7 @@ Then add it to your assistant's MCP configuration, for example Claude Desktop's 
 }
 ```
 
-Every key is optional. `pnpm dev` runs the server from source.
+Every key is optional. To work on the server itself, clone the repository (pnpm 12), run `pnpm install --frozen-lockfile && pnpm build`, and point `command`/`args` at `node` and `/ABSOLUTE/PATH/TO/capture-mcp-server/dist/server.js`; `pnpm dev` runs it from source. `pnpm mcpb:prepare && pnpm mcpb:pack` builds the desktop bundle the way a release does.
 
 ## Self-hosting (remote HTTP)
 
@@ -104,6 +97,7 @@ HTTP mode fails closed: it refuses to start without `MCP_REQUIRE_OAUTH=true` or 
 | `MCP_CLIENT_IP_HEADER` | Behind a proxy, the header it overwrites with the client address (Railway: `x-real-ip`). Set `x-real-ip` on Railway. Unset, the limiters count the connection's address, which behind a proxy is the proxy. Applies to `/mcp` and the OAuth endpoints. |
 | `MCP_ALLOW_INSECURE_HTTP` | `true` for single-user HTTP on loopback. |
 | `PORT`, `HOST` | The listening port and address. |
+| `RAILWAY_GIT_COMMIT_SHA` | Set by Railway on deployments built from GitHub; `/health` reports it as `commit`, or `null` when unset or not a full SHA. Do not set it yourself. |
 | `SAM_GOV_API_KEY`, `TANGO_API_KEY`, `HIGHERGOV_API_KEY` | Keys for stdio and single-user HTTP only. |
 
 ## Development

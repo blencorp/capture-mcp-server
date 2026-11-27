@@ -23,11 +23,11 @@
   ],
   "repository": {
     "type": "git",
-    "url": "https://github.com/blencorp/capture-mcp-server.git"
+    "url": "https://github.com/blen-labs/capture-mcp-server.git"
   },
-  "homepage": "https://github.com/blencorp/capture-mcp-server",
-  "documentation": "https://github.com/blencorp/capture-mcp-server#readme",
-  "support": "https://github.com/blencorp/capture-mcp-server/issues",
+  "homepage": "https://github.com/blen-labs/capture-mcp-server",
+  "documentation": "https://github.com/blen-labs/capture-mcp-server#readme",
+  "support": "https://github.com/blen-labs/capture-mcp-server/issues",
   "compatibility": {
     "claude_desktop": ">=0.10.0",
     "platforms": [

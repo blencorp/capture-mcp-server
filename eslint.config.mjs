@@ -7,7 +7,7 @@ import tseslint from 'typescript-eslint';
 // server code, where an unhandled promise can drop an error or leave a request hanging.
 export default tseslint.config(
   // site/ (the documentation site) is its own pnpm project.
-  { ignores: ['dist/**', 'node_modules/**', 'fixtures/**', 'docs/**', 'site/**', '.local/**'] },
+  { ignores: ['dist/**', 'node_modules/**', 'fixtures/**', 'docs/**', 'site/**', '.local/**', 'mcpb-build/**'] },
 
   js.configs.recommended,
   ...tseslint.configs.recommended,

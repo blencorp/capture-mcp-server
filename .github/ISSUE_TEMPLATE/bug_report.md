@@ -38,4 +38,4 @@ labels: bug
 ```
 ```
 
-> **Security issue?** Please use a GitHub Security Advisory instead — see [SECURITY.md](https://github.com/blencorp/capture-mcp-server/blob/main/SECURITY.md).
+> **Security issue?** Please use a GitHub Security Advisory instead — see [SECURITY.md](https://github.com/blen-labs/capture-mcp-server/blob/main/SECURITY.md).

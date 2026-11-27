@@ -61,5 +61,5 @@ the automated suite above; the screen-reader and browser-zoom passes are outstan
 
 ## Reporting a problem
 
-Open an [issue](https://github.com/blencorp/capture-mcp-server/issues) with the page, what you
+Open an [issue](https://github.com/blen-labs/capture-mcp-server/issues) with the page, what you
 tried, your browser and assistive technology. Problems that block access are treated as bugs.

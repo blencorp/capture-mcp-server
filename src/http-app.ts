@@ -32,7 +32,7 @@ import { DOCS_PATH, docsHandler } from './docs.js';
 import { buildMcpServer } from './mcp-server.js';
 import { RequestBudget } from './rate-limit.js';
 import { withRequestSignal } from './utils/request-signal.js';
-import { SERVER_VERSION } from './version.js';
+import { readBuildInfo, type BuildInfo } from './build-info.js';
 
 /**
  * How the HTTP transport authenticates callers.
@@ -66,10 +66,12 @@ export type HttpAuth =
 export type HttpAppOptions = {
   auth: HttpAuth;
   env?: NodeJS.ProcessEnv;
-  /** The built landing and policy pages (`pnpm build:web`). Default: `dist/web` in the working directory. */
+  /** The built landing and policy pages (`pnpm build:web`). Default: `dist/web` of this package, wherever the process was started. */
   webRoot?: string;
   /** The built documentation site (`pnpm --dir site build`). Default: `docs-site/`, a sibling of `dist/`. */
   docsRoot?: string;
+  /** What `/health` reports as running; server.ts reads it from the platform environment at startup. Omitted: this version with no commit. */
+  buildInfo?: BuildInfo;
 };
 
 /** Pages of the browser app (web/src/main.tsx), served as index.html. */
@@ -180,7 +182,7 @@ export function listenHost(auth: HttpAuth, env: NodeJS.ProcessEnv): string | und
   return env.HOST || undefined;
 }
 
-export function createHttpApp({ auth, env = process.env, webRoot, docsRoot }: HttpAppOptions): express.Express {
+export function createHttpApp({ auth, env = process.env, webRoot, docsRoot, buildInfo = readBuildInfo({}) }: HttpAppOptions): express.Express {
   const app = express();
 
   if (auth.mode === 'insecure') {
@@ -197,12 +199,12 @@ export function createHttpApp({ auth, env = process.env, webRoot, docsRoot }: Ht
   }
 
   app.get('/health', (_req: Request, res: Response) => {
-    res.json({ status: 'healthy', transport: 'http', version: SERVER_VERSION, authMode: auth.mode });
+    res.json({ status: 'healthy', transport: 'http', authMode: auth.mode, ...buildInfo });
   });
 
   // The landing page, the policy pages and the documentation site are public and static. They
   // come before the OAuth and MCP routes and share nothing with them.
-  const web = webRoot ?? resolve('dist/web');
+  const web = webRoot ?? fileURLToPath(new URL('../dist/web/', import.meta.url));
   app.use('/assets', express.static(resolve(web, 'assets'), { immutable: true, maxAge: '1y', index: false }));
   const docs = docsHandler(docsRoot ?? fileURLToPath(new URL('../docs-site/', import.meta.url)));
   if (docs) {

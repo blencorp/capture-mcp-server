@@ -8,8 +8,9 @@ export const partial = 'capture-mcp-server';
 // MCP_PUBLIC_BASE_URL, which stay set as service variables in Railway.
 export default defineRailway(() => {
   const captureMcpServer = service('capture-mcp-server', {
-    // The repository is linked, with no branch: deploy-railway.yml deploys with `railway up` after CI.
-    source: github('blencorp/capture-mcp-server'),
+    // Railway builds and deploys main from GitHub, so the release commit (the one the version tag
+    // points to) is what runs, and RAILWAY_GIT_COMMIT_SHA, which /health reports, is set.
+    source: github('blen-labs/capture-mcp-server', { branch: 'main' }),
     // Railway keeps its Railpack default unless the Dockerfile path is set too. The image sets
     // MCP_TRANSPORT=http; the start command matches its CMD.
     build: { buildEnvironment: 'V3', builder: 'DOCKERFILE', dockerfilePath: 'Dockerfile' },
@@ -23,7 +24,7 @@ export default defineRailway(() => {
 
   return project('capture-map-server', {
     // Secrets stay set in Railway. Without this, IaC would manage every service variable.
-    // @ts-expect-error -- the railway 3.17.0 types lack project `variables`; the CLI reads it.
+    // @ts-expect-error -- the railway 3.18.0 types lack project `variables`; the CLI reads it.
     variables: { managed: false },
     resources: [captureMcpServer],
   });

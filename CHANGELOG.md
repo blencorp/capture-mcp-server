@@ -6,6 +6,11 @@ Release workflow, which tags the version; this file is written by hand.
 ## [Unreleased]
 
 ### Added
+- The package is published to npm as `@blen/capture-mcp-server` (with a `capture-mcp-server` bin and
+  provenance), and each release attaches the Claude Desktop bundle, `capture-mcp-server.mcpb`, built
+  in an isolated directory (`pnpm mcpb:prepare`, `pnpm mcpb:pack`). CI installs the tarball and unpacks
+  the bundle in clean directories and runs each over stdio.
+- `/health` reports the running `commit` (Railway's `RAILWAY_GIT_COMMIT_SHA`, `null` when unset) beside the `version`.
 - A landing page, prerendered privacy policy and terms pages, and a not-found page, from the shared
   BLEN portal kit.
 - A documentation site at `/docs` (connect guides, key setup, example questions, tool reference).
@@ -14,6 +19,11 @@ Release workflow, which tags the version; this file is written by hand.
   accessibility job and an image check; a scheduled dependency audit; Dependabot.
 
 ### Changed
+- The release pushes its version commit and tag in one atomic push and fails, instead of rebasing, when `main`
+  moved during the run, so a rejected push can no longer leave `main` bumped without a tag. Railway builds
+  `main` from GitHub, so the live service runs the release commit and reports the released version
+  (`deploy-railway.yml` is removed). `pnpm package` and `pnpm package:dxt` are removed: the old
+  `pnpm package` reinstalled the repository's own `node_modules` in place.
 - **Breaking:** the server moves to MCP SDK 2 (`@modelcontextprotocol/server` 2.4.0) and the 2026-07-28
   protocol revision, and serves HTTP statelessly (`createMcpHandler`, a fresh server per request;
   clients that predate the revision get the SDK's stateless legacy leg). Every tool declares a title,
@@ -58,6 +68,8 @@ Release workflow, which tags the version; this file is written by hand.
 ## [1.0.2] - 2026-08-27
 
 ### Fixed
+- The landing page, policy pages and assets are found relative to the installed package, not the directory the
+  server was started from, so `npx @blen/capture-mcp-server` in HTTP mode no longer answers 503 for them.
 - Resolve bare PIIDs by award group in `get_award_detail` and `aggregate_contracts` (USAspending).
 
 ## [1.0.1] - 2026-08-24
@@ -83,8 +95,8 @@ Release workflow, which tags the version; this file is written by hand.
 - HigherGov contract, opportunity, document and forecast lookups now match the real API.
 - The default OAuth client-registration scope is `mcp:tools`.
 
-[Unreleased]: https://github.com/blencorp/capture-mcp-server/compare/v2.0.0...HEAD
-[2.0.0]: https://github.com/blencorp/capture-mcp-server/compare/v1.0.2...v2.0.0
-[1.0.2]: https://github.com/blencorp/capture-mcp-server/compare/v1.0.1...v1.0.2
-[1.0.1]: https://github.com/blencorp/capture-mcp-server/compare/v1.0.0...v1.0.1
-[1.0.0]: https://github.com/blencorp/capture-mcp-server/releases/tag/v1.0.0
+[Unreleased]: https://github.com/blen-labs/capture-mcp-server/compare/v2.0.0...HEAD
+[2.0.0]: https://github.com/blen-labs/capture-mcp-server/compare/v1.0.2...v2.0.0
+[1.0.2]: https://github.com/blen-labs/capture-mcp-server/compare/v1.0.1...v1.0.2
+[1.0.1]: https://github.com/blen-labs/capture-mcp-server/compare/v1.0.0...v1.0.1
+[1.0.0]: https://github.com/blen-labs/capture-mcp-server/releases/tag/v1.0.0
