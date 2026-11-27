@@ -1,4 +1,5 @@
 import axios, { type AxiosResponse, type AxiosError } from 'axios';
+import { requestSignal } from './request-signal.js';
 
 export interface ApiResponse<T = any> {
   data: T;
@@ -67,6 +68,7 @@ export class ApiClient {
         {
           params,
           timeout: 30000,
+          signal: requestSignal(),
           headers: {
             'Accept': 'application/json',
             'User-Agent': 'Capture-MCP/1.0.0'
@@ -95,6 +97,7 @@ export class ApiClient {
         data,
         {
           timeout: 30000,
+          signal: requestSignal(),
           headers: {
             'Content-Type': 'application/json',
             'Accept': 'application/json',
@@ -124,6 +127,7 @@ export class ApiClient {
         {
           params,
           timeout: 30000,
+          signal: requestSignal(),
           headers: {
             'Accept': 'application/json',
             'User-Agent': 'Capture-MCP/1.0.0'
@@ -153,6 +157,7 @@ export class ApiClient {
         {
           params,
           timeout: 30000,
+          signal: requestSignal(),
           headers: {
             'Accept': 'application/json',
             'X-API-Key': apiKey,
@@ -183,6 +188,7 @@ export class ApiClient {
         data,
         {
           timeout: 30000,
+          signal: requestSignal(),
           headers: {
             'Content-Type': 'application/json',
             'Accept': 'application/json',
@@ -215,6 +221,7 @@ export class ApiClient {
           // HigherGov's current public OAS requires api_key as a query parameter.
           params: { ...params, api_key: apiKey },
           timeout: 30000,
+          signal: requestSignal(),
           headers: {
             'Accept': 'application/json',
             'User-Agent': 'Capture-MCP/1.0.0'
@@ -262,6 +269,10 @@ export class ApiClient {
 
   private static handleError(error: AxiosError, secrets: unknown[] = []): ApiResponse {
     const redact = (text: string) => this.redactSecrets(text, secrets);
+    if (axios.isCancel(error)) {
+      // The MCP client cancelled the request that needed this call.
+      return { data: null, success: false, error: 'Request cancelled' };
+    }
     if (error.response) {
       // API returned an error response
       const status = error.response.status;

@@ -8,7 +8,7 @@
 //   pnpm docs:reference --check    # exit 1 if the file is out of date
 import { readFileSync, writeFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
-import type { Tool } from '@modelcontextprotocol/sdk/types.js';
+import type { Tool } from '@modelcontextprotocol/server';
 import { highergovTools } from '../src/tools/highergov-tools.js';
 import { joinTools } from '../src/tools/join-tools.js';
 import { referenceTools } from '../src/tools/reference-tools.js';

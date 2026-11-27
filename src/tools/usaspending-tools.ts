@@ -1,4 +1,4 @@
-import { type Tool } from "@modelcontextprotocol/sdk/types.js";
+import type { Tool } from '@modelcontextprotocol/server';
 import { ApiClient } from '../utils/api-client.js';
 import { describeSetAside, validateSetAsideCodes, lookupReferenceCode } from '../utils/fpds-codes.js';
 import { listEnvelope } from '../utils/envelope.js';
