@@ -42,10 +42,11 @@ runs no model and no model-written code: the assistant picks a tool and fills in
   `bad_request`, and injects the key as `api_key`. No tool schema advertises `api_key`, so a caller
   cannot supply one. There is no module-level registry, so concurrent requests never see each other's
   tool sets.
-- List tools share one envelope (`src/utils/envelope.ts`): `filters.upstream` against
-  `filters.client_side`, a `total` that is `null` when it cannot be trusted, `count_unit`,
-  `date_field` and one `next_cursor` shape. `docs/upstream-api-notes.md` records which upstream
-  parameters are verified to bind.
+- The search tools listed in the SDK reference (`docs/sdk-reference.md`) share one list envelope
+  (`src/utils/envelope.ts`): `filters.upstream` against `filters.client_side`, a `total` that is
+  `null` when it cannot be trusted, `count_unit`, `date_field` and one `next_cursor` shape. Other
+  tools that return records keep their own shapes; the SDK reference lists them.
+  `docs/upstream-api-notes.md` records which upstream parameters are verified to bind.
 
 ## Keys and authentication
 
@@ -60,9 +61,11 @@ runs no model and no model-written code: the assistant picks a tool and fills in
 - Access tokens last 1 hour by default and refresh tokens 90 days; a refresh never extends the 90
   days. Revocation is in memory, per instance, and so best-effort. Rotate the secret to revoke
   every token (see "Rotating the secret" in the Self-host guide).
-- `POST /mcp` always needs a verified bearer token with the `mcp:tools` scope, after a per-address
-  request budget (`src/rate-limit.ts`). The client address comes from `MCP_CLIENT_IP_HEADER` or the
-  connection (`src/client-ip.ts`), and IPv6 counts per /64.
+- In OAuth mode (the hosted server), `POST /mcp` needs a verified bearer token with the
+  `mcp:tools` scope, after a per-address request budget (`src/rate-limit.ts`). The client address
+  comes from `MCP_CLIENT_IP_HEADER` or the connection (`src/client-ip.ts`), and IPv6 counts per /64.
+  Single-user HTTP (`MCP_ALLOW_INSECURE_HTTP=true`) has neither the bearer check nor the budget: it
+  is protected only by binding to loopback, and any local caller can use the operator's keys.
 
 ## Calling the sources
 
