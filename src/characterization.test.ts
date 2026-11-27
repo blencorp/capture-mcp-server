@@ -8,7 +8,7 @@ import { createHash } from 'node:crypto';
 import { readFileSync } from 'node:fs';
 import { createInterface } from 'node:readline';
 import type { AddressInfo } from 'node:net';
-import type { Server as HttpServer } from 'node:http';
+import { request as httpRequest, type Server as HttpServer } from 'node:http';
 
 import { createHttpApp, type HttpAuth } from './http-app.js';
 import { PAYLOAD, sealToken } from './auth/__fixtures__/sealed-token.js';
@@ -268,6 +268,10 @@ test('OAuth errors: token, authorize and revoke answer with RFC 6749 error bodie
     assert.equal(missing.status, 400);
     assert.equal(((await missing.json()) as any).error, 'invalid_request');
 
+    const malformed = await fetch(`${url}/token`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: '{nope' });
+    assert.equal(malformed.status, 400);
+    assert.equal(((await malformed.json()) as any).error, 'invalid_request');
+
     const revoke = await fetch(`${url}/revoke`, formBody({ token: 'a', client_id: 'nope' }));
     assert.equal(revoke.status, 400);
     assert.deepEqual(await revoke.json(), { error: 'invalid_client', error_description: 'Invalid client_id' });
@@ -440,9 +444,26 @@ test('/mcp D4: a malformed, oversized or mistyped body is a JSON-RPC error, not 
     assert.equal(malformed.status, 400);
     assert.deepEqual(await malformed.json(), { jsonrpc: '2.0', error: { code: -32700, message: 'Parse error: Invalid JSON' }, id: null });
 
-    const oversized = await post(JSON.stringify({ jsonrpc: '2.0', id: 1, method: 'tools/list', padding: 'x'.repeat(1024 * 1024) }));
+    // Announce more than the 1 MiB cap but send only a little: the cap answers 413 from the length alone. The server answers
+    // and closes before the body is done, so the client's write may fail with EPIPE or ECONNRESET; that is not a failure.
+    const oversized = await new Promise<{ status: number; body: string }>((resolve, reject) => {
+      const req = httpRequest(`${url}/mcp`, {
+        method: 'POST',
+        headers: { 'content-type': 'application/json', accept: 'application/json, text/event-stream', 'content-length': String(2 * 1024 * 1024) },
+      }, res => {
+        let body = '';
+        res.setEncoding('utf8');
+        res.on('data', chunk => (body += chunk));
+        res.on('end', () => { resolve({ status: res.statusCode ?? 0, body }); req.destroy(); });
+      });
+      req.on('error', error => {
+        const code = (error as NodeJS.ErrnoException).code;
+        if (code !== 'EPIPE' && code !== 'ECONNRESET') reject(error);
+      });
+      req.write('{"jsonrpc":"2.0"');
+    });
     assert.equal(oversized.status, 413);
-    assert.equal(((await oversized.json()) as any).error.code, -32000);
+    assert.equal(JSON.parse(oversized.body).error.code, -32000);
 
     const mistyped = await post('{}', { 'content-type': 'text/plain' });
     assert.equal(mistyped.status, 415);
