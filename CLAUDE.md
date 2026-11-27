@@ -169,11 +169,11 @@ Server designed for Claude Desktop integration via MCP configuration:
 
 Each line names the file that enforces the rule and the test that pins it.
 
-- AES-GCM envelopes require a 16-byte tag and a valid envelope (sealed tokens and client registrations): `src/auth/key-ring.ts`; `src/auth/mcp-oauth.test.ts` ("a truncated tag is rejected...", "an oversized tag is rejected").
-- The client address comes only from the configured trusted header (`MCP_CLIENT_IP_HEADER`): a literal IP, no zone id, rightmost entry of a list, else the TCP peer; IPv6 is counted per /64 and IPv4-mapped addresses are unmapped; there is no `trust proxy`: `src/client-ip.ts`; `src/client-ip.test.ts`.
-- Every `/mcp` request is budgeted per client address before the token is checked: `src/rate-limit.ts`, `src/http-app.ts`; `src/rate-limit.test.ts`.
+- AES-GCM envelopes require a 16-byte tag and a valid envelope (sealed tokens and client registrations): `src/auth/key-ring.ts` (used by `src/auth/mcp-oauth.ts` and `src/auth/client-registrations.ts`); `src/auth/mcp-oauth.test.ts` ("a truncated tag is rejected...", "an oversized tag is rejected"; these cover tokens).
+- The client address comes only from the configured trusted header (`MCP_CLIENT_IP_HEADER`): a literal IP, no zone id, rightmost entry of a list, else the TCP peer; IPv6 is counted per /64 and IPv4-mapped addresses are unmapped; there is no `trust proxy`: `src/client-ip.ts`, `src/http-app.ts`; `src/client-ip.test.ts`, `src/http-app.test.ts` ("the budget counts the address in the configured proxy header...").
+- Every `/mcp` request is budgeted per client address before the token is checked: `src/rate-limit.ts`, `src/http-app.ts`; `src/rate-limit.test.ts`, `src/http-app.test.ts` ("oauth mode: /mcp has a request budget per client address, spent before a token is checked").
 - Remote callers never use the operator's keys: a caller's key comes from its sealed token or its own header, never the server environment: `src/auth/request-keys.ts`; `src/http-app.test.ts` ("resolveRequestKeys: remote callers never get the operator environment keys").
 - Never Origin-allowlist the bearer `/mcp` (hosted connectors send their own `Origin`): `src/http-app.ts`; `src/official-client.test.ts` ("a request shaped like production (public Host, a browser Origin, a bearer) is served...").
-- Sensitive responses are `no-store` (the authorize page, token responses, docs errors): `src/http-app.ts`, `src/auth/oauth-server.ts`; `src/characterization.test.ts`.
+- Sensitive responses are `no-store` (the authorize page, token responses, docs errors): `src/http-app.ts`, `src/auth/oauth-server.ts`, `src/docs.ts`; `src/characterization.test.ts`, `src/docs.test.ts`.
 
-A change to any of these is a security change: port it to the sibling servers (uspto, fedreg, datagov, samgov, clinicaltrials, capture) or record why it does not apply.
+A change to any of these is a security change: port it to the sibling servers (uspto, fedreg, datagov, samgov, clinicaltrials) or record why it does not apply.
