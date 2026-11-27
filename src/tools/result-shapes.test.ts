@@ -5,7 +5,10 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 
+import { fromJsonSchema, type JsonSchemaType } from '@modelcontextprotocol/server';
+
 import { ToolCatalog } from './index.js';
+import { isToolFailure } from './tool-metadata.js';
 import { ApiClient } from '../utils/api-client.js';
 
 type Tool = { name: string; inputSchema: { required?: string[]; properties: Record<string, { type?: string; enum?: string[] }> } };
@@ -28,20 +31,16 @@ function minimalArgs(tool: Tool): Record<string, unknown> {
   return args;
 }
 
-async function shapes(upstream: typeof EMPTY_PAGE | typeof FAILURE): Promise<Record<string, unknown>> {
+/** What each tool returns (or the message it throws) with every upstream call answered by `upstream`. */
+async function results(upstream: typeof EMPTY_PAGE | typeof FAILURE): Promise<Map<string, { result?: Record<string, any>; throws?: string }>> {
   const originals = UPSTREAM_CALLS.map(name => [name, ApiClient[name]] as const);
   for (const name of UPSTREAM_CALLS) (ApiClient as any)[name] = async () => upstream;
   try {
     const catalog = await ToolCatalog.create({ hasSamApiKey: true, hasTangoApiKey: true, hasHigherGovApiKey: true });
     const keys = { samKey: 's', tangoKey: 't', higherGovKey: 'h' };
-    const out: Record<string, unknown> = {};
+    const out = new Map<string, { result?: Record<string, any>; throws?: string }>();
     for (const tool of TOOLS) {
-      try {
-        const result = await catalog.call(tool.name, minimalArgs(tool), keys);
-        out[tool.name] = result.error === undefined ? { keys: Object.keys(result) } : { error: typeof result.error === 'string' ? 'string' : Object.keys(result.error), keys: Object.keys(result) };
-      } catch (error) {
-        out[tool.name] = { throws: (error as Error).message };
-      }
+      out.set(tool.name, await catalog.call(tool.name, minimalArgs(tool), keys).then(result => ({ result }), (error: Error) => ({ throws: error.message })));
     }
     return out;
   } finally {
@@ -49,7 +48,43 @@ async function shapes(upstream: typeof EMPTY_PAGE | typeof FAILURE): Promise<Rec
   }
 }
 
+async function shapes(upstream: typeof EMPTY_PAGE | typeof FAILURE): Promise<Record<string, unknown>> {
+  return Object.fromEntries(
+    [...(await results(upstream))].map(([name, { result, throws }]) => [
+      name,
+      result === undefined
+        ? { throws }
+        : result.error === undefined
+          ? { keys: Object.keys(result) }
+          : { error: typeof result.error === 'string' ? 'string' : Object.keys(result.error), keys: Object.keys(result) },
+    ]),
+  );
+}
+
 test('every tool keeps its result shape for an empty upstream page and for an upstream failure', async () => {
   const expected = JSON.parse(readFileSync(new URL('../__fixtures__/tool-result-shapes.json', import.meta.url), 'utf8'));
   assert.deepEqual({ empty_page: await shapes(EMPTY_PAGE), upstream_failure: await shapes(FAILURE) }, expected);
+});
+
+test('every successful result conforms to its tool\'s outputSchema; failures carry an error', async () => {
+  const catalog = await ToolCatalog.create({ hasSamApiKey: true, hasTangoApiKey: true, hasHigherGovApiKey: true });
+  const outputSchemas = new Map(catalog.tools.map(tool => [tool.name, fromJsonSchema(tool.outputSchema as JsonSchemaType)]));
+  let checked = 0;
+  for (const [name, { result }] of [...(await results(EMPTY_PAGE)), ...(await results(FAILURE))]) {
+    if (result === undefined || isToolFailure(result)) continue;
+    const verdict = await outputSchemas.get(name)!['~standard'].validate(result);
+    assert.equal(verdict.issues, undefined, `${name}: ${JSON.stringify(verdict.issues)}`);
+    checked += 1;
+  }
+  assert.ok(checked > 20, `only ${checked} results were checked`);
+  for (const [, { result }] of await results(FAILURE)) {
+    if (result !== undefined && result.error === undefined) assert.ok(Object.keys(result).some(key => key.endsWith('_error')), JSON.stringify(result));
+  }
+});
+
+test('the list tools declare their whole envelope as required', async () => {
+  const catalog = await ToolCatalog.create({ hasSamApiKey: true, hasTangoApiKey: true, hasHigherGovApiKey: true });
+  const required = (name: string) => catalog.tools.find(tool => tool.name === name)!.outputSchema?.required;
+  assert.deepEqual(required('search_tango_contracts'), ['contracts', 'total', 'count_unit', 'filters', 'next_cursor']);
+  assert.equal(required('get_tango_vendor_profile'), undefined);
 });

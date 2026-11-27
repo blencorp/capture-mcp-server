@@ -9,6 +9,7 @@ import { McpOAuthProvider } from './auth/mcp-oauth.js';
 import { resolveRequestKeys } from './auth/request-keys.js';
 import { ApiClient } from './utils/api-client.js';
 import { PAYLOAD, sealToken } from './auth/__fixtures__/sealed-token.js';
+import { rpcMessage } from './__fixtures__/rpc-message.js';
 
 const OPERATOR_ENV = {
   SAM_GOV_API_KEY: 'operator-sam',
@@ -345,7 +346,7 @@ test('insecure (single-user) mode serves the operator keys tool set', async () =
   try {
     const res = await listTools(server.url);
     assert.equal(res.status, 200);
-    const body: any = await res.json();
+    const body: any = await rpcMessage(res);
     const names = body.result.tools.map((tool: any) => tool.name);
     assert.ok(names.includes('search_tango_contracts'));
     assert.ok(names.includes('search_sam_entities') || names.some((n: string) => n.includes('sam')));
@@ -397,7 +398,7 @@ function callTool(url: string, token: string, name: string, args: Record<string,
       ...extra,
     },
     body: JSON.stringify({ jsonrpc: '2.0', id: 1, method: 'tools/call', params: { name, arguments: args } }),
-  }).then(r => r.json() as Promise<any>);
+  }).then(rpcMessage);
 }
 
 test('oauth mode: tools use the caller\'s sealed key, never the operator env key', async () => {

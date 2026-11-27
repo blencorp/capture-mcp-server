@@ -12,6 +12,7 @@ import type { Server as HttpServer } from 'node:http';
 
 import { createHttpApp, type HttpAuth } from './http-app.js';
 import { PAYLOAD, sealToken } from './auth/__fixtures__/sealed-token.js';
+import { rpcMessage } from './__fixtures__/rpc-message.js';
 import { ApiClient } from './utils/api-client.js';
 import { SERVER_VERSION } from './version.js';
 
@@ -34,7 +35,7 @@ const rpc = (url: string, method: string, params: unknown, headers: Record<strin
     body: JSON.stringify({ jsonrpc: '2.0', id: 1, method, params }),
   });
 
-const call = async (url: string, name: string, args: unknown): Promise<any> => (await (await rpc(url, 'tools/call', { name, arguments: args })).json()).result;
+const call = async (url: string, name: string, args: unknown): Promise<any> => (await rpcMessage(await rpc(url, 'tools/call', { name, arguments: args }))).result;
 
 const form = (fields: Record<string, string>) => ({
   method: 'POST',
@@ -57,7 +58,7 @@ const oauth = (body: (url: string) => Promise<void>) => withServer({ mode: 'oaut
 
 // ---- tools/list ---------------------------------------------------------------------------------
 
-const listedTools = async (url: string): Promise<Array<Record<string, unknown>>> => (await (await rpc(url, 'tools/list', {})).json()).result.tools;
+const listedTools = async (url: string): Promise<Array<Record<string, unknown>>> => (await rpcMessage(await rpc(url, 'tools/list', {}))).result.tools;
 
 test('tools/list: every tool keeps its name, description and input schema', async () => {
   await insecure(async url => {
@@ -100,13 +101,13 @@ test('tools/call success: text is the pretty-printed structured result', async (
   });
 });
 
-test('tools/call D2: a tool-level failure result is an {error} envelope (isError is set only for thrown errors)', async () => {
+test('tools/call D2: a tool-level failure is an {error} envelope marked isError', async () => {
   await insecure(async url => {
     const result = await call(url, 'lookup_reference_code', { domain: 'nope' });
     assert.equal(result.structuredContent.error.code, 'bad_request');
     assert.match(result.structuredContent.error.message, /Unknown domain "nope"/);
     assert.deepEqual(JSON.parse(result.content[0].text), result.structuredContent);
-    assert.equal(result.isError, undefined);
+    assert.equal(result.isError, true);
   });
 });
 
@@ -118,25 +119,28 @@ test('tools/call: unknown, missing and mistyped arguments are rejected with a ba
     assert.equal(missing.structuredContent.error.message, 'Missing required parameter(s) for lookup_reference_code: domain');
     const mistyped = await call(url, 'lookup_reference_code', { domain: 5 });
     assert.equal(mistyped.structuredContent.error.message, 'Parameter "domain" of lookup_reference_code must be a string');
-    for (const result of [unknown, missing, mistyped]) assert.equal(result.structuredContent.error.code, 'bad_request');
+    for (const result of [unknown, missing, mistyped]) {
+      assert.equal(result.structuredContent.error.code, 'bad_request');
+      assert.equal(result.isError, true); // D2
+    }
   });
 });
 
-test('tools/call D1: an unknown tool is an error result', async () => {
+test('tools/call D1: an unknown tool is a JSON-RPC invalid-params error', async () => {
   await insecure(async url => {
-    const result = await call(url, 'no_such_tool', {});
-    assert.equal(result.isError, true);
-    assert.deepEqual(result.structuredContent, { error: 'Tool "no_such_tool" not found' });
+    const { result, error } = await rpcMessage(await rpc(url, 'tools/call', { name: 'no_such_tool', arguments: {} }));
+    assert.equal(result, undefined);
+    assert.deepEqual(error, { code: -32602, message: 'Tool no_such_tool not found' });
   });
 });
 
-test('tools/call D2: an upstream error is returned as {error: <message>}, a thrown one as isError', async () => {
+test('tools/call D2: an upstream error and a thrown one are both {error: <message>} marked isError', async () => {
   const original = ApiClient.tangoGet;
   await insecure(async url => {
     (ApiClient as any).tangoGet = async () => ({ success: false, data: null, error: 'Tango API error: 500' });
     const failed = await call(url, 'search_tango_contracts', { agency: '3600' });
     assert.deepEqual(failed.structuredContent, { error: 'Tango API error: 500' });
-    assert.equal(failed.isError, undefined);
+    assert.equal(failed.isError, true);
 
     (ApiClient as any).tangoGet = async () => {
       throw new Error('boom');
@@ -284,9 +288,10 @@ test('handshake: initialize, initialized, ping and an unknown method on a bare P
   await insecure(async url => {
     const init = await rpc(url, 'initialize', { protocolVersion: '2025-06-18', capabilities: {}, clientInfo: { name: 'characterization', version: '1' } });
     assert.equal(init.status, 200);
-    assert.match(init.headers.get('content-type') ?? '', /^application\/json/);
-    assert.deepEqual(await init.json(), {
-      result: { protocolVersion: '2025-06-18', capabilities: { tools: {} }, serverInfo: { name: 'Capture MCP Server', version: SERVER_VERSION } },
+    // D3: the SDK's stateless leg answers with one SSE `message` event where v1 answered with JSON.
+    assert.match(init.headers.get('content-type') ?? '', /^text\/event-stream/);
+    assert.deepEqual(await rpcMessage(init), {
+      result: { protocolVersion: '2025-06-18', capabilities: { tools: { listChanged: true } }, serverInfo: { name: 'Capture MCP Server', version: SERVER_VERSION } },
       jsonrpc: '2.0',
       id: 1,
     });
@@ -298,8 +303,8 @@ test('handshake: initialize, initialized, ping and an unknown method on a bare P
     });
     assert.equal(initialized.status, 202);
 
-    assert.deepEqual(await (await rpc(url, 'ping', {})).json(), { result: {}, jsonrpc: '2.0', id: 1 });
-    assert.deepEqual(await (await rpc(url, 'no/such/method', {})).json(), { jsonrpc: '2.0', id: 1, error: { code: -32601, message: 'Method not found' } });
+    assert.deepEqual(await rpcMessage(await rpc(url, 'ping', {})), { result: {}, jsonrpc: '2.0', id: 1 });
+    assert.deepEqual(await rpcMessage(await rpc(url, 'no/such/method', {})), { jsonrpc: '2.0', id: 1, error: { code: -32601, message: 'Method not found' } });
   });
 });
 
@@ -319,7 +324,7 @@ test('stdio: initialize, tools/list and a tool call over the entry point', async
   try {
     const init = await send({ id: 1, method: 'initialize', params: { protocolVersion: '2025-06-18', capabilities: {}, clientInfo: { name: 'characterization', version: '1' } } });
     assert.equal(init.result.serverInfo.name, 'Capture MCP Server');
-    assert.deepEqual(init.result.capabilities, { tools: {} });
+    assert.deepEqual(init.result.capabilities, { tools: { listChanged: true } });
     await send({ method: 'notifications/initialized' });
     const listed = await send({ id: 2, method: 'tools/list', params: {} });
     assert.equal(listed.result.tools[0].name, 'lookup_reference_code');
