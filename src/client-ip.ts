@@ -21,7 +21,9 @@ export function clientIp(req: IncomingMessage, trustedHeader?: string): string {
   const candidate = entries[entries.length - 1];
   // A value that is not an address (a misnamed header, a proxy that passes junk through) would mint
   // an unbounded bucket key per request: count the peer instead.
-  return candidate && isIP(candidate) ? normalize(candidate) : peer;
+  // A zone id ("fe80::1%x") passes isIP but is an unbounded free-text suffix that would mint a distinct
+  // address string per request wherever the result is used as a key or forwarded, so it is refused too.
+  return candidate && !candidate.includes('%') && isIP(candidate) ? normalize(candidate) : peer;
 }
 
 /** The 8 groups of an IPv6 address (a dotted IPv4 tail counts as two), or undefined if it is not one. */

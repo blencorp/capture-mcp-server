@@ -16,6 +16,10 @@ test('with a trusted header the address is its last entry, falling back to the p
   assert.equal(clientIp(req('100.64.0.9', { 'x-forwarded-for': '1.1.1.1, 198.51.100.1' }), 'X-Forwarded-For'), '198.51.100.1');
   assert.equal(clientIp(req('100.64.0.9', {}), 'x-real-ip'), '100.64.0.9');
   assert.equal(clientIp(req('100.64.0.9', { 'x-real-ip': '  ' }), 'x-real-ip'), '100.64.0.9');
+  // A zone id is free text that would mint a new key per request.
+  for (const zoned of ['fe80::1%eth0', `fe80::1%${'z'.repeat(200)}`]) {
+    assert.equal(clientIp(req('100.64.0.9', { 'x-real-ip': zoned }), 'x-real-ip'), '100.64.0.9', zoned);
+  }
 });
 
 test('IPv4-mapped IPv6 addresses are the IPv4 client, in any spelling', () => {
