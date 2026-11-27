@@ -35,7 +35,12 @@ child.stdout.on('data', chunk => {
   for (let newline; (newline = buffer.indexOf('\n')) >= 0; ) {
     const line = buffer.slice(0, newline);
     buffer = buffer.slice(newline + 1);
-    const message = JSON.parse(line);
+    let message;
+    try {
+      message = JSON.parse(line);
+    } catch {
+      fail(`stdout carried a line that is not JSON-RPC: ${line.slice(0, 200)}`);
+    }
     if (message.id === 1) {
       send({ jsonrpc: '2.0', method: 'notifications/initialized' });
       send({ jsonrpc: '2.0', id: 2, method: 'tools/list', params: {} });
