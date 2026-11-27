@@ -20,9 +20,9 @@ export function clientIp(req: IncomingMessage, trustedHeader?: string): string {
     .split(',').map(s => s.trim()).filter(Boolean);
   const candidate = entries[entries.length - 1];
   // A value that is not an address (a misnamed header, a proxy that passes junk through) would mint
-  // an unbounded bucket key per request: count the peer instead.
-  // A zone id ("fe80::1%x") passes isIP but is an unbounded free-text suffix that would mint a distinct
-  // address string per request wherever the result is used as a key or forwarded, so it is refused too.
+  // an unbounded bucket key per request: count the peer instead. A zone id ("fe80::1%x") passes isIP
+  // but is an unbounded free-text suffix, so the returned string would be a distinct key for any caller
+  // that uses it as is (bucketKey strips it for IPv6); it is refused too.
   return candidate && !candidate.includes('%') && isIP(candidate) ? normalize(candidate) : peer;
 }
 
