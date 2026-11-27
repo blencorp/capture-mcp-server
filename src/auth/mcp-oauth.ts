@@ -1,24 +1,16 @@
 import { createHash, randomUUID } from 'node:crypto';
 import type { Response } from 'express';
 import type {
+  AuthInfo,
   OAuthClientInformationFull,
   OAuthTokenRevocationRequest,
   OAuthTokens,
-} from '@modelcontextprotocol/sdk/shared/auth.js';
-import type {
-  AuthorizationParams,
-  OAuthServerProvider,
-} from '@modelcontextprotocol/sdk/server/auth/provider.js';
-import type { AuthInfo } from '@modelcontextprotocol/sdk/server/auth/types.js';
-import {
-  InvalidGrantError,
-  InvalidRequestError,
-  InvalidScopeError,
-  InvalidTokenError,
-} from '@modelcontextprotocol/sdk/server/auth/errors.js';
+} from '@modelcontextprotocol/server';
 import { DEFAULT_CLIENT_SCOPE, SealedClientsStore } from './client-registrations.js';
 import { ExpiringMap } from './expiring-map.js';
 import { KeyRing } from './key-ring.js';
+import { invalidGrant, invalidRequest, invalidScope, invalidToken } from './oauth-errors.js';
+import type { AuthorizationParams, OAuthServerProvider } from './oauth-server.js';
 
 export { DEFAULT_CLIENT_SCOPE };
 
@@ -137,13 +129,13 @@ export class McpOAuthProvider implements OAuthServerProvider {
 
   async authorize(client: OAuthClientInformationFull, params: AuthorizationParams, res: Response): Promise<void> {
     if (!client.redirect_uris.includes(params.redirectUri)) {
-      throw new InvalidRequestError('Unregistered redirect_uri');
+      throw invalidRequest('Unregistered redirect_uri');
     }
 
     const scopes = grantedScopes(params.scopes);
     const unsupported = scopes.find(scope => !SUPPORTED_SCOPES.includes(scope));
     if (unsupported) {
-      throw new InvalidScopeError(`Unsupported scope ${unsupported}`);
+      throw invalidScope(`Unsupported scope ${unsupported}`);
     }
 
     const requestId = randomUUID();
@@ -161,12 +153,12 @@ export class McpOAuthProvider implements OAuthServerProvider {
   async completeAuthorization(requestId: string, rawKeys: ProviderKeys): Promise<string> {
     const pending = this.pendingAuthorizations.get(requestId);
     if (!pending) {
-      throw new InvalidRequestError('Authorization request expired or was not found');
+      throw invalidRequest('Authorization request expired or was not found');
     }
 
     const keys = normalizeProviderKeys(rawKeys);
     if (Object.keys(keys).length === 0) {
-      throw new InvalidRequestError('Provide at least one provider API key');
+      throw invalidRequest('Provide at least one provider API key');
     }
 
     this.pendingAuthorizations.delete(requestId);
@@ -200,7 +192,7 @@ export class McpOAuthProvider implements OAuthServerProvider {
   ): Promise<string> {
     const codeRecord = this.authorizationCodes.get(authorizationCode);
     if (!codeRecord || codeRecord.clientId !== client.client_id) {
-      throw new InvalidGrantError('Invalid authorization code');
+      throw invalidGrant('Invalid authorization code');
     }
 
     return codeRecord.codeChallenge;
@@ -215,17 +207,17 @@ export class McpOAuthProvider implements OAuthServerProvider {
   ): Promise<OAuthTokens> {
     const codeRecord = this.authorizationCodes.get(authorizationCode);
     if (!codeRecord) {
-      throw new InvalidGrantError('Invalid authorization code');
+      throw invalidGrant('Invalid authorization code');
     }
 
     if (codeRecord.clientId !== client.client_id) {
-      throw new InvalidGrantError('Authorization code was issued to a different client');
+      throw invalidGrant('Authorization code was issued to a different client');
     }
     if (redirectUri !== undefined && redirectUri !== codeRecord.redirectUri) {
-      throw new InvalidGrantError('redirect_uri does not match the authorization request');
+      throw invalidGrant('redirect_uri does not match the authorization request');
     }
     if (resource !== undefined && codeRecord.resource !== undefined && resource.href !== codeRecord.resource) {
-      throw new InvalidGrantError('resource does not match the authorization request');
+      throw invalidGrant('resource does not match the authorization request');
     }
 
     this.authorizationCodes.delete(authorizationCode);
@@ -240,10 +232,10 @@ export class McpOAuthProvider implements OAuthServerProvider {
   ): Promise<OAuthTokens> {
     const payload = this.verifySealedToken(refreshToken, 'refresh');
     if (payload.clientId !== client.client_id) {
-      throw new InvalidGrantError('Refresh token was issued to a different client');
+      throw invalidGrant('Refresh token was issued to a different client');
     }
     if (resource !== undefined && payload.resource !== undefined && resource.href !== payload.resource) {
-      throw new InvalidGrantError('resource does not match the refresh token');
+      throw invalidGrant('resource does not match the refresh token');
     }
 
     // Tokens issued before scopes were enforced may carry none; they were granted the default one.
@@ -251,7 +243,7 @@ export class McpOAuthProvider implements OAuthServerProvider {
     const requestedScopes = scopes?.length ? scopes : grantedByToken;
     const unauthorizedScope = requestedScopes.find(scope => !grantedByToken.includes(scope));
     if (unauthorizedScope) {
-      throw new InvalidGrantError(`Refresh token was not granted scope ${unauthorizedScope}`);
+      throw invalidGrant(`Refresh token was not granted scope ${unauthorizedScope}`);
     }
 
     // The new refresh token keeps the original expiry: refreshing renews the access token, never
@@ -307,7 +299,7 @@ export class McpOAuthProvider implements OAuthServerProvider {
   private refreshExpiry(client: OAuthClientInformationFull, refreshExp: number): number {
     const clientExp = this.clientsStore.expiresAt(client.client_id);
     if (clientExp === undefined) {
-      throw new InvalidGrantError('Client registration is no longer valid');
+      throw invalidGrant('Client registration is no longer valid');
     }
     return Math.min(refreshExp, clientExp);
   }
@@ -343,20 +335,20 @@ export class McpOAuthProvider implements OAuthServerProvider {
     try {
       payload = this.unsealToken(token);
     } catch {
-      throw new InvalidTokenError(`Invalid ${expectedKind} token`);
+      throw invalidToken(`Invalid ${expectedKind} token`);
     }
 
     if (payload.kind !== expectedKind) {
-      throw new InvalidTokenError(`Invalid ${expectedKind} token`);
+      throw invalidToken(`Invalid ${expectedKind} token`);
     }
     if (this.revokedIds(payload.kind).has(payload.jti)) {
-      throw new InvalidTokenError('Token has been revoked');
+      throw invalidToken('Token has been revoked');
     }
     // An access token also lives at most the current access TTL from when it was issued, so
     // tokens minted under a longer TTL stop being accepted once the TTL is shortened.
     const exp = expectedKind === 'access' ? Math.min(payload.exp, payload.iat + this.accessTokenTtlSeconds) : payload.exp;
     if (exp < this.nowSeconds()) {
-      throw new InvalidTokenError('Token has expired');
+      throw invalidToken('Token has expired');
     }
 
     return { ...payload, exp };

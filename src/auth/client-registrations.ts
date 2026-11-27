@@ -1,6 +1,6 @@
-import type { OAuthClientInformationFull } from '@modelcontextprotocol/sdk/shared/auth.js';
-import type { OAuthRegisteredClientsStore } from '@modelcontextprotocol/sdk/server/auth/clients.js';
-import { InvalidClientMetadataError } from '@modelcontextprotocol/sdk/server/auth/errors.js';
+import type { OAuthClientInformationFull } from '@modelcontextprotocol/server';
+import { invalidClientMetadata } from './oauth-errors.js';
+import type { OAuthRegisteredClientsStore } from './oauth-server.js';
 import { deriveSecret, type KeyRing } from './key-ring.js';
 
 const CLIENT_PREFIX = 'capcli.v1';
@@ -88,7 +88,7 @@ export class SealedClientsStore implements OAuthRegisteredClientsStore {
     };
     const clientId = this.ring.seal(CLIENT_PREFIX, CLIENT_AAD, JSON.stringify(registration));
     if (clientId.length > MAX_CLIENT_ID_LENGTH) {
-      throw new InvalidClientMetadataError('Client metadata is too large: use fewer or shorter redirect URIs and a shorter client name');
+      throw invalidClientMetadata('Client metadata is too large: use fewer or shorter redirect URIs and a shorter client name');
     }
     return describe(registration, clientId, this.ring.currentKey);
   }
