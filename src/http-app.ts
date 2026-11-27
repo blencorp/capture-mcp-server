@@ -31,6 +31,7 @@ import { bucketKey, clientIp } from './client-ip.js';
 import { DOCS_PATH, docsHandler } from './docs.js';
 import { buildMcpServer } from './mcp-server.js';
 import { RequestBudget } from './rate-limit.js';
+import { withRequestSignal } from './utils/request-signal.js';
 import { SERVER_VERSION } from './version.js';
 
 /**
@@ -347,7 +348,15 @@ export function createHttpApp({ auth, env = process.env, webRoot, docsRoot }: Ht
     maxRequestBodySize: MAX_REQUEST_BODY_BYTES,
     onerror: error => console.error('mcp_adapter_error:', truncate(error.message)),
   });
-  app.post('/mcp', ...gate, (req: Request, res: Response) => serveMcp(req, res));
+  app.post('/mcp', ...gate, (req: Request, res: Response) => {
+    // Over HTTP a client cancels a call by dropping the connection, on every protocol revision, and
+    // a stateless server has no other way to hear of it: stop what the request is waiting on.
+    const dropped = new AbortController();
+    res.on('close', () => {
+      if (!res.writableFinished) dropped.abort();
+    });
+    return withRequestSignal(dropped.signal, () => serveMcp(req, res));
+  });
 
   app.all('/mcp', (_req: Request, res: Response) => {
     res.status(405).json({
