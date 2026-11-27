@@ -4,6 +4,8 @@ import type { AddressInfo } from 'node:net';
 import type { Server as HttpServer } from 'node:http';
 import { createHash } from 'node:crypto';
 
+import { readBuildInfo } from './build-info.js';
+import { SERVER_VERSION } from './version.js';
 import { createHttpApp, httpAuthFromEnv, listenHost, type HttpAuth } from './http-app.js';
 import { McpOAuthProvider } from './auth/mcp-oauth.js';
 import { resolveRequestKeys } from './auth/request-keys.js';
@@ -505,6 +507,34 @@ test('oauth mode: a caller header adds their own key and join tools get the SAM 
     (ApiClient as any).samGet = originalSam;
     (ApiClient as any).usaspendingPost = originalSpend;
     await server.close();
+  }
+});
+
+test('/health reports the running version and commit, and keeps its other fields', async () => {
+  const local = await listen({ mode: 'insecure' });
+  try {
+    // No platform SHA in a local run: the commit is null, the version is the package's.
+    assert.deepEqual(await (await fetch(`${local.url}/health`)).json(), {
+      status: 'healthy', transport: 'http', authMode: 'insecure', version: SERVER_VERSION, commit: null,
+    });
+  } finally {
+    await local.close();
+  }
+
+  // The commit is the platform's, read at startup by readBuildInfo; a request header cannot change it.
+  const sha = 'a'.repeat(40);
+  const app = createHttpApp({ auth: { mode: 'insecure' }, env: {} as NodeJS.ProcessEnv, buildInfo: readBuildInfo({ RAILWAY_GIT_COMMIT_SHA: sha }) });
+  const server: HttpServer = await new Promise(resolve => {
+    const s = app.listen(0, '127.0.0.1', () => resolve(s));
+  });
+  try {
+    const { port } = server.address() as AddressInfo;
+    const res = await fetch(`http://127.0.0.1:${port}/health`, { headers: { 'x-railway-git-commit-sha': 'b'.repeat(40) } });
+    assert.deepEqual(await res.json(), {
+      status: 'healthy', transport: 'http', authMode: 'insecure', version: SERVER_VERSION, commit: sha,
+    });
+  } finally {
+    await new Promise<void>(resolve => server.close(() => resolve()));
   }
 });
 

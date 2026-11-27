@@ -3,6 +3,7 @@
 import { serveStdio } from '@modelcontextprotocol/server/stdio';
 
 import { resolveRequestKeys } from './auth/request-keys.js';
+import { readBuildInfo } from './build-info.js';
 import { createHttpApp, httpAuthFromEnv, listenHost } from './http-app.js';
 import { buildMcpServer } from './mcp-server.js';
 
@@ -31,7 +32,7 @@ function runStdioMode(): void {
 async function runHttpMode(): Promise<void> {
   const auth = httpAuthFromEnv(process.env, HTTP_PORT);
   const host = listenHost(auth, process.env);
-  const app = createHttpApp({ auth });
+  const app = createHttpApp({ auth, buildInfo: readBuildInfo(process.env) });
 
   const onListening = () => {
     if (auth.mode === 'oauth' && !auth.clientIpHeader) {

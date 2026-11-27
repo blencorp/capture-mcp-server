@@ -32,7 +32,7 @@ import { DOCS_PATH, docsHandler } from './docs.js';
 import { buildMcpServer } from './mcp-server.js';
 import { RequestBudget } from './rate-limit.js';
 import { withRequestSignal } from './utils/request-signal.js';
-import { SERVER_VERSION } from './version.js';
+import { readBuildInfo, type BuildInfo } from './build-info.js';
 
 /**
  * How the HTTP transport authenticates callers.
@@ -70,6 +70,8 @@ export type HttpAppOptions = {
   webRoot?: string;
   /** The built documentation site (`pnpm --dir site build`). Default: `docs-site/`, a sibling of `dist/`. */
   docsRoot?: string;
+  /** What `/health` reports as running; server.ts reads it from the platform environment at startup. Omitted: this version with no commit. */
+  buildInfo?: BuildInfo;
 };
 
 /** Pages of the browser app (web/src/main.tsx), served as index.html. */
@@ -180,7 +182,7 @@ export function listenHost(auth: HttpAuth, env: NodeJS.ProcessEnv): string | und
   return env.HOST || undefined;
 }
 
-export function createHttpApp({ auth, env = process.env, webRoot, docsRoot }: HttpAppOptions): express.Express {
+export function createHttpApp({ auth, env = process.env, webRoot, docsRoot, buildInfo = readBuildInfo({}) }: HttpAppOptions): express.Express {
   const app = express();
 
   if (auth.mode === 'insecure') {
@@ -197,7 +199,7 @@ export function createHttpApp({ auth, env = process.env, webRoot, docsRoot }: Ht
   }
 
   app.get('/health', (_req: Request, res: Response) => {
-    res.json({ status: 'healthy', transport: 'http', version: SERVER_VERSION, authMode: auth.mode });
+    res.json({ status: 'healthy', transport: 'http', authMode: auth.mode, ...buildInfo });
   });
 
   // The landing page, the policy pages and the documentation site are public and static. They
