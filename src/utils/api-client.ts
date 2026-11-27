@@ -37,7 +37,9 @@ export class ApiClient {
     highergov: 0,
   };
 
-  private static readonly CANCELLED: ApiResponse = { data: null, success: false, error: 'Request cancelled' };
+  private static cancelled(): ApiResponse {
+    return { data: null, success: false, error: 'Request cancelled' };
+  }
 
   /**
    * Waits for this caller's turn in the source's pacing queue. Resolves false, at once, when the
@@ -58,20 +60,20 @@ export class ApiClient {
     if (!signal) return turn;
     // A caller still waiting behind others is released the moment it is cancelled; its queue entry
     // is skipped when its turn comes.
-    return Promise.race([
-      turn,
-      new Promise<boolean>(resolve => {
-        if (signal.aborted) resolve(false);
-        else signal.addEventListener('abort', () => resolve(false), { once: true });
-      }),
-    ]);
+    let onAbort: () => void = () => {};
+    const aborted = new Promise<boolean>(resolve => {
+      onAbort = () => resolve(false);
+      if (signal.aborted) onAbort();
+      else signal.addEventListener('abort', onAbort, { once: true });
+    });
+    return Promise.race([turn, aborted]).finally(() => signal.removeEventListener('abort', onAbort));
   }
 
   static async samGet<T = any>(
     endpoint: string, 
     params: Record<string, any> = {}
   ): Promise<ApiResponse<T>> {
-    if (!(await this.enforceRateLimit('sam'))) return this.CANCELLED;
+    if (!(await this.enforceRateLimit('sam'))) return this.cancelled();
     
     try {
       const response: AxiosResponse<T> = await axios.get(
@@ -100,7 +102,7 @@ export class ApiClient {
     endpoint: string,
     data: any = {}
   ): Promise<ApiResponse<T>> {
-    if (!(await this.enforceRateLimit('usaspending'))) return this.CANCELLED;
+    if (!(await this.enforceRateLimit('usaspending'))) return this.cancelled();
     
     try {
       const response: AxiosResponse<T> = await axios.post(
@@ -130,7 +132,7 @@ export class ApiClient {
     endpoint: string,
     params: Record<string, any> = {}
   ): Promise<ApiResponse<T>> {
-    if (!(await this.enforceRateLimit('usaspending'))) return this.CANCELLED;
+    if (!(await this.enforceRateLimit('usaspending'))) return this.cancelled();
 
     try {
       const response: AxiosResponse<T> = await axios.get(
@@ -160,7 +162,7 @@ export class ApiClient {
     params: Record<string, any> = {},
     apiKey: string
   ): Promise<ApiResponse<T>> {
-    if (!(await this.enforceRateLimit('tango'))) return this.CANCELLED;
+    if (!(await this.enforceRateLimit('tango'))) return this.cancelled();
 
     try {
       const response: AxiosResponse<T> = await axios.get(
@@ -191,7 +193,7 @@ export class ApiClient {
     data: any = {},
     apiKey: string
   ): Promise<ApiResponse<T>> {
-    if (!(await this.enforceRateLimit('tango'))) return this.CANCELLED;
+    if (!(await this.enforceRateLimit('tango'))) return this.cancelled();
 
     try {
       const response: AxiosResponse<T> = await axios.post(
@@ -223,7 +225,7 @@ export class ApiClient {
     params: Record<string, any> = {},
     apiKey: string
   ): Promise<ApiResponse<T>> {
-    if (!(await this.enforceRateLimit('highergov'))) return this.CANCELLED;
+    if (!(await this.enforceRateLimit('highergov'))) return this.cancelled();
 
     try {
       const response: AxiosResponse<T> = await axios.get(

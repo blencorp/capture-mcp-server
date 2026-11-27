@@ -135,7 +135,12 @@ export function authorizationServerMetadata({ issuerUrl, baseUrl, scopesSupporte
 const MINUTES = 60 * 1000;
 
 /** OAuth clients send forms (RFC 6749) and some send JSON; both are read, with the 100 kB default bound. */
-export const bodyParsers: RequestHandler[] = [express.json(), express.urlencoded({ extended: false })];
+export const bodyParsers: RequestHandler[] = [express.json(), express.urlencoded({ extended: false })].map(
+  (parser): RequestHandler =>
+    (req, res, next) =>
+      // A malformed or oversized body is an RFC 6749 `invalid_request`, not Express's HTML error page.
+      parser(req, res, error => (error ? sendError(res, invalidRequest('Malformed or oversized request body')) : next())),
+);
 
 /** Per-client request limits, as the v1 SDK set them. `shared` says how clients are told apart. */
 function limiter(windowMs: number, limit: number, what: string, shared: Partial<RateLimitOptions>): RequestHandler {
