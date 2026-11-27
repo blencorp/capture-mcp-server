@@ -8,7 +8,7 @@ import { createHash } from 'node:crypto';
 import { readFileSync } from 'node:fs';
 import { createInterface } from 'node:readline';
 import type { AddressInfo } from 'node:net';
-import { request as httpRequest, type Server as HttpServer } from 'node:http';
+import { createServer, request as httpRequest, type Server as HttpServer } from 'node:http';
 
 import { createHttpApp, type HttpAuth } from './http-app.js';
 import { PAYLOAD, sealToken } from './auth/__fixtures__/sealed-token.js';
@@ -435,6 +435,55 @@ test('OAuth endpoints: a flooded client gets 429 with a too_many_requests body',
 
 // ---- Request bodies -----------------------------------------------------------------------------
 
+/**
+ * POSTs a body shorter than the Content-Length it announces and resolves with the complete response. The server answers
+ * and closes before the body is done, so the client's write may fail with EPIPE or ECONNRESET; that alone is not a failure,
+ * but the connection closing without a complete response is, and so is no response within the deadline.
+ */
+function postAnnouncingLength(target: string, length: number, sent: string, deadlineMs = 5000): Promise<{ status: number; body: string }> {
+  return new Promise((resolve, reject) => {
+    let settled = false;
+    const finish = (error: Error | undefined, value?: { status: number; body: string }) => {
+      if (settled) return;
+      settled = true;
+      clearTimeout(timer);
+      req.destroy();
+      if (error) reject(error);
+      else resolve(value!);
+    };
+    const timer = setTimeout(() => finish(new Error(`no response within ${deadlineMs} ms`)), deadlineMs);
+    const req = httpRequest(target, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json', accept: 'application/json, text/event-stream', 'content-length': String(length) },
+    }, res => {
+      let body = '';
+      res.setEncoding('utf8');
+      res.on('data', chunk => (body += chunk));
+      res.on('end', () => finish(undefined, { status: res.statusCode ?? 0, body }));
+      res.on('aborted', () => finish(new Error('the response was cut off')));
+      res.on('error', error => finish(error));
+    });
+    req.on('error', error => {
+      const code = (error as NodeJS.ErrnoException).code;
+      if (code !== 'EPIPE' && code !== 'ECONNRESET') finish(error);
+    });
+    req.on('close', () => finish(new Error('the connection closed without a complete response')));
+    req.write(sent);
+  });
+}
+
+test('postAnnouncingLength fails promptly when the peer resets before answering', async () => {
+  const server: HttpServer = await new Promise(resolve => {
+    const s = createServer(req => req.socket.destroy()).listen(0, '127.0.0.1', () => resolve(s));
+  });
+  try {
+    const { port } = server.address() as AddressInfo;
+    await assert.rejects(postAnnouncingLength(`http://127.0.0.1:${port}/`, 2 * 1024 * 1024, '{', 2000), /closed without a complete response|cut off/);
+  } finally {
+    await new Promise<void>(resolve => server.close(() => resolve()));
+  }
+});
+
 test('/mcp D4: a malformed, oversized or mistyped body is a JSON-RPC error, not an HTML page', async () => {
   await insecure(async url => {
     const post = (body: string, headers: Record<string, string> = { 'content-type': 'application/json' }) =>
@@ -444,24 +493,8 @@ test('/mcp D4: a malformed, oversized or mistyped body is a JSON-RPC error, not 
     assert.equal(malformed.status, 400);
     assert.deepEqual(await malformed.json(), { jsonrpc: '2.0', error: { code: -32700, message: 'Parse error: Invalid JSON' }, id: null });
 
-    // Announce more than the 1 MiB cap but send only a little: the cap answers 413 from the length alone. The server answers
-    // and closes before the body is done, so the client's write may fail with EPIPE or ECONNRESET; that is not a failure.
-    const oversized = await new Promise<{ status: number; body: string }>((resolve, reject) => {
-      const req = httpRequest(`${url}/mcp`, {
-        method: 'POST',
-        headers: { 'content-type': 'application/json', accept: 'application/json, text/event-stream', 'content-length': String(2 * 1024 * 1024) },
-      }, res => {
-        let body = '';
-        res.setEncoding('utf8');
-        res.on('data', chunk => (body += chunk));
-        res.on('end', () => { resolve({ status: res.statusCode ?? 0, body }); req.destroy(); });
-      });
-      req.on('error', error => {
-        const code = (error as NodeJS.ErrnoException).code;
-        if (code !== 'EPIPE' && code !== 'ECONNRESET') reject(error);
-      });
-      req.write('{"jsonrpc":"2.0"');
-    });
+    // Announce more than the 1 MiB cap but send only a little: the cap must answer 413 from the length alone.
+    const oversized = await postAnnouncingLength(`${url}/mcp`, 2 * 1024 * 1024, '{"jsonrpc":"2.0"');
     assert.equal(oversized.status, 413);
     assert.equal(JSON.parse(oversized.body).error.code, -32000);
 
