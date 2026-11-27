@@ -421,3 +421,23 @@ test('OAuth endpoints: a flooded client gets 429 with a too_many_requests body',
     assert.deepEqual(await limited.json(), { error: 'too_many_requests', error_description: 'You have exceeded the rate limit for client registration requests' });
   });
 });
+
+// ---- Request bodies -----------------------------------------------------------------------------
+
+test('/mcp D4: a malformed, oversized or mistyped body is a JSON-RPC error, not an HTML page', async () => {
+  await insecure(async url => {
+    const post = (body: string, headers: Record<string, string> = { 'content-type': 'application/json' }) =>
+      fetch(`${url}/mcp`, { method: 'POST', headers: { accept: 'application/json, text/event-stream', ...headers }, body });
+
+    const malformed = await post('{nope');
+    assert.equal(malformed.status, 400);
+    assert.deepEqual(await malformed.json(), { jsonrpc: '2.0', error: { code: -32700, message: 'Parse error: Invalid JSON' }, id: null });
+
+    const oversized = await post(JSON.stringify({ jsonrpc: '2.0', id: 1, method: 'tools/list', padding: 'x'.repeat(1024 * 1024) }));
+    assert.equal(oversized.status, 413);
+    assert.equal(((await oversized.json()) as any).error.code, -32000);
+
+    const mistyped = await post('{}', { 'content-type': 'text/plain' });
+    assert.equal(mistyped.status, 415);
+  });
+});
