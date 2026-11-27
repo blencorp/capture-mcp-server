@@ -255,8 +255,8 @@ importers:
         specifier: 1.8.1
         version: 1.8.1(@types/react-dom@19.3.0(@types/react@19.3.0))(@types/react@19.3.0)(react-dom@19.3.1(react@19.3.1))(react@19.3.1)
       railway:
-        specifier: 3.17.0
-        version: 3.17.0
+        specifier: 3.18.0
+        version: 3.18.0
       react:
         specifier: 19.3.1
         version: 19.3.1
@@ -2748,8 +2748,8 @@ packages:
       '@types/react-dom':
         optional: true
 
-  railway@3.17.0:
-    resolution: {integrity: sha512-bVyzBcLUJfKuSvYT+8MFg0p2AUzylSdjJoCWpx2uk05p6DoAnhrq0Xm4VIoJ+gZ7BGI8YddYlEpp4rgsZIr8Ww==}
+  railway@3.18.0:
+    resolution: {integrity: sha512-thlGTvcEaL6o4MOzQL3ryC7TDGXslZaoFrfzhUpkwXVH1VJcTAM+r85/iZ65fFgnNVRVZlwBUQiimlzgkKyOQw==}
     engines: {node: '>=22'}
     hasBin: true
 
@@ -5666,7 +5666,7 @@ snapshots:
       '@types/react': 19.3.0
       '@types/react-dom': 19.3.0(@types/react@19.3.0)
 
-  railway@3.17.0:
+  railway@3.18.0:
     dependencies:
       '@graphql-typed-document-node/core': 3.2.0(graphql@16.15.0)
       graphql: 16.15.0
