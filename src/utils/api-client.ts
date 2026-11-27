@@ -37,30 +37,41 @@ export class ApiClient {
     highergov: 0,
   };
 
-  private static async enforceRateLimit(apiType: ApiFamily): Promise<void> {
-    const run = async () => {
-      const now = Date.now();
-      const elapsed = now - this.lastCallTimestamp[apiType];
-      const delayMs = this.RATE_LIMIT_MS[apiType];
-      const waitTime = elapsed >= delayMs ? 0 : delayMs - elapsed;
+  private static readonly CANCELLED: ApiResponse = { data: null, success: false, error: 'Request cancelled' };
 
-      if (waitTime > 0) {
-        await this.sleep(waitTime);
-      }
-
+  /**
+   * Waits for this caller's turn in the source's pacing queue. Resolves false, at once, when the
+   * request is cancelled first: a cancelled caller never sleeps, and does not move the last-dispatch
+   * time, so pacing holds between calls actually sent and cancelled ones cost the others nothing.
+   */
+  private static enforceRateLimit(apiType: ApiFamily, signal: AbortSignal | undefined = requestSignal()): Promise<boolean> {
+    const turn = this.rateLimitQueues[apiType].then(async () => {
+      if (signal?.aborted) return false;
+      const elapsed = Date.now() - this.lastCallTimestamp[apiType];
+      const waitTime = Math.max(0, this.RATE_LIMIT_MS[apiType] - elapsed);
+      if (waitTime > 0 && !(await this.sleep(waitTime, signal))) return false;
       this.lastCallTimestamp[apiType] = Date.now();
-    };
-
-    // Chain executions to preserve ordering across concurrent invocations
-    this.rateLimitQueues[apiType] = this.rateLimitQueues[apiType].then(run, run);
-    await this.rateLimitQueues[apiType];
+      return true;
+    });
+    // The queue moves on when this turn ends, however it ends.
+    this.rateLimitQueues[apiType] = turn.then(() => undefined, () => undefined);
+    if (!signal) return turn;
+    // A caller still waiting behind others is released the moment it is cancelled; its queue entry
+    // is skipped when its turn comes.
+    return Promise.race([
+      turn,
+      new Promise<boolean>(resolve => {
+        if (signal.aborted) resolve(false);
+        else signal.addEventListener('abort', () => resolve(false), { once: true });
+      }),
+    ]);
   }
 
   static async samGet<T = any>(
     endpoint: string, 
     params: Record<string, any> = {}
   ): Promise<ApiResponse<T>> {
-    await this.enforceRateLimit('sam');
+    if (!(await this.enforceRateLimit('sam'))) return this.CANCELLED;
     
     try {
       const response: AxiosResponse<T> = await axios.get(
@@ -89,7 +100,7 @@ export class ApiClient {
     endpoint: string,
     data: any = {}
   ): Promise<ApiResponse<T>> {
-    await this.enforceRateLimit('usaspending');
+    if (!(await this.enforceRateLimit('usaspending'))) return this.CANCELLED;
     
     try {
       const response: AxiosResponse<T> = await axios.post(
@@ -119,7 +130,7 @@ export class ApiClient {
     endpoint: string,
     params: Record<string, any> = {}
   ): Promise<ApiResponse<T>> {
-    await this.enforceRateLimit('usaspending');
+    if (!(await this.enforceRateLimit('usaspending'))) return this.CANCELLED;
 
     try {
       const response: AxiosResponse<T> = await axios.get(
@@ -149,7 +160,7 @@ export class ApiClient {
     params: Record<string, any> = {},
     apiKey: string
   ): Promise<ApiResponse<T>> {
-    await this.enforceRateLimit('tango');
+    if (!(await this.enforceRateLimit('tango'))) return this.CANCELLED;
 
     try {
       const response: AxiosResponse<T> = await axios.get(
@@ -180,7 +191,7 @@ export class ApiClient {
     data: any = {},
     apiKey: string
   ): Promise<ApiResponse<T>> {
-    await this.enforceRateLimit('tango');
+    if (!(await this.enforceRateLimit('tango'))) return this.CANCELLED;
 
     try {
       const response: AxiosResponse<T> = await axios.post(
@@ -212,7 +223,7 @@ export class ApiClient {
     params: Record<string, any> = {},
     apiKey: string
   ): Promise<ApiResponse<T>> {
-    await this.enforceRateLimit('highergov');
+    if (!(await this.enforceRateLimit('highergov'))) return this.CANCELLED;
 
     try {
       const response: AxiosResponse<T> = await axios.get(
@@ -325,7 +336,18 @@ export class ApiClient {
     return input;
   }
 
-  private static sleep(ms: number): Promise<void> {
-    return new Promise(resolve => setTimeout(resolve, ms));
+  /** Sleeps `ms`; resolves false, early, if `signal` aborts first. */
+  private static sleep(ms: number, signal?: AbortSignal): Promise<boolean> {
+    return new Promise(resolve => {
+      const done = (completed: boolean) => {
+        clearTimeout(timer);
+        signal?.removeEventListener('abort', onAbort);
+        resolve(completed);
+      };
+      const onAbort = () => done(false);
+      const timer = setTimeout(() => done(true), ms);
+      if (signal?.aborted) return done(false);
+      signal?.addEventListener('abort', onAbort, { once: true });
+    });
   }
 }
