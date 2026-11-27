@@ -372,7 +372,7 @@ export function contractMappingDriftWarning(mapped: any[], rawList: any[]): stri
   return (
     `Field mapping appears OUT OF DATE: core fields (${CORE_CONTRACT_FIELDS.join(', ')}) are empty on every ` +
     `record even though upstream returned data. Raw record keys: ${keys.join(', ')}. ` +
-    `Run "npm run capture-fixtures" and update normalizeContractSummary in src/tools/highergov-tools.ts.`
+    `Run "pnpm capture-fixtures" and update normalizeContractSummary in src/tools/highergov-tools.ts.`
   );
 }
 
@@ -445,7 +445,7 @@ export const highergovTools = {
           properties: {
             saved_search_id: { type: 'string', description: 'HigherGov saved-search ID (required)' },
             since: { type: 'string', description: 'ISO-8601 datetime; defaults to last 24h' },
-            limit: { type: 'number', description: 'Number of results (default 50, max 200)' },
+            limit: { type: 'number', description: 'Number of results (default 50, max 200; HigherGov documents a page-size maximum of 100)' },
             cursor: { type: 'string', description: 'Page number from prior next_cursor' },
           },
           required: ['saved_search_id'],
@@ -454,7 +454,7 @@ export const highergovTools = {
       {
         name: 'get_highergov_opportunity',
         description:
-          'Get one opportunity by HigherGov ID, SAM notice ID, or URL. Returns the full record including agency, NAICS, vehicle, set-aside, value, dates, description, and attachments. If `incumbent_contract_id` is present, follow up with get_highergov_contract to enrich.',
+          'Get one opportunity by HigherGov ID, SAM notice ID, or URL. Returns the full record including agency, NAICS, vehicle, set-aside, value, dates, and description. The HigherGov opportunity record has no attachments: use get_opportunity_documents for the solicitation files. If `incumbent_contract_id` is present, follow up with get_highergov_contract to enrich.',
         inputSchema: {
           type: 'object',
           properties: {
@@ -466,7 +466,7 @@ export const highergovTools = {
       {
         name: 'search_highergov_contracts',
         description:
-          'Search awarded federal contracts by agency, NAICS, PSC, set-aside, period-of-performance end-date range, and value bounds. Use to find recompete candidates 12–18 months ahead of PoP end. At least one of agency/naics/psc is required. Every response echoes which filters ran upstream vs client-side and warns when a filter could not be verified — read `warnings` before trusting counts.',
+          'Search awarded federal contracts by agency, NAICS, PSC, set-aside, period-of-performance end-date range, and value bounds. Use to find recompete candidates 12–18 months ahead of PoP end. At least one of agency, agency_key, awardee_uei, naics, or psc is required. Every response echoes which filters ran upstream vs client-side and warns when a filter could not be verified — read `warnings` before trusting counts.',
         inputSchema: {
           type: 'object',
           properties: {
@@ -476,8 +476,8 @@ export const highergovTools = {
               description: 'HigherGov awarding agency key (numeric). The only agency filter the upstream API honors (awarding_agency_key). Find it on the agency page URL in the HigherGov UI or via /api-external/agency/.',
             },
             awardee_uei: { type: 'string', description: 'Awardee UEI (server-side filter)' },
-            naics: { type: 'array', items: { type: 'string' } },
-            psc: { type: 'array', items: { type: 'string' } },
+            naics: { type: 'array', items: { type: 'string' }, description: 'NAICS codes (server-side filter; comma-joined, which HigherGov does not document as OR syntax)' },
+            psc: { type: 'array', items: { type: 'string' }, description: 'PSC codes (server-side filter; comma-joined, which HigherGov does not document as OR syntax)' },
             set_aside: {
               type: 'array',
               items: { type: 'string' },
@@ -487,7 +487,7 @@ export const highergovTools = {
             pop_end_before: { type: 'string', description: 'ISO-8601 date; period-of-performance end on/before this date (applied client-side)' },
             min_value: { type: 'number', description: 'USD (applied client-side; upstream has no value filter)' },
             max_value: { type: 'number', description: 'USD (applied client-side)' },
-            limit: { type: 'number', description: 'Default 50, max 200' },
+            limit: { type: 'number', description: 'Default 50, max 200 (HigherGov documents a page-size maximum of 100)' },
             cursor: { type: 'string', description: 'Page number from prior next_cursor' },
           },
           required: [],
@@ -552,8 +552,8 @@ export const highergovTools = {
             posted_after: { type: 'string', description: 'ISO-8601 date; opportunities posted on/after (max 45 days back; walked upstream one day per request)' },
             response_due_before: { type: 'string', description: 'ISO-8601 date; response deadline on/before' },
             response_due_after: { type: 'string', description: 'ISO-8601 date; response deadline on/after (defaults to now — drops already-closed notices; pass an earlier date to include them)' },
-            limit: { type: 'number', description: 'Default 50, max 200' },
-            cursor: { type: 'string', description: 'Page number from prior next_cursor' },
+            limit: { type: 'number', description: 'Default 50, max 200; HigherGov returns at most 100 rows per request' },
+            cursor: { type: 'string', description: 'The next_cursor from the prior response: a page number, or YYYY-MM-DD|page when posted_after is set' },
           },
           required: [],
         },

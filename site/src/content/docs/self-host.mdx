@@ -48,8 +48,7 @@ with the keys you have:
 ```
 
 Only the tools whose key you set are listed. With no keys, the 7 reference and USAspending tools
-work. The repository also builds a Claude Desktop bundle with `pnpm package`, which produces
-`capture-mcp-server.mcpb`. The bundle is not attached to releases.
+work.
 
 ## Local HTTP
 
@@ -79,9 +78,11 @@ and the server runs the OAuth flow that [Connect your assistant](/connect/) desc
 | `MCP_ALLOW_INSECURE_HTTP` | `true` for the single-user mode above. Not for hosting. |
 | `PORT`, `HOST` | The listening port, and address. Leave `HOST` unset when you host so that Node listens on IPv4 and IPv6. |
 
-The server serves the landing page, the policy pages, and this documentation at `/docs`. Put it
-behind HTTPS. It limits each client address's `/mcp` requests itself, but a proxy or platform should
-still absorb floods before they reach it.
+The server serves the landing page, the policy pages, and this documentation at `/docs`. The
+landing page needs `dist/web`, which `pnpm build` makes, and the documentation needs the built site
+in `docs-site/`, which only the Docker image makes: `node dist/server.js` from a plain checkout serves
+no `/docs`. Put the server behind HTTPS. It limits each client address's `/mcp` requests itself, but
+a proxy or platform should still absorb floods before they reach it.
 
 ### Rotating the secret
 
@@ -151,6 +152,7 @@ set the same health check, start command and restart policy in your service sett
 
 These documents are in the repository:
 
+- [Architecture](https://github.com/blencorp/capture-mcp-server/blob/main/docs/architecture.md)
 - [Accessibility](https://github.com/blencorp/capture-mcp-server/blob/main/docs/accessibility.md)
 - [Upstream API notes](https://github.com/blencorp/capture-mcp-server/blob/main/docs/upstream-api-notes.md)
 - [Every setting](https://github.com/blencorp/capture-mcp-server/blob/main/.env.example)

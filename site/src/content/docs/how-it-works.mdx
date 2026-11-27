@@ -60,7 +60,7 @@ can tell what actually ran:
 
 The other list tools (SAM.gov searches and exclusion checks, Tango protests, IDVs, vehicles and OTAs, and
 the HigherGov saved-search list) keep simpler shapes, such as `{ total, entities, page, limit }`, without
-these fields. Their `total` is `0` when the source gives none. The
+these fields. Their `total` is `0` when the source gives none, and the saved-search list has no `total`. The
 [tool reference](/reference/sdk/#results-and-errors) lists each one.
 
 Records from the sources are third-party text. They can contain words that look like instructions.
@@ -81,9 +81,11 @@ the whole server process, and calls wait their turn in order:
 - USAspending has no key, so every caller of the server shares its one queue. A question that groups
   awards by set-aside makes one USAspending request for each code, so it takes a few seconds for each
   code.
-- The server does not retry. A source that answers `429` fails the call with that status.
-- The HigherGov `get_*` tools cache a result for 15 minutes, for the key that asked, so a repeated
-  lookup does not spend quota.
+- The server does not retry. A source that answers `429` fails the call with that status, except
+  that the HigherGov tools answer `rate_limited` with a fixed `retry_after_seconds` of 60.
+- `get_highergov_opportunity`, `get_highergov_contract` and `get_highergov_person` cache a result for
+  15 minutes (500 entries at most), for the key that asked, so a repeated lookup does not spend
+  quota. No other tool caches.
 - `/mcp` gives each client address a budget of 20 requests at once, then 5 a second, and answers the
   excess with `429`. The OAuth endpoints limit each address:
   100 authorization requests and 50 token or revocation requests every 15 minutes, and 20 client

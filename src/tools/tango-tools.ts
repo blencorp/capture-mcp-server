@@ -158,11 +158,11 @@ export const tangoTools = {
             },
             award_amount_min: {
               type: "number",
-              description: "Minimum contract award amount (USD). Applied client-side per page — the response says so and nulls the total."
+              description: "Minimum contract award amount (USD), sent to Tango as obligated_gte. The server also checks the page it gets, and says so under filters.client_side if Tango did not honor the bound."
             },
             award_amount_max: {
               type: "number",
-              description: "Maximum contract award amount (USD). Applied client-side per page."
+              description: "Maximum contract award amount (USD), sent to Tango as obligated_lte. The server also checks the page it gets, and says so under filters.client_side if Tango did not honor the bound."
             },
             date_from: {
               type: "string",
@@ -261,7 +261,7 @@ export const tangoTools = {
             },
             include_grants: {
               type: "boolean",
-              description: "Include recent grant history (default: false)"
+              description: "Include recent subawards (the entity's five most recent, newest fiscal year first; default: false)"
             }
           },
           required: ["uei"]
@@ -382,7 +382,7 @@ export const tangoTools = {
         inputSchema: {
           type: "object",
           properties: {
-            idv_key: { type: "string", description: "Tango IDV key (from the `key` field of a search_tango_idvs result) — required" },
+            idv_key: { type: "string", description: "Tango IDV key (from the `idv_key` field of a search_tango_idvs result) — required" },
             include_child_idvs: { type: "boolean", description: "Include child IDVs (sub-IDIQs under this parent). Default: true" },
             include_task_orders: { type: "boolean", description: "Include task/delivery order awards issued against this IDV. Default: true" },
             include_transactions: { type: "boolean", description: "Include obligation transactions (lower-level, may be large). Default: false" },
@@ -469,7 +469,7 @@ export const tangoTools = {
             },
             group_by: {
               type: "string",
-              description: "Group spending by dimension: 'agency', 'vendor', 'naics', 'psc', 'month'"
+              description: "Group spending by dimension: 'agency' (default), 'vendor', 'naics', 'psc', 'month'"
             },
             award_type: {
               type: "string",
@@ -651,7 +651,7 @@ export const tangoTools = {
         warnings.push(
           'Records on this page carry no readable FPDS set-aside code, so EXACT set-aside matching could not be applied — these are the upstream LOOSE matches. ' +
           'Verify individual awards with get_award_detail before using counts. ' +
-          'If this persists, run "npm run capture-fixtures" — the field mapping may be out of date.'
+          'If this persists, run "pnpm capture-fixtures" — the field mapping may be out of date.'
         );
       } else {
         clientSide.set_aside_exact = setAsideCodes;
