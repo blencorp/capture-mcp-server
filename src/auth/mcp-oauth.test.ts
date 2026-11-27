@@ -1,8 +1,8 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import type { Response } from 'express';
-import type { OAuthClientInformationFull } from '@modelcontextprotocol/sdk/shared/auth.js';
-import type { AuthorizationParams } from '@modelcontextprotocol/sdk/server/auth/provider.js';
+import type { OAuthClientInformationFull } from '@modelcontextprotocol/server';
+import type { AuthorizationParams } from './oauth-server.js';
 import {
   AUTHORIZATION_PAGE_CSP,
   DEFAULT_CLIENT_SCOPE,

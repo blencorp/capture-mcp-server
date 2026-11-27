@@ -88,6 +88,8 @@ MCP_TRANSPORT=http MCP_REQUIRE_OAUTH=true \
   node dist/server.js
 ```
 
+The server speaks MCP [2026-07-28](https://modelcontextprotocol.io) over HTTP and stdio, and answers clients that only know the 2025 revisions statelessly: there are no sessions. Every tool declares an `outputSchema`, and a failed call is a result marked `isError`. Upgrading from 3.x? See [`docs/migration-4.0.md`](./docs/migration-4.0.md).
+
 HTTP mode fails closed: it refuses to start without `MCP_REQUIRE_OAUTH=true` or the loopback opt-in. The root `Dockerfile` builds the hosted image (Railway builds it too) and puts the landing page, the policy pages and the documentation site at `/`, `/privacy-policy`, `/terms` and `/docs`. [Self-host](https://capture.mcp.blencorp.com/docs/self-host/) describes every mode.
 
 ### Configuration

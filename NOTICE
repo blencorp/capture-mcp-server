@@ -21,6 +21,9 @@ Earlier versions of this software, up to and including v1.0.2, were released und
 Some contributions made under that license, by outside contributors, are included here and keep its
 notice: the AWS Lambda deployment, the CDK infrastructure and the S3 API-key management
 (Copyright (c) 2025 Taylor Ondrey), and the Tango tools (Copyright (c) 2026 V. David Zvenyach).
+The OAuth endpoints in src/auth/oauth-server.ts follow the server-side OAuth handlers of the MCP
+TypeScript SDK 1.x (https://github.com/modelcontextprotocol/typescript-sdk, Copyright (c) 2024
+Anthropic, PBC), which were released under the MIT License and which SDK 2 no longer provides.
 The MIT License follows.
 
   MIT License
@@ -28,6 +31,7 @@ The MIT License follows.
   Copyright (c) 2025 BLEN, Inc.
   Copyright (c) 2025 Taylor Ondrey
   Copyright (c) 2026 V. David Zvenyach
+  Copyright (c) 2024 Anthropic, PBC
 
   Permission is hereby granted, free of charge, to any person obtaining a copy
   of this software and associated documentation files (the "Software"), to deal

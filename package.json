@@ -45,15 +45,21 @@
   },
   "type": "module",
   "dependencies": {
-    "@modelcontextprotocol/sdk": "^1.32.2",
+    "@modelcontextprotocol/node": "2.1.2",
+    "@modelcontextprotocol/server": "2.4.0",
     "axios": "^1.13.0",
-    "express": "^5.1.0"
+    "cors": "^2.8.6",
+    "express": "^5.1.0",
+    "express-rate-limit": "^8.7.5",
+    "zod": "^4.6.7"
   },
   "devDependencies": {
     "@axe-core/playwright": "^4.14.0",
     "@eslint/js": "^10.0.1",
+    "@modelcontextprotocol/client": "2.4.0",
     "@playwright/test": "^1.65.1",
     "@tailwindcss/vite": "4.3.5",
+    "@types/cors": "^2.8.19",
     "@types/express": "^5.0.0",
     "@types/node": "^24.19.2",
     "@types/react": "19.3.0",

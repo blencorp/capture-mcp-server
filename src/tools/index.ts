@@ -1,4 +1,4 @@
-import { type Tool } from "@modelcontextprotocol/sdk/types.js";
+import type { Tool } from '@modelcontextprotocol/server';
 
 // Import all tool implementations
 import { samTools } from './sam-tools.js';
@@ -7,6 +7,7 @@ import { joinTools } from './join-tools.js';
 import { tangoTools } from './tango-tools.js';
 import { highergovTools } from './highergov-tools.js';
 import { referenceTools } from './reference-tools.js';
+import { withMetadata } from './tool-metadata.js';
 
 type ApiKeyName = 'samKey' | 'tangoKey' | 'higherGovKey';
 export type ProviderKeyOverrides = { samKey?: string; tangoKey?: string; higherGovKey?: string };
@@ -97,7 +98,7 @@ export class ToolCatalog {
     ) => {
       const list = await module.getTools();
       for (const tool of list) {
-        entries.push({ tool, call: args => module.callTool(tool.name, args), keyName });
+        entries.push({ tool: withMetadata(tool), call: args => module.callTool(tool.name, args), keyName });
       }
       enabledToolSets.push(`${label} (${list.length} tools)`);
     };

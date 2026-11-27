@@ -37,7 +37,7 @@ text.
   refuses a request whose Host is not loopback.
 - `/mcp` gives each client address a budget (a burst of 20 requests, then 5 a second), and refuses
   the excess with `429`. The page where you enter your keys is served with a content security
-  policy and is never cached. The MCP SDK's OAuth endpoints limit each address by default (100 authorization
+  policy and is never cached. The OAuth endpoints limit each address (100 authorization
   requests and 50 token or revocation requests every 15 minutes, and 20 registrations an hour).
 
 ## What the server does not do

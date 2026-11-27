@@ -1,0 +1,560 @@
+{
+  "empty_page": {
+    "lookup_reference_code": {
+      "error": [
+        "code",
+        "message"
+      ],
+      "keys": [
+        "error"
+      ]
+    },
+    "get_usaspending_awards": {
+      "keys": [
+        "agency_code",
+        "fiscal_year",
+        "total_obligations",
+        "total_awards",
+        "awards_summary"
+      ]
+    },
+    "get_usaspending_spending_by_category": {
+      "keys": [
+        "agency_code",
+        "fiscal_year",
+        "total_obligations",
+        "spending_by_category"
+      ]
+    },
+    "get_usaspending_budgetary_resources": {
+      "keys": [
+        "agency_code",
+        "fiscal_year",
+        "agency_name",
+        "total_budgetary_resources",
+        "total_obligations",
+        "total_outlays",
+        "unobligated_balance",
+        "budget_authority"
+      ]
+    },
+    "search_usaspending_awards_by_recipient": {
+      "keys": [
+        "recipient_name",
+        "fiscal_year",
+        "total_results",
+        "awards",
+        "total",
+        "count_unit",
+        "filters",
+        "next_cursor",
+        "warnings",
+        "search_summary"
+      ]
+    },
+    "get_award_detail": {
+      "error": [
+        "code",
+        "message"
+      ],
+      "keys": [
+        "error"
+      ]
+    },
+    "aggregate_contracts": {
+      "error": [
+        "code",
+        "message"
+      ],
+      "keys": [
+        "error"
+      ]
+    },
+    "search_sam_entities": {
+      "keys": [
+        "total",
+        "entities",
+        "page",
+        "limit"
+      ]
+    },
+    "get_sam_opportunities": {
+      "keys": [
+        "total",
+        "opportunities",
+        "dateRange",
+        "limit"
+      ]
+    },
+    "get_sam_entity_details": {
+      "error": "string",
+      "keys": [
+        "error"
+      ]
+    },
+    "check_sam_exclusions": {
+      "keys": [
+        "total",
+        "excluded",
+        "exclusions",
+        "searchCriteria"
+      ]
+    },
+    "get_entity_and_awards": {
+      "error": "string",
+      "keys": [
+        "error"
+      ]
+    },
+    "get_opportunity_spending_context": {
+      "throws": "Either opportunity_id or solicitation_number is required"
+    },
+    "search_tango_contracts": {
+      "keys": [
+        "contracts",
+        "total",
+        "count_unit",
+        "filters",
+        "next_cursor"
+      ]
+    },
+    "search_tango_grants": {
+      "keys": [
+        "grants",
+        "total",
+        "count_unit",
+        "filters",
+        "next_cursor"
+      ]
+    },
+    "get_tango_vendor_profile": {
+      "keys": [
+        "uei",
+        "legal_business_name",
+        "duns",
+        "cage_code",
+        "registration",
+        "business_types",
+        "address",
+        "contacts",
+        "naics_codes",
+        "psc_codes",
+        "certifications",
+        "performance_summary",
+        "recent_contracts",
+        "recent_grants"
+      ]
+    },
+    "search_tango_opportunities": {
+      "keys": [
+        "opportunities",
+        "total",
+        "count_unit",
+        "filters",
+        "next_cursor"
+      ]
+    },
+    "search_tango_protests": {
+      "keys": [
+        "total",
+        "protests",
+        "filters",
+        "limit"
+      ]
+    },
+    "get_tango_protest": {
+      "error": "string",
+      "keys": [
+        "error"
+      ]
+    },
+    "search_tango_idvs": {
+      "keys": [
+        "total",
+        "idvs",
+        "filters",
+        "limit"
+      ]
+    },
+    "get_tango_idv_children": {
+      "keys": [
+        "idv_key",
+        "child_idvs",
+        "child_idvs_total",
+        "task_orders",
+        "task_orders_total"
+      ]
+    },
+    "search_tango_vehicles": {
+      "keys": [
+        "total",
+        "vehicles",
+        "filters",
+        "limit"
+      ]
+    },
+    "search_tango_otas": {
+      "keys": [
+        "total",
+        "otas",
+        "filters",
+        "limit"
+      ]
+    },
+    "get_tango_entity_metrics": {
+      "keys": [
+        "uei",
+        "months",
+        "period_grouping",
+        "group_by",
+        "metrics"
+      ]
+    },
+    "get_tango_spending_summary": {
+      "keys": [
+        "total_contracts",
+        "total_obligated",
+        "count_unit",
+        "breakdown",
+        "group_by",
+        "award_type",
+        "fiscal_year",
+        "filters",
+        "page_info"
+      ]
+    },
+    "search_highergov_forecasts": {
+      "keys": [
+        "results",
+        "total",
+        "count_unit",
+        "filters",
+        "warnings",
+        "next_cursor"
+      ]
+    },
+    "get_highergov_opportunity": {
+      "error": [
+        "code",
+        "message",
+        "retry_after_seconds"
+      ],
+      "keys": [
+        "error"
+      ]
+    },
+    "search_highergov_contracts": {
+      "error": [
+        "code",
+        "message",
+        "retry_after_seconds"
+      ],
+      "keys": [
+        "error"
+      ]
+    },
+    "get_highergov_contract": {
+      "error": [
+        "code",
+        "message",
+        "retry_after_seconds"
+      ],
+      "keys": [
+        "error"
+      ]
+    },
+    "search_highergov_people": {
+      "error": [
+        "code",
+        "message",
+        "retry_after_seconds"
+      ],
+      "keys": [
+        "error"
+      ]
+    },
+    "get_highergov_person": {
+      "error": [
+        "code",
+        "message",
+        "retry_after_seconds"
+      ],
+      "keys": [
+        "error"
+      ]
+    },
+    "search_highergov_opportunities": {
+      "error": [
+        "code",
+        "message",
+        "retry_after_seconds"
+      ],
+      "keys": [
+        "error"
+      ]
+    },
+    "list_highergov_saved_searches": {
+      "keys": [
+        "results",
+        "source_endpoint",
+        "next_cursor"
+      ]
+    },
+    "get_opportunity_documents": {
+      "error": [
+        "code",
+        "message",
+        "retry_after_seconds"
+      ],
+      "keys": [
+        "error"
+      ]
+    }
+  },
+  "upstream_failure": {
+    "lookup_reference_code": {
+      "error": [
+        "code",
+        "message"
+      ],
+      "keys": [
+        "error"
+      ]
+    },
+    "get_usaspending_awards": {
+      "error": "string",
+      "keys": [
+        "error"
+      ]
+    },
+    "get_usaspending_spending_by_category": {
+      "error": "string",
+      "keys": [
+        "error"
+      ]
+    },
+    "get_usaspending_budgetary_resources": {
+      "error": "string",
+      "keys": [
+        "error"
+      ]
+    },
+    "search_usaspending_awards_by_recipient": {
+      "error": "string",
+      "keys": [
+        "error"
+      ]
+    },
+    "get_award_detail": {
+      "error": "string",
+      "keys": [
+        "error"
+      ]
+    },
+    "aggregate_contracts": {
+      "error": [
+        "code",
+        "message"
+      ],
+      "keys": [
+        "error"
+      ]
+    },
+    "search_sam_entities": {
+      "error": "string",
+      "keys": [
+        "error"
+      ]
+    },
+    "get_sam_opportunities": {
+      "error": "string",
+      "keys": [
+        "error"
+      ]
+    },
+    "get_sam_entity_details": {
+      "error": "string",
+      "keys": [
+        "error"
+      ]
+    },
+    "check_sam_exclusions": {
+      "error": "string",
+      "keys": [
+        "error"
+      ]
+    },
+    "get_entity_and_awards": {
+      "error": "string",
+      "keys": [
+        "error"
+      ]
+    },
+    "get_opportunity_spending_context": {
+      "throws": "Either opportunity_id or solicitation_number is required"
+    },
+    "search_tango_contracts": {
+      "error": "string",
+      "keys": [
+        "error"
+      ]
+    },
+    "search_tango_grants": {
+      "error": "string",
+      "keys": [
+        "error"
+      ]
+    },
+    "get_tango_vendor_profile": {
+      "error": "string",
+      "keys": [
+        "error"
+      ]
+    },
+    "search_tango_opportunities": {
+      "error": "string",
+      "keys": [
+        "error"
+      ]
+    },
+    "search_tango_protests": {
+      "error": "string",
+      "keys": [
+        "error"
+      ]
+    },
+    "get_tango_protest": {
+      "error": "string",
+      "keys": [
+        "error"
+      ]
+    },
+    "search_tango_idvs": {
+      "error": "string",
+      "keys": [
+        "error"
+      ]
+    },
+    "get_tango_idv_children": {
+      "keys": [
+        "idv_key",
+        "child_idvs_error",
+        "task_orders_error"
+      ]
+    },
+    "search_tango_vehicles": {
+      "error": "string",
+      "keys": [
+        "error"
+      ]
+    },
+    "search_tango_otas": {
+      "error": "string",
+      "keys": [
+        "error"
+      ]
+    },
+    "get_tango_entity_metrics": {
+      "error": "string",
+      "keys": [
+        "error"
+      ]
+    },
+    "get_tango_spending_summary": {
+      "error": "string",
+      "keys": [
+        "error"
+      ]
+    },
+    "search_highergov_forecasts": {
+      "error": [
+        "code",
+        "message",
+        "retry_after_seconds"
+      ],
+      "keys": [
+        "error"
+      ]
+    },
+    "get_highergov_opportunity": {
+      "error": [
+        "code",
+        "message",
+        "retry_after_seconds"
+      ],
+      "keys": [
+        "error"
+      ]
+    },
+    "search_highergov_contracts": {
+      "error": [
+        "code",
+        "message",
+        "retry_after_seconds"
+      ],
+      "keys": [
+        "error"
+      ]
+    },
+    "get_highergov_contract": {
+      "error": [
+        "code",
+        "message",
+        "retry_after_seconds"
+      ],
+      "keys": [
+        "error"
+      ]
+    },
+    "search_highergov_people": {
+      "error": [
+        "code",
+        "message",
+        "retry_after_seconds"
+      ],
+      "keys": [
+        "error"
+      ]
+    },
+    "get_highergov_person": {
+      "error": [
+        "code",
+        "message",
+        "retry_after_seconds"
+      ],
+      "keys": [
+        "error"
+      ]
+    },
+    "search_highergov_opportunities": {
+      "error": [
+        "code",
+        "message",
+        "retry_after_seconds"
+      ],
+      "keys": [
+        "error"
+      ]
+    },
+    "list_highergov_saved_searches": {
+      "error": [
+        "code",
+        "message",
+        "retry_after_seconds"
+      ],
+      "keys": [
+        "error"
+      ]
+    },
+    "get_opportunity_documents": {
+      "error": [
+        "code",
+        "message",
+        "retry_after_seconds"
+      ],
+      "keys": [
+        "error"
+      ]
+    }
+  }
+}

@@ -8,7 +8,7 @@
 //   pnpm docs:reference --check    # exit 1 if the file is out of date
 import { readFileSync, writeFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
-import type { Tool } from '@modelcontextprotocol/sdk/types.js';
+import type { Tool } from '@modelcontextprotocol/server';
 import { highergovTools } from '../src/tools/highergov-tools.js';
 import { joinTools } from '../src/tools/join-tools.js';
 import { referenceTools } from '../src/tools/reference-tools.js';
@@ -130,19 +130,31 @@ cursor, and a missing \`total\` becomes \`0\` rather than \`null\`:
 Here \`filters\` is the plain list of parameters sent, not an \`upstream\` and \`client_side\` pair. Tools that
 return one record or a summary (for example \`get_tango_spending_summary\`) have shapes of their own.
 
-A call can fail in three ways. Which one you see depends on the tool.
+Every tool declares a title, annotations (all are read-only) and an output schema. A successful call
+returns \`structuredContent\` that matches the schema, and the same JSON as indented text for
+assistants that read only text. The list tools' schemas require their whole envelope; the other tools'
+describe only what their results share, because the fields of the records come from the sources.
+
+A call can fail in three ways. Which one you see depends on the tool. All three are results marked
+\`isError: true\`, with the error in \`structuredContent\` and, as text, in the content.
 
 - **A structured error.** \`{ "error": { "code": "…", "message": "…" } }\`, and for the HigherGov
-  tools also \`retry_after_seconds\`. The result is not marked as an error. The codes are
-  \`bad_request\` (an argument the tool refuses, including an unknown or mistyped argument),
-  \`not_found\`, and \`ambiguous_award_id\`. The HigherGov tools add \`auth_failed\` (the source refused
-  the key), \`rate_limited\` (with a wait) and \`upstream_error\`.
+  tools also \`retry_after_seconds\`. The codes are \`bad_request\` (an argument the tool refuses,
+  including an unknown, missing or mistyped argument), \`not_found\`, and \`ambiguous_award_id\`. The
+  HigherGov tools add \`auth_failed\` (the source refused the key), \`rate_limited\` (with a wait) and
+  \`upstream_error\`.
 - **A plain error text.** \`{ "error": "API Error 401: …" }\`. The source answered with an error
   status, or the call could not reach it (\`Network error: …\`). The text carries the status and the
-  body the source sent. The result is not marked as an error.
-- **A tool error.** A tool that throws returns \`isError: true\` with \`{ "error": "message" }\`. So does a
-  call to a tool name the connection does not have, for example one whose key it lacks:
-  \`{ "error": "Tool \\"search_tango_contracts\\" not found" }\`.
+  body the source sent.
+- **A thrown error.** A tool that throws returns \`{ "error": "message" }\`.
+
+When your client cancels a call, the server cancels its request to the source.
+
+A call to a tool name the connection does not have, for example one whose key it lacks, is not a tool
+result but a JSON-RPC error: code \`-32602\`, \`Tool … not found\`.
+
+Results that carry \`*_error\` fields beside data (\`get_tango_idv_children\`, when one of its two
+lookups fails) are partial results, not failures: they are not marked \`isError\`.
 
 ## Which tools a connection has
 

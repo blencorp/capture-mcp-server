@@ -11,10 +11,3 @@ allowBuilds:
 #   auditConfig:
 #     ignoreGhsas:
 #       - GHSA-xxxx-xxxx-xxxx # package-name: why it is safe here
-
-# Active overrides.
-overrides:
-  # @modelcontextprotocol/sdk 1.x accepts zod ^3.25 || ^4 and resolves 3.25.x, which is affected
-  # by GHSA-mrhx-c7xc-m3w5 (unbounded memory validating oversized collections; fixed in 4.6.6).
-  # zod 4 is within the SDK's declared range. Remove once the SDK's own range requires it.
-  zod@<4.6.6: ^4.6.7
