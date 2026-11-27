@@ -37,7 +37,7 @@ const rpc = (url: string, method: string, params: unknown, headers: Record<strin
 
 const call = async (url: string, name: string, args: unknown): Promise<any> => (await rpcMessage(await rpc(url, 'tools/call', { name, arguments: args }))).result;
 
-const form = (fields: Record<string, string>) => ({
+const formBody = (fields: Record<string, string>) => ({
   method: 'POST',
   headers: { 'content-type': 'application/x-www-form-urlencoded' },
   body: new URLSearchParams(fields),
@@ -255,7 +255,7 @@ test('OAuth errors: token, authorize and revoke answer with RFC 6749 error bodie
     assert.equal(getToken.headers.get('allow'), 'POST');
     assert.deepEqual(await getToken.json(), { error: 'method_not_allowed', error_description: 'The method GET is not allowed for this endpoint' });
 
-    const token = await fetch(`${url}/token`, form({ grant_type: 'authorization_code', client_id: 'nope' }));
+    const token = await fetch(`${url}/token`, formBody({ grant_type: 'authorization_code', client_id: 'nope' }));
     assert.equal(token.status, 400);
     assert.deepEqual(await token.json(), { error: 'invalid_client', error_description: 'Invalid client_id' });
 
@@ -268,7 +268,7 @@ test('OAuth errors: token, authorize and revoke answer with RFC 6749 error bodie
     assert.equal(missing.status, 400);
     assert.equal(((await missing.json()) as any).error, 'invalid_request');
 
-    const revoke = await fetch(`${url}/revoke`, form({ token: 'a', client_id: 'nope' }));
+    const revoke = await fetch(`${url}/revoke`, formBody({ token: 'a', client_id: 'nope' }));
     assert.equal(revoke.status, 400);
     assert.deepEqual(await revoke.json(), { error: 'invalid_client', error_description: 'Invalid client_id' });
   });
@@ -339,7 +339,12 @@ test('stdio: initialize, tools/list and a tool call over the entry point', async
 
 const CALLBACK = 'https://client.example.test/callback';
 
-test('OAuth: a full code flow, refresh, and a revocation that answers 200 with an empty object', async () => {
+for (const encoding of ['form', 'json'] as const) {
+test(`OAuth (${encoding} bodies): a full code flow, refresh, and a revocation that answers 200 with an empty object`, async () => {
+  const form = (fields: Record<string, string>) =>
+    encoding === 'form'
+      ? formBody(fields)
+      : { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(fields) };
   await oauth(async url => {
     const registered: any = await (
       await fetch(`${url}/register`, {
@@ -349,9 +354,10 @@ test('OAuth: a full code flow, refresh, and a revocation that answers 200 with a
       })
     ).json();
     const verifier = 'v'.repeat(64);
+    const params = { response_type: 'code', client_id: registered.client_id, redirect_uri: CALLBACK, code_challenge: createHash('sha256').update(verifier).digest('base64url'), code_challenge_method: 'S256', state: 's1', scope: 'mcp:tools' };
     const authorize = await fetch(
-      `${url}/authorize?${new URLSearchParams({ response_type: 'code', client_id: registered.client_id, redirect_uri: CALLBACK, code_challenge: createHash('sha256').update(verifier).digest('base64url'), code_challenge_method: 'S256', state: 's1', scope: 'mcp:tools' })}`,
-      { redirect: 'manual' },
+      encoding === 'form' ? `${url}/authorize?${new URLSearchParams(params)}` : `${url}/authorize`,
+      encoding === 'form' ? { redirect: 'manual' } : { ...form(params), redirect: 'manual' },
     );
     assert.equal(authorize.status, 302);
     assert.equal(authorize.headers.get('cache-control'), 'no-store');
@@ -396,6 +402,7 @@ test('OAuth: a full code flow, refresh, and a revocation that answers 200 with a
     assert.equal((await rpc(url, 'tools/list', {}, { authorization: `Bearer ${tokens.access_token}` })).status, 401);
   });
 });
+}
 
 test('/mcp: a token without the tools scope is a 403 insufficient_scope challenge', async () => {
   const now = Math.floor(Date.now() / 1000);

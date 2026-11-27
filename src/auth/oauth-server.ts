@@ -134,6 +134,9 @@ export function authorizationServerMetadata({ issuerUrl, baseUrl, scopesSupporte
 
 const MINUTES = 60 * 1000;
 
+/** OAuth clients send forms (RFC 6749) and some send JSON; both are read, with the 100 kB default bound. */
+export const bodyParsers: RequestHandler[] = [express.json(), express.urlencoded({ extended: false })];
+
 /** Per-client request limits, as the v1 SDK set them. `shared` says how clients are told apart. */
 function limiter(windowMs: number, limit: number, what: string, shared: Partial<RateLimitOptions>): RequestHandler {
   return rateLimit({
@@ -230,7 +233,7 @@ const RequestParams = z.object({
 
 function authorizationEndpoint({ provider, rateLimit: shared }: OAuthRouterOptions): Router {
   const router = express.Router();
-  router.use(allowedMethods(['GET', 'POST']), express.urlencoded({ extended: false }), limiter(15 * MINUTES, 100, 'authorization requests', shared));
+  router.use(allowedMethods(['GET', 'POST']), ...bodyParsers, limiter(15 * MINUTES, 100, 'authorization requests', shared));
 
   router.all('/', async (req, res) => {
     res.setHeader('Cache-Control', 'no-store');
@@ -304,7 +307,7 @@ function tokenEndpoint({ provider, rateLimit: shared }: OAuthRouterOptions): Rou
   router.use(
     cors(),
     allowedMethods(['POST']),
-    express.urlencoded({ extended: false }),
+    ...bodyParsers,
     limiter(15 * MINUTES, 50, 'token requests', shared),
     authenticateClient(provider.clientsStore),
   );
@@ -395,7 +398,7 @@ function revocationEndpoint({ provider, rateLimit: shared }: OAuthRouterOptions)
   router.use(
     cors(),
     allowedMethods(['POST']),
-    express.urlencoded({ extended: false }),
+    ...bodyParsers,
     limiter(15 * MINUTES, 50, 'token revocation requests', shared),
     authenticateClient(provider.clientsStore),
   );

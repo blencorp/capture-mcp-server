@@ -26,7 +26,7 @@ import {
   type FormFieldErrors,
 } from './auth/mcp-oauth.js';
 import { headerKeys, resolveRequestKeys, type KeySource } from './auth/request-keys.js';
-import { oauthRouter } from './auth/oauth-server.js';
+import { bodyParsers, oauthRouter } from './auth/oauth-server.js';
 import { bucketKey, clientIp } from './client-ip.js';
 import { DOCS_PATH, docsHandler } from './docs.js';
 import { buildMcpServer } from './mcp-server.js';
@@ -277,7 +277,7 @@ export function createHttpApp({ auth, env = process.env, webRoot, docsRoot }: Ht
       );
     });
 
-    app.post('/oauth/authorize', express.urlencoded({ extended: false }), async (req: Request, res: Response) => {
+    app.post('/oauth/authorize', ...bodyParsers, async (req: Request, res: Response) => {
       // `req.body` is undefined when the request carried no form body.
       const form: Record<string, unknown> = req.body ?? {};
       const requestId = typeof form.request_id === 'string' ? form.request_id : '';
