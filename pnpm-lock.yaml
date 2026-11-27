@@ -188,11 +188,11 @@ importers:
         specifier: ^2.8.6
         version: 2.8.6
       express:
-        specifier: ^5.1.0
-        version: 5.1.0
+        specifier: ^5.3.0
+        version: 5.3.0
       express-rate-limit:
         specifier: ^8.7.5
-        version: 8.7.5(express@5.1.0)
+        version: 8.7.5(express@5.3.0)
       zod:
         specifier: ^4.6.7
         version: 4.6.7
@@ -1960,13 +1960,9 @@ packages:
   comma-separated-tokens@2.0.3:
     resolution: {integrity: sha512-Fu4hJdvzeylCfQPp9SGWidpzrMs7tTrlu6Vb8XGaRGck8QSNZJJp538Wrb60Lax4fPwR64ViY468OIUTbRlGZg==}
 
-  content-disposition@1.1.0:
-    resolution: {integrity: sha512-5jRCH9Z/+DRP7rkvY83B+yGIGX96OYdJmzngqnw2SBSxqCFPd0w2km3s5iawpGX8krnwSGmF0FW5Nhr0Hfai3g==}
+  content-disposition@2.0.1:
+    resolution: {integrity: sha512-e+H0ZXHSWYrENhQzw1LPuP4oF5MzVKmDU6d3hxlvaPEYLLg62MxtQNPRx4SYSuYJSBUgnQIG4HIN2tEtNv7Dog==}
     engines: {node: '>=18'}
-
-  content-type@1.0.5:
-    resolution: {integrity: sha512-nTjqfcBFEipKdXCv4YDQWCfmcLZKm81ldF0pAopTvyrFGVbcR6P/VAAd5G7N+0tTr8QqiU0tFadD6FK4NtJwOA==}
-    engines: {node: '>= 0.6'}
 
   content-type@2.1.0:
     resolution: {integrity: sha512-mj7UPXE0jaqaOsukNZRUEfEi2AcL7C/vwmwcHV0O97eO1E1pxBZuyjlZrx5seTaNBg1U6+o35wpa35Qfcc+7ag==}
@@ -2153,8 +2149,8 @@ packages:
     peerDependencies:
       express: '>= 4.11'
 
-  express@5.1.0:
-    resolution: {integrity: sha512-DT9ck5YIRU+8GYzzU5kT3eHGA5iL+1Zd0EutOmTE9Dtk+Tvuzd23VBU+ec7HPNSTxXYO55gPV/hq4pSBJDjFpA==}
+  express@5.3.0:
+    resolution: {integrity: sha512-qCqy1xSoaugxOD4IVHb1ZWdkvCF2W3aE2okKouWj8VwJ+ztskSiXoBnCSJqfKT+cVPJhuJqe9YLbY425+Zh00g==}
     engines: {node: '>= 18'}
 
   extend@3.0.2:
@@ -4711,9 +4707,7 @@ snapshots:
 
   comma-separated-tokens@2.0.3: {}
 
-  content-disposition@1.1.0: {}
-
-  content-type@1.0.5: {}
+  content-disposition@2.0.1: {}
 
   content-type@2.1.0: {}
 
@@ -4916,23 +4910,24 @@ snapshots:
     dependencies:
       eventsource-parser: 3.1.1
 
-  express-rate-limit@8.7.5(express@5.1.0):
+  express-rate-limit@8.7.5(express@5.3.0):
     dependencies:
       debug: 4.4.3
-      express: 5.1.0
+      express: 5.3.0
       ip-address: 10.7.6
     transitivePeerDependencies:
       - supports-color
 
-  express@5.1.0:
+  express@5.3.0:
     dependencies:
       accepts: 2.0.0
       body-parser: 2.4.0
-      content-disposition: 1.1.0
-      content-type: 1.0.5
+      content-disposition: 2.0.1
+      content-type: 2.1.0
       cookie: 0.7.2
       cookie-signature: 1.2.2
       debug: 4.4.3
+      depd: 2.0.0
       encodeurl: 2.0.3
       escape-html: 1.0.3
       etag: 1.8.1
