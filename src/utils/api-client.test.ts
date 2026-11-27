@@ -2,6 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import axios, { AxiosError } from 'axios';
 import { ApiClient } from './api-client.js';
+import { withRequestSignal } from './request-signal.js';
 import { highergovTools } from '../tools/highergov-tools.js';
 import { tangoTools } from '../tools/tango-tools.js';
 
@@ -84,5 +85,48 @@ test('an upstream error body is truncated', async () => {
     assert.match(res.error!, /^API Error 502: /);
   } finally {
     restore();
+  }
+});
+
+test('a request signal reaches axios, and a cancelled call reports it without caching anything', async () => {
+  const original = { get: axios.get, post: axios.post, sleep: (ApiClient as any).sleep };
+  (ApiClient as any).sleep = async () => {}; // the pacing queue is not what is under test
+  const signals: Array<AbortSignal | undefined> = [];
+  const controller = new AbortController();
+  let cancel = false;
+  const respond = async (_url: string, ...rest: unknown[]) => {
+    const config = rest[rest.length - 1] as { signal?: AbortSignal };
+    signals.push(config.signal);
+    if (cancel) throw new axios.CanceledError('canceled');
+    return { data: { results: [{ opp_key: 'abc', title: 'T' }] } };
+  };
+  (axios as any).get = respond;
+  (axios as any).post = respond;
+  try {
+    await withRequestSignal(controller.signal, async () => {
+      await ApiClient.samGet('/x', { api_key: KEY });
+      await ApiClient.usaspendingPost('/x', {});
+      await ApiClient.usaspendingGet('/x');
+      await ApiClient.tangoGet('/x', {}, KEY);
+      await ApiClient.tangoPost('/x', {}, KEY);
+      await ApiClient.highergovGet('/x', {}, KEY);
+    });
+    assert.equal(signals.length, 6);
+    assert.ok(signals.every(signal => signal === signals[0] && signal !== undefined), 'every client passes the one request signal');
+    await ApiClient.samGet('/x', { api_key: KEY });
+    assert.equal(signals.at(-1), undefined, 'no signal outside a request');
+
+    // A cancelled lookup is an error result and is not remembered: the next one reaches the source.
+    cancel = true;
+    const cancelled = await withRequestSignal(controller.signal, () => highergovTools.callTool('get_highergov_opportunity', { api_key: KEY, id: 'cancel-case' }));
+    assert.ok(JSON.stringify(cancelled).includes('Request cancelled'), JSON.stringify(cancelled));
+    assert.ok(cancelled.error, JSON.stringify(cancelled));
+    cancel = false;
+    const retried = await highergovTools.callTool('get_highergov_opportunity', { api_key: KEY, id: 'cancel-case' });
+    assert.equal(retried.error, undefined, JSON.stringify(retried));
+  } finally {
+    (axios as any).get = original.get;
+    (axios as any).post = original.post;
+    (ApiClient as any).sleep = original.sleep;
   }
 });

@@ -18,6 +18,8 @@ const EMPTY_PAGE = {
   success: true,
   data: { results: [], count: 0, next: null, entityData: [], totalRecords: 0, opportunitiesData: [], page_metadata: { hasNext: false }, data: [], total_obligations: 0 },
 };
+/** A page with no total, cursor or counts at all: the envelope must still hold. */
+const BARE_PAGE = { success: true, data: { results: [], entityData: [], opportunitiesData: [], data: [] } };
 const FAILURE = { success: false, data: null, error: 'upstream failed' };
 const UPSTREAM_CALLS = ['samGet', 'usaspendingPost', 'usaspendingGet', 'tangoGet', 'tangoPost', 'highergovGet'] as const;
 
@@ -32,7 +34,7 @@ function minimalArgs(tool: Tool): Record<string, unknown> {
 }
 
 /** What each tool returns (or the message it throws) with every upstream call answered by `upstream`. */
-async function results(upstream: typeof EMPTY_PAGE | typeof FAILURE): Promise<Map<string, { result?: Record<string, any>; throws?: string }>> {
+async function results(upstream: typeof EMPTY_PAGE | typeof BARE_PAGE | typeof FAILURE): Promise<Map<string, { result?: Record<string, any>; throws?: string }>> {
   const originals = UPSTREAM_CALLS.map(name => [name, ApiClient[name]] as const);
   for (const name of UPSTREAM_CALLS) (ApiClient as any)[name] = async () => upstream;
   try {
@@ -70,7 +72,7 @@ test('every successful result conforms to its tool\'s outputSchema; failures car
   const catalog = await ToolCatalog.create({ hasSamApiKey: true, hasTangoApiKey: true, hasHigherGovApiKey: true });
   const outputSchemas = new Map(catalog.tools.map(tool => [tool.name, fromJsonSchema(tool.outputSchema as JsonSchemaType)]));
   let checked = 0;
-  for (const [name, { result }] of [...(await results(EMPTY_PAGE)), ...(await results(FAILURE))]) {
+  for (const [name, { result }] of [...(await results(EMPTY_PAGE)), ...(await results(BARE_PAGE)), ...(await results(FAILURE))]) {
     if (result === undefined || isToolFailure(result)) continue;
     const verdict = await outputSchemas.get(name)!['~standard'].validate(result);
     assert.equal(verdict.issues, undefined, `${name}: ${JSON.stringify(verdict.issues)}`);

@@ -5,7 +5,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import type { AddressInfo } from 'node:net';
-import type { Server as HttpServer } from 'node:http';
+import { request as httpRequest, type Server as HttpServer } from 'node:http';
 import { Client, StreamableHTTPClientTransport, type VersionNegotiationOptions } from '@modelcontextprotocol/client';
 
 import { PAYLOAD, sealToken } from './auth/__fixtures__/sealed-token.js';
@@ -171,16 +171,119 @@ test('official client: without a bearer token the connection is refused', async 
   }
 });
 
-test('official client: cancelling a call aborts the upstream request it was waiting on', async () => {
+// A 2025-era client cancels with a `notifications/cancelled` message, which a stateless server cannot
+// route to the request it names; the raw-connection test below covers that leg.
+for (const [label, negotiation] of NEGOTIATIONS.filter(([, options]) => options.mode !== 'legacy')) {
+  test(`official client, ${label}: cancelling a call aborts the upstream request it was waiting on`, async () => {
+    const server = await serve({ mode: 'insecure' });
+    const client = await connect(server.url, negotiation);
+    let aborted: () => boolean = () => false;
+    let started: () => void = () => {};
+    const upstreamStarted = new Promise<void>(resolve => (started = resolve));
+    try {
+      const controller = new AbortController();
+      const outcome = withTango(
+        // The signal the server holds for this request, as ApiClient passes it to axios.
+        () =>
+          new Promise((_resolve, reject) => {
+            const signal = requestSignal()!;
+            aborted = () => signal.aborted;
+            signal.addEventListener('abort', () => reject(new Error('Request cancelled')));
+            started();
+          }),
+        async () => {
+          const call = client.callTool({ name: 'search_tango_contracts', arguments: { agency: '3600' } }, { signal: controller.signal });
+          await upstreamStarted;
+          assert.equal(aborted(), false);
+          controller.abort();
+          await assert.rejects(call);
+          // The server notices the client gave up and cancels the upstream call.
+          for (let i = 0; i < 50 && !aborted(); i++) await new Promise(resolve => setTimeout(resolve, 20));
+          return aborted();
+        },
+      );
+      assert.equal(await outcome, true);
+    } finally {
+      await client.close();
+      await server.close();
+    }
+  });
+}
+
+test('a request shaped like production (public Host, a browser Origin, a bearer) is served, bare and through the client', async () => {
+  const publicBase = new URL('https://capture.mcp.blencorp.com');
+  const server = await serve({ mode: 'oauth', publicBaseUrl: publicBase, tokenSecret: SECRET });
+  const now = Math.floor(Date.now() / 1000);
+  const token = sealToken(SECRET, { ...PAYLOAD, iat: now, exp: now + 600 });
+  try {
+    // fetch sets Host from the URL, so the bare request goes through node:http.
+    const status = await new Promise<number>((resolve, reject) => {
+      const request = httpRequest(
+        { host: '127.0.0.1', port: server.url.port, path: '/mcp', method: 'POST', headers: { host: publicBase.host, origin: 'https://claude.ai', authorization: `Bearer ${token}`, 'content-type': 'application/json', accept: 'application/json, text/event-stream' } },
+        response => {
+          response.resume();
+          resolve(response.statusCode ?? 0);
+        },
+      );
+      request.on('error', reject);
+      request.end(JSON.stringify({ jsonrpc: '2.0', id: 1, method: 'tools/list', params: {} }));
+    });
+    assert.equal(status, 200);
+
+    for (const [label, negotiation] of NEGOTIATIONS) {
+      const client = await connect(server.url, negotiation, { authorization: `Bearer ${token}`, origin: 'https://claude.ai' });
+      try {
+        assert.ok((await client.listTools()).tools.length > 0, label);
+      } finally {
+        await client.close();
+      }
+    }
+  } finally {
+    await server.close();
+  }
+});
+
+test('official client: a provider key sent as a header unlocks that provider for the caller, on the modern leg too', async () => {
+  const server = await serve({ mode: 'oauth', publicBaseUrl: BASE, tokenSecret: SECRET });
+  const now = Math.floor(Date.now() / 1000);
+  const token = sealToken(SECRET, { ...PAYLOAD, keys: { sam: 'sealed-sam' }, iat: now, exp: now + 600 });
+  const client = await connect(server.url, { mode: 'auto' }, { authorization: `Bearer ${token}`, 'x-tango-api-key': 'header-tango' });
+  try {
+    assert.ok((await client.listTools()).tools.some(tool => tool.name === 'search_tango_contracts'));
+    const seen: unknown[] = [];
+    await withTango(
+      async (..._args: unknown[]) => {
+        seen.push(_args[2]);
+        return { success: true, data: { count: 0, next: null, results: [] } };
+      },
+      () => client.callTool({ name: 'search_tango_contracts', arguments: { agency: '3600' } }),
+    );
+    assert.deepEqual(seen, ['header-tango']);
+  } finally {
+    await client.close();
+    await server.close();
+  }
+});
+
+test('official client: subscriptions/listen is refused, and the connection keeps serving tools', async () => {
   const server = await serve({ mode: 'insecure' });
   const client = await connect(server.url, { mode: 'auto' });
+  try {
+    await assert.rejects(() => client.listen({ toolsListChanged: true } as never), /Subscription limit reached/);
+    assert.ok((await client.listTools()).tools.length > 0);
+  } finally {
+    await client.close();
+    await server.close();
+  }
+});
+
+test('a request whose connection is dropped, as a legacy client does on cancelling, aborts the upstream request', async () => {
+  const server = await serve({ mode: 'insecure' });
   let aborted: () => boolean = () => false;
   let started: () => void = () => {};
   const upstreamStarted = new Promise<void>(resolve => (started = resolve));
   try {
-    const controller = new AbortController();
-    const outcome = withTango(
-      // The signal the server holds for this request, as ApiClient passes it to axios.
+    await withTango(
       () =>
         new Promise((_resolve, reject) => {
           const signal = requestSignal()!;
@@ -189,19 +292,22 @@ test('official client: cancelling a call aborts the upstream request it was wait
           started();
         }),
       async () => {
-        const call = client.callTool({ name: 'search_tango_contracts', arguments: { agency: '3600' } }, { signal: controller.signal });
+        const controller = new AbortController();
+        const response = fetch(server.url, {
+          method: 'POST',
+          headers: { 'content-type': 'application/json', accept: 'application/json, text/event-stream' },
+          body: JSON.stringify({ jsonrpc: '2.0', id: 1, method: 'tools/call', params: { name: 'search_tango_contracts', arguments: { agency: '3600' } } }),
+          signal: controller.signal,
+        });
         await upstreamStarted;
         assert.equal(aborted(), false);
         controller.abort();
-        await assert.rejects(call);
-        // The server notices the client gave up and cancels the upstream call.
+        await assert.rejects(response);
         for (let i = 0; i < 50 && !aborted(); i++) await new Promise(resolve => setTimeout(resolve, 20));
-        return aborted();
+        assert.equal(aborted(), true);
       },
     );
-    assert.equal(await outcome, true);
   } finally {
-    await client.close();
     await server.close();
   }
 });
