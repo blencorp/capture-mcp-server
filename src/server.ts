@@ -1,10 +1,10 @@
 #!/usr/bin/env node
 
-import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio.js';
+import { serveStdio } from '@modelcontextprotocol/server/stdio';
 
 import { resolveRequestKeys } from './auth/request-keys.js';
-import { createHttpApp, createMcpServer, httpAuthFromEnv, listenHost } from './http-app.js';
-import { registerToolHandlers } from './mcp-handlers.js';
+import { createHttpApp, httpAuthFromEnv, listenHost } from './http-app.js';
+import { buildMcpServer } from './mcp-server.js';
 
 // Transport mode: 'stdio' (default) or 'http'
 const TRANSPORT_MODE = process.env.MCP_TRANSPORT || 'stdio';
@@ -21,12 +21,11 @@ function logKeyStatus(): void {
 }
 
 /** stdio: a single local user; the operator's environment keys are that user's keys. */
-async function runStdioMode(): Promise<void> {
-  const server = createMcpServer();
-  const catalog = await registerToolHandlers(server, resolveRequestKeys({ kind: 'operator', env: process.env }));
+function runStdioMode(): void {
   logKeyStatus();
-  if (process.env.DEBUG) console.error(`Total tools available: ${catalog.tools.length}`);
-  await server.connect(new StdioServerTransport());
+  serveStdio(() => buildMcpServer(resolveRequestKeys({ kind: 'operator', env: process.env })), {
+    onerror: error => console.error('stdio_error:', error.message),
+  });
 }
 
 async function runHttpMode(): Promise<void> {
@@ -55,7 +54,7 @@ async function main(): Promise<void> {
   if (TRANSPORT_MODE === 'http') {
     await runHttpMode();
   } else if (TRANSPORT_MODE === 'stdio') {
-    await runStdioMode();
+    runStdioMode();
   } else {
     console.error(`Unknown transport mode: ${TRANSPORT_MODE}`);
     console.error('Valid options: stdio (default), http');

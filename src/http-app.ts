@@ -1,7 +1,12 @@
-import { Server } from '@modelcontextprotocol/sdk/server/index.js';
-import { StreamableHTTPServerTransport } from '@modelcontextprotocol/sdk/server/streamableHttp.js';
-import { mcpAuthRouter, getOAuthProtectedResourceMetadataUrl } from '@modelcontextprotocol/sdk/server/auth/router.js';
-import { requireBearerAuth } from '@modelcontextprotocol/sdk/server/auth/middleware/bearerAuth.js';
+import {
+  bearerAuthChallengeResponse,
+  createMcpHandler,
+  getOAuthProtectedResourceMetadataUrl,
+  verifyBearerToken,
+  type AuthInfo,
+  type McpRequestContext,
+} from '@modelcontextprotocol/server';
+import { toNodeHandler } from '@modelcontextprotocol/node';
 import express, { type Request, type Response } from 'express';
 import { readFile } from 'node:fs/promises';
 import { resolve } from 'node:path';
@@ -21,11 +26,12 @@ import {
   type FormFieldErrors,
 } from './auth/mcp-oauth.js';
 import { headerKeys, resolveRequestKeys, type KeySource } from './auth/request-keys.js';
+import { oauthRouter } from './auth/oauth-server.js';
 import { bucketKey, clientIp } from './client-ip.js';
 import { DOCS_PATH, docsHandler } from './docs.js';
-import { registerToolHandlers } from './mcp-handlers.js';
+import { buildMcpServer } from './mcp-server.js';
 import { RequestBudget } from './rate-limit.js';
-import { SERVER_NAME, SERVER_VERSION } from './version.js';
+import { SERVER_VERSION } from './version.js';
 
 /**
  * How the HTTP transport authenticates callers.
@@ -77,6 +83,10 @@ const PORTAL_CSP =
 const PAGE_CSP = "default-src 'none'; frame-ancestors 'none'; base-uri 'none'";
 const DEFAULT_REQUESTS_PER_SECOND = 5;
 const DEFAULT_REQUEST_BURST = 20;
+/** Largest `/mcp` request body accepted. Tool arguments are small; this leaves room for any of them. */
+const MAX_REQUEST_BODY_BYTES = 1024 * 1024;
+/** Cap on error text sent to the log: handler failures quote fragments of the caller's headers and body. */
+const MAX_LOGGED_ERROR_CHARS = 300;
 
 /** A top-level page load in a browser (not fetch, not an API client). */
 function isNavigation(req: Request): boolean {
@@ -169,14 +179,8 @@ export function listenHost(auth: HttpAuth, env: NodeJS.ProcessEnv): string | und
   return env.HOST || undefined;
 }
 
-export function createMcpServer(): Server {
-  return new Server({ name: SERVER_NAME, version: SERVER_VERSION }, { capabilities: { tools: {} } });
-}
-
 export function createHttpApp({ auth, env = process.env, webRoot, docsRoot }: HttpAppOptions): express.Express {
   const app = express();
-  app.use(express.json());
-  app.use(express.urlencoded({ extended: false }));
 
   if (auth.mode === 'insecure') {
     // Unauthenticated and serving the operator's keys: refuse requests whose Host header is not
@@ -244,11 +248,11 @@ export function createHttpApp({ auth, env = process.env, webRoot, docsRoot }: Ht
   let gate: express.RequestHandler[] = [];
   if (auth.mode === 'oauth') {
     const mcpResourceUrl = new URL('/mcp', auth.publicBaseUrl);
-    // One definition of "the client" for the /mcp budget and the SDK's OAuth endpoint limiters:
+    // One definition of "the client" for the /mcp budget and the OAuth endpoint limiters:
     // the configured header or the peer, with IPv6 counted per /64 and IPv4-mapped IPv6 as IPv4.
     const clientKey = (req: Request) => bucketKey(clientIp(req, auth.clientIpHeader));
     // The limiters' own checks assume `trust proxy`, which this app does not use.
-    const perClient = { rateLimit: { keyGenerator: clientKey, validate: { xForwardedForHeader: false } } };
+    const perClient = { keyGenerator: clientKey, validate: { xForwardedForHeader: false } };
     const provider = new McpOAuthProvider({
       baseUrl: auth.publicBaseUrl,
       tokenSecret: auth.tokenSecret,
@@ -272,7 +276,7 @@ export function createHttpApp({ auth, env = process.env, webRoot, docsRoot }: Ht
       );
     });
 
-    app.post('/oauth/authorize', async (req: Request, res: Response) => {
+    app.post('/oauth/authorize', express.urlencoded({ extended: false }), async (req: Request, res: Response) => {
       const requestId = typeof req.body.request_id === 'string' ? req.body.request_id : '';
       const { keys, checked, fieldErrors } = parseAuthorizeForm(req.body);
       try {
@@ -284,16 +288,13 @@ export function createHttpApp({ auth, env = process.env, webRoot, docsRoot }: Ht
     });
 
     app.use(
-      mcpAuthRouter({
+      oauthRouter({
         provider,
         issuerUrl: auth.publicBaseUrl,
         baseUrl: auth.publicBaseUrl,
         resourceServerUrl: mcpResourceUrl,
         scopesSupported: [...SUPPORTED_SCOPES],
-        authorizationOptions: perClient,
-        clientRegistrationOptions: perClient,
-        tokenOptions: perClient,
-        revocationOptions: perClient,
+        rateLimit: perClient,
         resourceName: 'GovCon Capture',
       }),
     );
@@ -305,6 +306,11 @@ export function createHttpApp({ auth, env = process.env, webRoot, docsRoot }: Ht
       auth.requestsPerSecond ?? DEFAULT_REQUESTS_PER_SECOND,
       auth.requestBurst ?? DEFAULT_REQUEST_BURST,
     );
+    const bearer = {
+      verifier: provider,
+      requiredScopes: [DEFAULT_CLIENT_SCOPE],
+      resourceMetadataUrl: getOAuthProtectedResourceMetadataUrl(mcpResourceUrl),
+    };
     gate = [
       (req, res, next) => {
         const retryAfter = budget.spend(clientKey(req));
@@ -314,39 +320,34 @@ export function createHttpApp({ auth, env = process.env, webRoot, docsRoot }: Ht
           .set('Retry-After', String(retryAfter))
           .json({ jsonrpc: '2.0', error: { code: -32029, message: 'Too many requests. Slow down and retry.' }, id: null });
       },
-      requireBearerAuth({
-        verifier: provider,
-        requiredScopes: [DEFAULT_CLIENT_SCOPE],
-        resourceMetadataUrl: getOAuthProtectedResourceMetadataUrl(mcpResourceUrl),
-      }),
+      async (req, res, next) => {
+        try {
+          (req as AuthedRequest).auth = await verifyBearerToken(req.headers.authorization, bearer);
+          next();
+        } catch (error) {
+          await relay(res, bearerAuthChallengeResponse(error, bearer));
+        }
+      },
     ];
   }
 
-  app.post('/mcp', ...gate, async (req: Request, res: Response) => {
-    try {
-      const headers = headerKeys(name => req.get(name));
-      const source: KeySource =
-        auth.mode === 'oauth'
-          ? { kind: 'caller', sealed: getProviderKeysFromAuth(req.auth), headers }
-          : { kind: 'operator', headers, env };
-
-      const server = createMcpServer();
-      await registerToolHandlers(server, resolveRequestKeys(source));
-
-      // Stateless: a fresh server and transport per request.
-      const transport = new StreamableHTTPServerTransport({ sessionIdGenerator: undefined, enableJsonResponse: true });
-      res.on('close', () => {
-        void transport.close();
-      });
-      await server.connect(transport);
-      await transport.handleRequest(req, res, req.body);
-    } catch (error) {
-      console.error('Error handling MCP request:', error instanceof Error ? error.message : error);
-      if (!res.headersSent) {
-        res.status(500).json({ jsonrpc: '2.0', error: { code: -32603, message: 'Internal server error' }, id: null });
-      }
-    }
+  // Stateless: the factory runs once per request, so the keys a tool uses are those of this request's
+  // own bearer token and headers, and no state outlives the request. Clients that predate the
+  // 2026-07-28 revision are served the same way (`legacy: 'stateless'`). The handler reads the body
+  // itself, with a size cap; the body parsers above do not run for it.
+  const mcp = createMcpHandler(ctx => buildMcpServer(resolveRequestKeys(keySource(ctx, auth, env))), {
+    legacy: 'stateless',
+    maxRequestBodySize: MAX_REQUEST_BODY_BYTES,
+    // The SDK routes `subscriptions/listen` whatever the capabilities say, and each one holds a
+    // stream open. This server has nothing to subscribe to: refuse them all.
+    maxSubscriptions: 0,
+    onerror: error => console.error('mcp_handler_error:', truncate(error.message)),
   });
+  const serveMcp = toNodeHandler(mcp, {
+    maxRequestBodySize: MAX_REQUEST_BODY_BYTES,
+    onerror: error => console.error('mcp_adapter_error:', truncate(error.message)),
+  });
+  app.post('/mcp', ...gate, (req: Request, res: Response) => serveMcp(req, res));
 
   app.all('/mcp', (_req: Request, res: Response) => {
     res.status(405).json({
@@ -370,6 +371,25 @@ export function createHttpApp({ auth, env = process.env, webRoot, docsRoot }: Ht
   });
 
   return app;
+}
+
+type AuthedRequest = Request & { auth?: AuthInfo };
+
+/** Where this request's provider keys may come from: its own token and headers, or the operator's environment in single-user mode. */
+function keySource(ctx: McpRequestContext, auth: HttpAuth, env: NodeJS.ProcessEnv): KeySource {
+  const headers = headerKeys(name => ctx.requestInfo?.headers.get(name) ?? undefined);
+  return auth.mode === 'oauth' ? { kind: 'caller', sealed: getProviderKeysFromAuth(ctx.authInfo), headers } : { kind: 'operator', headers, env };
+}
+
+function truncate(message: string): string {
+  return message.length > MAX_LOGGED_ERROR_CHARS ? `${message.slice(0, MAX_LOGGED_ERROR_CHARS)}...[truncated]` : message;
+}
+
+/** Writes a web-standard Response (the SDK's bearer challenge) to the Express response. */
+async function relay(res: Response, response: globalThis.Response): Promise<void> {
+  res.status(response.status);
+  response.headers.forEach((value, name) => res.setHeader(name, value));
+  res.send(await response.text());
 }
 
 function parseAuthorizeForm(body: Record<string, unknown> | undefined): {
