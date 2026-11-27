@@ -76,9 +76,10 @@ server on the page it gets, so the answer says so in `filters` and `warnings`.
 
 <ToolExample file="recompete-candidates.json" />
 
-"Which active service-disabled veteran-owned IT opportunities are open?" HigherGov lists active
-opportunities. To limit them to recent postings, add `posted_after` (an ISO-8601 date); it can reach
-back at most 45 days, because the source filters one posting day per request.
+"Which service-disabled veteran-owned IT opportunities were posted this month?" HigherGov needs
+`posted_after` (an ISO-8601 date) or `agency_key` to search active opportunities; without either the
+call fails with `bad_request`. `posted_after` can reach back at most 45 days, because the source
+filters one posting day per request, so change the date in this example to a recent one.
 
 <ToolExample file="sdvosb-opportunities.json" />
 
