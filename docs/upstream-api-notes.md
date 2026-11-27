@@ -8,16 +8,13 @@ fails invisibly. Every parameter a tool sends must have a row here.
 Statuses: **verified** (observed live), **unverified** (best documented guess —
 tool must post-verify or warn), **does-not-bind** (observed ignored).
 
-Run `npm run capture-fixtures` with live keys to refresh raw payload fixtures
+Run `pnpm capture-fixtures` with live keys to refresh raw payload fixtures
 in `fixtures/raw/` and re-run the binding probes; update this file with the
 verdicts.
 
 ## Tango `GET /api/contracts/`
 
-| Param | Status | Notes |
-| --- | --- | --- |
-Documentation source: tango.makegov.com/docs (indexed via Context7,
-`/websites/tango_makegov` — quick-start, api-reference/contracts,
+Documentation source: tango.makegov.com/docs (quick-start, api-reference/contracts,
 data-dictionary/contracts). "documented" below means confirmed there.
 
 | Param | Status | Notes |

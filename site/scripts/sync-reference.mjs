@@ -38,7 +38,7 @@ body = body.replace(fence, () => `\`\`\`js\n${formatted[next++]}\n\`\`\``);
 const frontmatter = [
   '---',
   `title: ${title[1]}`,
-  'description: Every tool, its arguments, the result shape, the error codes, and the key status tool.',
+  'description: Every tool, its arguments, the result shapes, the error codes, and the rate limits.',
   `editUrl: ${repo}/edit/main/docs/sdk-reference.md`,
   '---',
   '',

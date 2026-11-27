@@ -78,7 +78,7 @@ export const usaspendingTools = {
             },
             fiscal_year: {
               type: "number",
-              description: "Fiscal year (e.g., 2024)"
+              description: "Fiscal year (default: 2024)"
             },
             limit: {
               type: "number", 
@@ -100,7 +100,7 @@ export const usaspendingTools = {
             },
             fiscal_year: {
               type: "number",
-              description: "Fiscal year (e.g., 2024)"
+              description: "Fiscal year (default: 2024)"
             }
           },
           required: ["agency_code"]
@@ -118,7 +118,7 @@ export const usaspendingTools = {
             },
             fiscal_year: {
               type: "number",
-              description: "Fiscal year (e.g., 2024)"
+              description: "Fiscal year (default: 2024)"
             }
           },
           required: ["agency_code"]

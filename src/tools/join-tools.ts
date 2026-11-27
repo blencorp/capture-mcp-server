@@ -16,7 +16,7 @@ export const joinTools = {
             },
             fiscal_year: {
               type: "number",
-              description: "Fiscal year for awards (default: current FY)"
+              description: "Fiscal year for awards (default: 2024)"
             },
             award_limit: {
               type: "number",
@@ -235,7 +235,7 @@ export const joinTools = {
       if (!opportunity) {
         return { 
           error: "Opportunity not found. It may be older than 30 days or the ID/solicitation number is incorrect.",
-          suggestion: "Try using search_sam_opportunities with a broader date range first"
+          suggestion: "Try using get_sam_opportunities with a broader date range first"
         };
       }
 
