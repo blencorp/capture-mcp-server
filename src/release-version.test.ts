@@ -5,9 +5,10 @@ import { mkdtempSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
-// The real helper (scripts/release-version.ts) against real git history, in the states a release
-// re-run can find: before the atomic push, and after it (the event commit is behind the new tag).
-const script = new URL('../scripts/release-version.ts', import.meta.url).pathname;
+// The real helpers (scripts/resume-tag.mjs, scripts/release-version.ts) against real git history,
+// in the states a release re-run can find: before the atomic push, after it, and after a later release.
+const resumeTag = new URL('../scripts/resume-tag.mjs', import.meta.url).pathname;
+const releaseVersion = new URL('../scripts/release-version.ts', import.meta.url).pathname;
 const tsx = new URL('../node_modules/.bin/tsx', import.meta.url).pathname;
 
 function repo() {
@@ -20,37 +21,53 @@ function repo() {
     writeFileSync(join(dir, 'f'), message);
     git('add', '-A');
     git('commit', '-q', '-m', message);
+    return git('rev-parse', 'HEAD');
   };
-  const decide = () => {
-    const out = execFileSync(tsx, [script, '--bump=auto'], { cwd: dir, encoding: 'utf8' });
-    return Object.fromEntries(out.trim().split('\n').map(l => l.split('=') as [string, string]));
+  const release = (version: string) => {
+    commit(`chore(release): v${version}`);
+    git('tag', '-a', `v${version}`, '-m', 'r');
   };
-  return { git, commit, decide };
+  const resume = (sha: string) => {
+    git('checkout', '-q', '--detach', sha); // a re-run checks out its original event commit
+    return execFileSync(process.execPath, [resumeTag], { cwd: dir, encoding: 'utf8' }).trim();
+  };
+  const next = () =>
+    /^next=(.*)$/m.exec(execFileSync(tsx, [releaseVersion, '--bump=auto'], { cwd: dir, encoding: 'utf8' }))?.[1];
+  return { git, commit, release, resume, next };
 }
 
 test('before the push: a new commit after the last tag is released, not resumed', () => {
   const r = repo();
   r.commit('feat: first');
   r.git('tag', '-a', 'v1.0.0', '-m', 'r');
-  r.commit('fix: second');
-  assert.deepEqual({ next: r.decide().next, resume: r.decide().resume_tag }, { next: '1.0.1', resume: '' });
+  const event = r.commit('fix: second');
+  assert.equal(r.resume(event), '');
+  assert.equal(r.next(), '1.0.1');
 });
 
-test('after the push: the event commit is behind the new tag, so a re-run resumes it and bumps nothing', () => {
+test('after the push: the event commit is behind the new tag, so a re-run resumes it', () => {
   const r = repo();
   r.commit('feat: first');
   r.git('tag', '-a', 'v1.0.0', '-m', 'r');
-  r.commit('fix: second'); // the event commit
-  const event = r.git('rev-parse', 'HEAD');
-  r.commit('chore(release): v1.0.1'); // the commit the atomic push added
-  r.git('tag', '-a', 'v1.0.1', '-m', 'r');
-  r.git('checkout', '-q', '--detach', event); // a re-run checks out the original event commit
-  assert.equal(r.decide().resume_tag, 'v1.0.1');
+  const a = r.commit('fix: a');
+  r.release('1.0.1');
+  assert.equal(r.resume(a), 'v1.0.1');
+});
+
+test('after a later release: retrying A resumes v1.0.1, not the newer v1.1.0', () => {
+  const r = repo();
+  r.commit('feat: first');
+  r.git('tag', '-a', 'v1.0.0', '-m', 'r');
+  const a = r.commit('fix: a');
+  r.release('1.0.1');
+  r.commit('feat: b');
+  r.release('1.1.0');
+  assert.equal(r.resume(a), 'v1.0.1');
 });
 
 test('a commit that carries the latest tag itself is already released', () => {
   const r = repo();
-  r.commit('feat: first');
+  const only = r.commit('feat: first');
   r.git('tag', '-a', 'v1.0.0', '-m', 'r');
-  assert.equal(r.decide().resume_tag, 'v1.0.0');
+  assert.equal(r.resume(only), 'v1.0.0');
 });

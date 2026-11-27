@@ -23,8 +23,8 @@ name: Release
 #    releases both changes. So main is never bumped without its tag.
 #  - The version is derived from the last tag, so repeating a run is safe: a bumped main that never
 #    got its tag derives the same version, the files already match, and only the tag is created.
-#  - A re-run after the push succeeded finds HEAD already inside the new tag (release-version prints
-#    `resume_tag`) and builds, attaches and publishes that tag instead of deriving another bump.
+#  - A re-run after the push succeeded finds HEAD already inside the new tag (scripts/resume-tag.mjs: the earliest
+#    version tag containing it) and builds, attaches and publishes that tag instead of deriving another bump.
 #    Artifact upload overwrites, and an existing GitHub release is completed (missing assets
 #    uploaded, a draft published) rather than assumed done.
 #  - Only main releases: both jobs require github.ref to be refs/heads/main.
@@ -100,6 +100,20 @@ jobs:
           git checkout --detach "v${version}"
           echo "TAGGED=true" >> "$GITHUB_ENV"
 
+      # A re-run after the atomic push checks out the original event commit, which is now behind
+      # the tag that run created. Resume from the earliest version tag containing it (the release
+      # this commit went out in, not a newer one); deriving another bump would diverge from main.
+      # Before the install, so the tag's own lockfile and sources are what get built.
+      - name: Resume a commit that is already released
+        if: env.TAGGED != 'true'
+        run: |
+          tag=$(node scripts/resume-tag.mjs)
+          if [ -n "$tag" ]; then
+            echo "::notice::HEAD is already released as ${tag}; resuming from that tag."
+            git checkout --detach "$tag"
+            echo "TAGGED=true" >> "$GITHUB_ENV"
+          fi
+
       # pnpm version is read from the "packageManager" field in package.json.
       - uses: pnpm/action-setup@73e46992e05b19abd31f2f3c20e0e7370d762115 # v6.1.1
 
@@ -120,15 +134,6 @@ jobs:
         env:
           BUMP: ${{ inputs.bump || 'auto' }}
         run: pnpm run --silent release-version --bump="$BUMP" >> "$GITHUB_OUTPUT"
-
-      # A re-run after the atomic push checks out the original event commit, which is now behind
-      # the new tag. Resume from that tag; deriving another bump would diverge from the released main.
-      - name: Resume a commit that is already released
-        if: env.TAGGED != 'true' && steps.version.outputs.resume_tag != ''
-        run: |
-          echo "::notice::HEAD is already released as ${{ steps.version.outputs.resume_tag }}; resuming from that tag."
-          git checkout --detach "${{ steps.version.outputs.resume_tag }}"
-          echo "TAGGED=true" >> "$GITHUB_ENV"
 
       - name: Summarize the decision
         if: env.TAGGED != 'true'
