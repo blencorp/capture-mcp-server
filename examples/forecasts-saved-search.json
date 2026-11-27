@@ -1,0 +1,8 @@
+{
+  "tool": "search_highergov_forecasts",
+  "arguments": {
+    "saved_search_id": "example-saved-search-id",
+    "since": "2026-11-01T00:00:00Z",
+    "limit": 25
+  }
+}

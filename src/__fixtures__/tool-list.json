@@ -31,7 +31,7 @@
         },
         "fiscal_year": {
           "type": "number",
-          "description": "Fiscal year (e.g., 2024)"
+          "description": "Fiscal year (default: 2024)"
         },
         "limit": {
           "type": "number",
@@ -55,7 +55,7 @@
         },
         "fiscal_year": {
           "type": "number",
-          "description": "Fiscal year (e.g., 2024)"
+          "description": "Fiscal year (default: 2024)"
         }
       },
       "required": [
@@ -75,7 +75,7 @@
         },
         "fiscal_year": {
           "type": "number",
-          "description": "Fiscal year (e.g., 2024)"
+          "description": "Fiscal year (default: 2024)"
         }
       },
       "required": [
@@ -340,7 +340,7 @@
         },
         "fiscal_year": {
           "type": "number",
-          "description": "Fiscal year for awards (default: current FY)"
+          "description": "Fiscal year for awards (default: 2024)"
         },
         "award_limit": {
           "type": "number",
@@ -406,11 +406,11 @@
         },
         "award_amount_min": {
           "type": "number",
-          "description": "Minimum contract award amount (USD). Applied client-side per page — the response says so and nulls the total."
+          "description": "Minimum contract award amount (USD), sent to Tango as obligated_gte. The server also checks the page it gets, and says so under filters.client_side if Tango did not honor the bound."
         },
         "award_amount_max": {
           "type": "number",
-          "description": "Maximum contract award amount (USD). Applied client-side per page."
+          "description": "Maximum contract award amount (USD), sent to Tango as obligated_lte. The server also checks the page it gets, and says so under filters.client_side if Tango did not honor the bound."
         },
         "date_from": {
           "type": "string",
@@ -516,7 +516,7 @@
         },
         "include_grants": {
           "type": "boolean",
-          "description": "Include recent grant history (default: false)"
+          "description": "Include recent subawards (the entity's five most recent, newest fiscal year first; default: false)"
         }
       },
       "required": [
@@ -730,7 +730,7 @@
       "properties": {
         "idv_key": {
           "type": "string",
-          "description": "Tango IDV key (from the `key` field of a search_tango_idvs result) — required"
+          "description": "Tango IDV key (from the `idv_key` field of a search_tango_idvs result) — required"
         },
         "include_child_idvs": {
           "type": "boolean",
@@ -918,7 +918,7 @@
         },
         "group_by": {
           "type": "string",
-          "description": "Group spending by dimension: 'agency', 'vendor', 'naics', 'psc', 'month'"
+          "description": "Group spending by dimension: 'agency' (default), 'vendor', 'naics', 'psc', 'month'"
         },
         "award_type": {
           "type": "string",
@@ -944,7 +944,7 @@
         },
         "limit": {
           "type": "number",
-          "description": "Number of results (default 50, max 200)"
+          "description": "Number of results (default 50, max 200; HigherGov documents a page-size maximum of 100)"
         },
         "cursor": {
           "type": "string",
@@ -958,7 +958,7 @@
   },
   {
     "name": "get_highergov_opportunity",
-    "description": "Get one opportunity by HigherGov ID, SAM notice ID, or URL. Returns the full record including agency, NAICS, vehicle, set-aside, value, dates, description, and attachments. If `incumbent_contract_id` is present, follow up with get_highergov_contract to enrich.",
+    "description": "Get one opportunity by HigherGov ID, SAM notice ID, or URL. Returns the full record including agency, NAICS, vehicle, set-aside, value, dates, and description. The HigherGov opportunity record has no attachments: use get_opportunity_documents for the solicitation files. If `incumbent_contract_id` is present, follow up with get_highergov_contract to enrich.",
     "inputSchema": {
       "type": "object",
       "properties": {
@@ -974,7 +974,7 @@
   },
   {
     "name": "search_highergov_contracts",
-    "description": "Search awarded federal contracts by agency, NAICS, PSC, set-aside, period-of-performance end-date range, and value bounds. Use to find recompete candidates 12–18 months ahead of PoP end. At least one of agency/naics/psc is required. Every response echoes which filters ran upstream vs client-side and warns when a filter could not be verified — read `warnings` before trusting counts.",
+    "description": "Search awarded federal contracts by agency, NAICS, PSC, set-aside, period-of-performance end-date range, and value bounds. Use to find recompete candidates 12–18 months ahead of PoP end. At least one of agency, agency_key, awardee_uei, naics, or psc is required. Every response echoes which filters ran upstream vs client-side and warns when a filter could not be verified — read `warnings` before trusting counts.",
     "inputSchema": {
       "type": "object",
       "properties": {
@@ -994,13 +994,15 @@
           "type": "array",
           "items": {
             "type": "string"
-          }
+          },
+          "description": "NAICS codes (server-side filter; comma-joined, which HigherGov does not document as OR syntax)"
         },
         "psc": {
           "type": "array",
           "items": {
             "type": "string"
-          }
+          },
+          "description": "PSC codes (server-side filter; comma-joined, which HigherGov does not document as OR syntax)"
         },
         "set_aside": {
           "type": "array",
@@ -1027,7 +1029,7 @@
         },
         "limit": {
           "type": "number",
-          "description": "Default 50, max 200"
+          "description": "Default 50, max 200 (HigherGov documents a page-size maximum of 100)"
         },
         "cursor": {
           "type": "string",
@@ -1151,11 +1153,11 @@
         },
         "limit": {
           "type": "number",
-          "description": "Default 50, max 200"
+          "description": "Default 50, max 200; HigherGov returns at most 100 rows per request"
         },
         "cursor": {
           "type": "string",
-          "description": "Page number from prior next_cursor"
+          "description": "The next_cursor from the prior response: a page number, or YYYY-MM-DD|page when posted_after is set"
         }
       },
       "required": []

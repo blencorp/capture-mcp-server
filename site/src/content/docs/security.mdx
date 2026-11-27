@@ -16,9 +16,11 @@ text.
 - A key goes only to the source it belongs to, at that source's fixed address.
 - No tool takes an API key as an argument, and a call that includes one is refused, so a key never
   passes through your assistant. The server adds your connection's key itself.
-- The server does not check a key when you enter it, and it has no general redaction: an error
-  carries the status and body a source sent. The HigherGov tools do not pass on the URLs in which
-  HigherGov embeds the key. Rotate a key with its source if you think it leaked.
+- The server does not check a key when you enter it. When a source answers with an error, the error
+  text carries its status and body cut to 500 characters, with the call's key and any `api_key=`
+  value replaced by `[REDACTED]`. Successful responses are not redacted, but the HigherGov tools do
+  not pass on the URLs in which HigherGov embeds the key. Rotate a key with its source if you think
+  it leaked.
 - A single token cannot be reliably revoked. The server remembers a revoked token only in memory,
   in one instance, so a restart forgets it. An access token lasts an hour, which bounds a leaked
   one. Rotate the key with its source to cut off a leaked token, or the operator can change the

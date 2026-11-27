@@ -20,8 +20,9 @@ the page it got. When any client-side filter ran, `total` is `null` because the 
 not reflect it; the source's own number is then in `total_upstream_unfiltered`, with a warning. Pass
 `next_cursor` back as `cursor` for the next page. It is `null` on the last page.
 
-Other tools that return records keep their own shapes. They carry no `filters` split, `count_unit` or
-cursor, and a missing `total` becomes `0` rather than `null`:
+Other tools that return records keep their own shapes. They carry no `filters` split or `count_unit`,
+and most have no cursor. A missing `total` becomes `0` rather than `null`, except in the saved-search
+list, which has no `total`:
 
 | Tool | Result |
 | --- | --- |
@@ -32,7 +33,7 @@ cursor, and a missing `total` becomes `0` rather than `null`:
 | `search_tango_idvs` | `{ total, idvs, filters, limit }` |
 | `search_tango_vehicles` | `{ total, vehicles, filters, limit }` |
 | `search_tango_otas` | `{ total, otas, filters, limit }` |
-| `list_highergov_saved_searches` | `{ results, source_endpoint, … }` |
+| `list_highergov_saved_searches` | `{ results, source_endpoint, next_cursor }` |
 
 Here `filters` is the plain list of parameters sent, not an `upstream` and `client_side` pair. Tools that
 return one record or a summary (for example `get_tango_spending_summary`) have shapes of their own.
@@ -52,7 +53,9 @@ A call can fail in three ways. Which one you see depends on the tool. All three 
   `upstream_error`.
 - **A plain error text.** `{ "error": "API Error 401: …" }`. The source answered with an error
   status, or the call could not reach it (`Network error: …`). The text carries the status and the
-  body the source sent.
+  body the source sent, cut to 500 characters, with your key and any `api_key=` value replaced by
+  `[REDACTED]`. Successful responses are not redacted, except that the HigherGov tools drop the URLs
+  in which HigherGov embeds the key.
 - **A thrown error.** A tool that throws returns `{ "error": "message" }`.
 
 When your client cancels a call, the server cancels its request to the source.
@@ -111,7 +114,7 @@ Get federal awards data for a specific agency and fiscal year. Returns award cou
 | Parameter | Type | Required | Notes |
 | --- | --- | --- | --- |
 | `agency_code` | string | yes | 3-digit agency code (e.g., '075' for HHS, '097' for DOD) |
-| `fiscal_year` | number | no | Fiscal year (e.g., 2024) |
+| `fiscal_year` | number | no | Fiscal year (default: 2024) |
 | `limit` | number | no | Number of top awards to return (default: 10) |
 
 #### `get_usaspending_spending_by_category(args)`
@@ -121,7 +124,7 @@ Get spending breakdown by award category (contracts, grants, loans, etc.) for an
 | Parameter | Type | Required | Notes |
 | --- | --- | --- | --- |
 | `agency_code` | string | yes | 3-digit agency code (e.g., '075' for HHS) |
-| `fiscal_year` | number | no | Fiscal year (e.g., 2024) |
+| `fiscal_year` | number | no | Fiscal year (default: 2024) |
 
 #### `get_usaspending_budgetary_resources(args)`
 
@@ -130,7 +133,7 @@ Get budgetary resources and obligations for an agency in a fiscal year. Needs no
 | Parameter | Type | Required | Notes |
 | --- | --- | --- | --- |
 | `agency_code` | string | yes | 3-digit agency code (e.g., '075' for HHS) |
-| `fiscal_year` | number | no | Fiscal year (e.g., 2024) |
+| `fiscal_year` | number | no | Fiscal year (default: 2024) |
 
 #### `search_usaspending_awards_by_recipient(args)`
 
@@ -231,7 +234,7 @@ Join SAM.gov entity details with their USASpending.gov award history. Perfect fo
 | Parameter | Type | Required | Notes |
 | --- | --- | --- | --- |
 | `uei` | string | yes | Unique Entity Identifier (required) |
-| `fiscal_year` | number | no | Fiscal year for awards (default: current FY) |
+| `fiscal_year` | number | no | Fiscal year for awards (default: 2024) |
 | `award_limit` | number | no | Max number of awards to return (default: 10) |
 
 #### `get_opportunity_spending_context(args)`
@@ -260,8 +263,8 @@ Search federal contracts through Tango's unified API (FPDS-derived). Set-aside f
 | `agency` | string | no | Awarding agency FPDS code (e.g. 3600=VA, 2100=Army, 1700=Navy, 5700=Air Force, 9700=DoD other, 4732=GSA/FAS, 7000=DHS, 7500=HHS, 1400=Interior, 1500=DOJ). Agency names are rejected: they hang the upstream. |
 | `naics_code` | string | no | NAICS industry classification code |
 | `psc_code` | string | no | Product/Service Code (PSC) |
-| `award_amount_min` | number | no | Minimum contract award amount (USD). Applied client-side per page — the response says so and nulls the total. |
-| `award_amount_max` | number | no | Maximum contract award amount (USD). Applied client-side per page. |
+| `award_amount_min` | number | no | Minimum contract award amount (USD), sent to Tango as obligated_gte. The server also checks the page it gets, and says so under filters.client_side if Tango did not honor the bound. |
+| `award_amount_max` | number | no | Maximum contract award amount (USD), sent to Tango as obligated_lte. The server also checks the page it gets, and says so under filters.client_side if Tango did not honor the bound. |
 | `date_from` | string | no | Start date for contract awards (YYYY-MM-DD). See date_field in the response for which underlying date this compares. |
 | `date_to` | string | no | End date for contract awards (YYYY-MM-DD) |
 | `set_aside` | value | no | FPDS set-aside code(s), matched EXACTLY — e.g. ["8AN", "SDVOSBS", "HZS"]. Unknown codes are rejected with the valid list. Use lookup_reference_code to check a code's meaning first. |
@@ -294,7 +297,7 @@ Get comprehensive vendor/entity profile from Tango's consolidated database. Prov
 | --- | --- | --- | --- |
 | `uei` | string | yes | Unique Entity Identifier (UEI) - required |
 | `include_contracts` | boolean | no | Include recent contract history (default: false) |
-| `include_grants` | boolean | no | Include recent grant history (default: false) |
+| `include_grants` | boolean | no | Include recent subawards (the entity's five most recent, newest fiscal year first; default: false) |
 
 #### `search_tango_opportunities(args)`
 
@@ -369,7 +372,7 @@ Get the awards issued under a single IDV (its child IDVs, task/delivery orders, 
 
 | Parameter | Type | Required | Notes |
 | --- | --- | --- | --- |
-| `idv_key` | string | yes | Tango IDV key (from the `key` field of a search_tango_idvs result) — required |
+| `idv_key` | string | yes | Tango IDV key (from the `idv_key` field of a search_tango_idvs result) — required |
 | `include_child_idvs` | boolean | no | Include child IDVs (sub-IDIQs under this parent). Default: true |
 | `include_task_orders` | boolean | no | Include task/delivery order awards issued against this IDV. Default: true |
 | `include_transactions` | boolean | no | Include obligation transactions (lower-level, may be large). Default: false |
@@ -433,7 +436,7 @@ Get spending summaries and analytics from Tango's unified platform, aggregated o
 | `agency` | string | no | Awarding agency FPDS code (e.g. 3600=VA, 2100=Army, 1700=Navy, 5700=Air Force, 9700=DoD other, 4732=GSA/FAS, 7000=DHS, 7500=HHS, 1400=Interior, 1500=DOJ) |
 | `vendor_uei` | string | no | Vendor UEI for spending summary |
 | `fiscal_year` | number | no | Fiscal year for summary (e.g., 2024) |
-| `group_by` | string | no | Group spending by dimension: 'agency', 'vendor', 'naics', 'psc', 'month' |
+| `group_by` | string | no | Group spending by dimension: 'agency' (default), 'vendor', 'naics', 'psc', 'month' |
 | `award_type` | string | no | Filter by award type: 'contracts', 'grants', 'all' (default: 'all') |
 
 ### HigherGov
@@ -448,12 +451,12 @@ Pull forecasts matching a HigherGov saved search. Returns the paginated list of 
 | --- | --- | --- | --- |
 | `saved_search_id` | string | yes | HigherGov saved-search ID (required) |
 | `since` | string | no | ISO-8601 datetime; defaults to last 24h |
-| `limit` | number | no | Number of results (default 50, max 200) |
+| `limit` | number | no | Number of results (default 50, max 200; HigherGov documents a page-size maximum of 100) |
 | `cursor` | string | no | Page number from prior next_cursor |
 
 #### `get_highergov_opportunity(args)`
 
-Get one opportunity by HigherGov ID, SAM notice ID, or URL. Returns the full record including agency, NAICS, vehicle, set-aside, value, dates, description, and attachments. If `incumbent_contract_id` is present, follow up with get_highergov_contract to enrich. Needs your HigherGov key.
+Get one opportunity by HigherGov ID, SAM notice ID, or URL. Returns the full record including agency, NAICS, vehicle, set-aside, value, dates, and description. The HigherGov opportunity record has no attachments: use get_opportunity_documents for the solicitation files. If `incumbent_contract_id` is present, follow up with get_highergov_contract to enrich. Needs your HigherGov key.
 
 | Parameter | Type | Required | Notes |
 | --- | --- | --- | --- |
@@ -461,21 +464,21 @@ Get one opportunity by HigherGov ID, SAM notice ID, or URL. Returns the full rec
 
 #### `search_highergov_contracts(args)`
 
-Search awarded federal contracts by agency, NAICS, PSC, set-aside, period-of-performance end-date range, and value bounds. Use to find recompete candidates 12–18 months ahead of PoP end. At least one of agency/naics/psc is required. Every response echoes which filters ran upstream vs client-side and warns when a filter could not be verified — read `warnings` before trusting counts. Needs your HigherGov key.
+Search awarded federal contracts by agency, NAICS, PSC, set-aside, period-of-performance end-date range, and value bounds. Use to find recompete candidates 12–18 months ahead of PoP end. At least one of agency, agency_key, awardee_uei, naics, or psc is required. Every response echoes which filters ran upstream vs client-side and warns when a filter could not be verified — read `warnings` before trusting counts. Needs your HigherGov key.
 
 | Parameter | Type | Required | Notes |
 | --- | --- | --- | --- |
 | `agency` | string | no | Agency name or slug. The upstream API only filters by numeric key (see agency_key), so names are enforced client-side against returned records — see warnings. |
 | `agency_key` | number | no | HigherGov awarding agency key (numeric). The only agency filter the upstream API honors (awarding_agency_key). Find it on the agency page URL in the HigherGov UI or via /api-external/agency/. |
 | `awardee_uei` | string | no | Awardee UEI (server-side filter) |
-| `naics` | array of string | no |  |
-| `psc` | array of string | no |  |
+| `naics` | array of string | no | NAICS codes (server-side filter; comma-joined, which HigherGov does not document as OR syntax) |
+| `psc` | array of string | no | PSC codes (server-side filter; comma-joined, which HigherGov does not document as OR syntax) |
 | `set_aside` | array of string | no | Set-aside slugs or FPDS codes (e.g. ['sdvosb','8a'] or ['SDVOSBS','8AN']). Applied client-side against normalized records. |
 | `pop_end_after` | string | no | ISO-8601 date; period-of-performance end on/after this date (applied client-side; upstream has no PoP filter) |
 | `pop_end_before` | string | no | ISO-8601 date; period-of-performance end on/before this date (applied client-side) |
 | `min_value` | number | no | USD (applied client-side; upstream has no value filter) |
 | `max_value` | number | no | USD (applied client-side) |
-| `limit` | number | no | Default 50, max 200 |
+| `limit` | number | no | Default 50, max 200 (HigherGov documents a page-size maximum of 100) |
 | `cursor` | string | no | Page number from prior next_cursor |
 
 #### `get_highergov_contract(args)`
@@ -520,8 +523,8 @@ Search active contract opportunities without a saved search. The upstream API re
 | `posted_after` | string | no | ISO-8601 date; opportunities posted on/after (max 45 days back; walked upstream one day per request) |
 | `response_due_before` | string | no | ISO-8601 date; response deadline on/before |
 | `response_due_after` | string | no | ISO-8601 date; response deadline on/after (defaults to now — drops already-closed notices; pass an earlier date to include them) |
-| `limit` | number | no | Default 50, max 200 |
-| `cursor` | string | no | Page number from prior next_cursor |
+| `limit` | number | no | Default 50, max 200; HigherGov returns at most 100 rows per request |
+| `cursor` | string | no | The next_cursor from the prior response: a page number, or YYYY-MM-DD\|page when posted_after is set |
 
 #### `list_highergov_saved_searches(args)`
 
@@ -549,5 +552,7 @@ The server paces its calls to each source, one queue for each source for the who
 | USAspending | 3.6 seconds |
 
 Calls wait their turn in order. Each request to a source times out after 30 seconds. The server does
-not retry. A source's own limits and daily allowances apply to your key on top of this, and a call that
-hits one fails with the error the source sent.
+not retry. A source's own limits and daily allowances apply to your key on top of this. A call that hits one
+fails with the error the source sent (the HigherGov tools answer a `429` with `rate_limited` and a
+fixed `retry_after_seconds` of 60). Only `get_highergov_opportunity`, `get_highergov_contract` and
+`get_highergov_person` cache, for 15 minutes, up to 500 entries, for the key that asked.

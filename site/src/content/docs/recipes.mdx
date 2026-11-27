@@ -76,9 +76,18 @@ server on the page it gets, so the answer says so in `filters` and `warnings`.
 
 <ToolExample file="recompete-candidates.json" />
 
-"Which service-disabled veteran-owned opportunities were posted this month?"
+"Which service-disabled veteran-owned IT opportunities were posted this month?" HigherGov needs
+`posted_after` (an ISO-8601 date) or `agency_key` to search active opportunities; without either the
+call fails with `bad_request`. `posted_after` can reach back at most 45 days, because the source
+filters one posting day per request, so change the date in this example to a recent one.
 
 <ToolExample file="sdvosb-opportunities.json" />
+
+"What forecasts has my saved search found since the first of the month?" Create a saved search in
+HigherGov, get its ID from `list_highergov_saved_searches`, and pass it with a start time. The
+ID in this example is made up.
+
+<ToolExample file="forecasts-saved-search.json" />
 
 ## Tips
 
@@ -87,7 +96,9 @@ server on the page it gets, so the answer says so in `filters` and `warnings`.
 - **Read `filters` and `warnings`.** They say which filters the source applied and which the server
   applied to one page. A `total` of `null` means the count cannot be trusted.
 - **Check codes before using them.** `lookup_reference_code` lists the codes of a domain.
-- **Start with a small `limit`**, and page with `next_cursor` for more.
+- **Start with a small `limit`**, and on tools that return a `next_cursor`, pass it back as `cursor`
+  for more. The SAM.gov searches, the exclusion check and the Tango protest, IDV, vehicle and OTA
+  searches have no cursor: narrow their filters instead.
 - **Use `aggregate_contracts` for population figures.** `get_tango_spending_summary` summarizes one
   page of at most 100 records, and says when there are more.
 

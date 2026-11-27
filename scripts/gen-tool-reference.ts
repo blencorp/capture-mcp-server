@@ -113,8 +113,9 @@ the page it got. When any client-side filter ran, \`total\` is \`null\` because 
 not reflect it; the source's own number is then in \`total_upstream_unfiltered\`, with a warning. Pass
 \`next_cursor\` back as \`cursor\` for the next page. It is \`null\` on the last page.
 
-Other tools that return records keep their own shapes. They carry no \`filters\` split, \`count_unit\` or
-cursor, and a missing \`total\` becomes \`0\` rather than \`null\`:
+Other tools that return records keep their own shapes. They carry no \`filters\` split or \`count_unit\`,
+and most have no cursor. A missing \`total\` becomes \`0\` rather than \`null\`, except in the saved-search
+list, which has no \`total\`:
 
 | Tool | Result |
 | --- | --- |
@@ -125,7 +126,7 @@ cursor, and a missing \`total\` becomes \`0\` rather than \`null\`:
 | \`search_tango_idvs\` | \`{ total, idvs, filters, limit }\` |
 | \`search_tango_vehicles\` | \`{ total, vehicles, filters, limit }\` |
 | \`search_tango_otas\` | \`{ total, otas, filters, limit }\` |
-| \`list_highergov_saved_searches\` | \`{ results, source_endpoint, … }\` |
+| \`list_highergov_saved_searches\` | \`{ results, source_endpoint, next_cursor }\` |
 
 Here \`filters\` is the plain list of parameters sent, not an \`upstream\` and \`client_side\` pair. Tools that
 return one record or a summary (for example \`get_tango_spending_summary\`) have shapes of their own.
@@ -145,7 +146,9 @@ A call can fail in three ways. Which one you see depends on the tool. All three 
   \`upstream_error\`.
 - **A plain error text.** \`{ "error": "API Error 401: …" }\`. The source answered with an error
   status, or the call could not reach it (\`Network error: …\`). The text carries the status and the
-  body the source sent.
+  body the source sent, cut to 500 characters, with your key and any \`api_key=\` value replaced by
+  \`[REDACTED]\`. Successful responses are not redacted, except that the HigherGov tools drop the URLs
+  in which HigherGov embeds the key.
 - **A thrown error.** A tool that throws returns \`{ "error": "message" }\`.
 
 When your client cancels a call, the server cancels its request to the source.
@@ -188,8 +191,10 @@ The server paces its calls to each source, one queue for each source for the who
 | USAspending | 3.6 seconds |
 
 Calls wait their turn in order. Each request to a source times out after 30 seconds. The server does
-not retry. A source's own limits and daily allowances apply to your key on top of this, and a call that
-hits one fails with the error the source sent.
+not retry. A source's own limits and daily allowances apply to your key on top of this. A call that hits one
+fails with the error the source sent (the HigherGov tools answer a \`429\` with \`rate_limited\` and a
+fixed \`retry_after_seconds\` of 60). Only \`get_highergov_opportunity\`, \`get_highergov_contract\` and
+\`get_highergov_person\` cache, for 15 minutes, up to 500 entries, for the key that asked.
 `;
 }
 
