@@ -10,7 +10,7 @@ export default defineRailway(() => {
   const captureMcpServer = service('capture-mcp-server', {
     // Railway builds and deploys main from GitHub, so the release commit (the one the version tag
     // points to) is what runs, and RAILWAY_GIT_COMMIT_SHA, which /health reports, is set.
-    source: github('blencorp/capture-mcp-server', { branch: 'main' }),
+    source: github('blen-labs/capture-mcp-server', { branch: 'main' }),
     // Railway keeps its Railpack default unless the Dockerfile path is set too. The image sets
     // MCP_TRANSPORT=http; the start command matches its CMD.
     build: { buildEnvironment: 'V3', builder: 'DOCKERFILE', dockerfilePath: 'Dockerfile' },

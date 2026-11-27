@@ -1,6 +1,6 @@
 # Capture MCP
 
-[![CI](https://github.com/blencorp/capture-mcp-server/actions/workflows/ci.yml/badge.svg)](https://github.com/blencorp/capture-mcp-server/actions/workflows/ci.yml)
+[![CI](https://github.com/blen-labs/capture-mcp-server/actions/workflows/ci.yml/badge.svg)](https://github.com/blen-labs/capture-mcp-server/actions/workflows/ci.yml)
 [![license: Apache-2.0](https://img.shields.io/badge/license-Apache--2.0-blue.svg)](./LICENSE)
 [![Node](https://img.shields.io/badge/node-24%20%7C%2026-339933.svg)](https://nodejs.org/)
 
@@ -46,7 +46,7 @@ Keys are personal. The server never uses a key from its own environment to answe
 
 ## Run it on your own computer
 
-Easiest: download `capture-mcp-server.mcpb` from the [latest release](https://github.com/blencorp/capture-mcp-server/releases/latest) and open it in Claude Desktop. It asks for your keys when you install it.
+Easiest: download `capture-mcp-server.mcpb` from the [latest release](https://github.com/blen-labs/capture-mcp-server/releases/latest) and open it in Claude Desktop. It asks for your keys when you install it.
 
 Or run the npm package ([`@blen/capture-mcp-server`](https://www.npmjs.com/package/@blen/capture-mcp-server), Node.js 24.11 or later, or 26) by adding it to your assistant's MCP configuration, for example Claude Desktop's `claude_desktop_config.json` (**Settings → Developer → Edit Config**):
 

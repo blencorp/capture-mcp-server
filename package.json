@@ -50,12 +50,12 @@
   "license": "Apache-2.0",
   "repository": {
     "type": "git",
-    "url": "https://github.com/blencorp/capture-mcp-server.git"
+    "url": "https://github.com/blen-labs/capture-mcp-server.git"
   },
   "bugs": {
-    "url": "https://github.com/blencorp/capture-mcp-server/issues"
+    "url": "https://github.com/blen-labs/capture-mcp-server/issues"
   },
-  "homepage": "https://github.com/blencorp/capture-mcp-server#readme",
+  "homepage": "https://github.com/blen-labs/capture-mcp-server#readme",
   "engines": {
     "node": "^24.11.0 || ^26.0.0"
   },

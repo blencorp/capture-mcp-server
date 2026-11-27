@@ -5,7 +5,7 @@ export const brand: Brand = {
   tagline: 'Federal procurement data in your AI assistant',
   summary:
     'Search contract opportunities, vendors, awards, grants and forecasts from SAM.gov, USAspending, Tango and HigherGov, in Claude, ChatGPT, Cursor and other MCP clients.',
-  repoUrl: 'https://github.com/blencorp/capture-mcp-server',
+  repoUrl: 'https://github.com/blen-labs/capture-mcp-server',
   docsUrl: '/docs/',
   license: 'Apache-2.0',
   disclaimer: 'Independent open-source project; not affiliated with or endorsed by SAM.gov, USAspending.gov, Tango or HigherGov.',

@@ -95,8 +95,8 @@ Release workflow, which tags the version; this file is written by hand.
 - HigherGov contract, opportunity, document and forecast lookups now match the real API.
 - The default OAuth client-registration scope is `mcp:tools`.
 
-[Unreleased]: https://github.com/blencorp/capture-mcp-server/compare/v2.0.0...HEAD
-[2.0.0]: https://github.com/blencorp/capture-mcp-server/compare/v1.0.2...v2.0.0
-[1.0.2]: https://github.com/blencorp/capture-mcp-server/compare/v1.0.1...v1.0.2
-[1.0.1]: https://github.com/blencorp/capture-mcp-server/compare/v1.0.0...v1.0.1
-[1.0.0]: https://github.com/blencorp/capture-mcp-server/releases/tag/v1.0.0
+[Unreleased]: https://github.com/blen-labs/capture-mcp-server/compare/v2.0.0...HEAD
+[2.0.0]: https://github.com/blen-labs/capture-mcp-server/compare/v1.0.2...v2.0.0
+[1.0.2]: https://github.com/blen-labs/capture-mcp-server/compare/v1.0.1...v1.0.2
+[1.0.1]: https://github.com/blen-labs/capture-mcp-server/compare/v1.0.0...v1.0.1
+[1.0.0]: https://github.com/blen-labs/capture-mcp-server/releases/tag/v1.0.0

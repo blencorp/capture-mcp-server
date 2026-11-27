@@ -7,7 +7,7 @@ export const productName = 'Capture MCP';
 /** Where the hosted server serves this site (src/docs.ts serves it at `base`). */
 export const site = 'https://capture.mcp.blencorp.com';
 export const base = '/docs';
-export const repo = 'https://github.com/blencorp/capture-mcp-server';
+export const repo = 'https://github.com/blen-labs/capture-mcp-server';
 export const packageName = '@blen/capture-mcp-server';
 /**
  * How people can run the server. `npm`: a published package that desktop clients start with npx
