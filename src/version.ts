@@ -2,4 +2,4 @@
 // stamps the version (scripts/release-version.ts rewrites the line carrying the marker);
 // src/version.test.ts fails if it drifts from package.json.
 export const SERVER_NAME = 'Capture MCP Server';
-export const SERVER_VERSION = '4.0.1'; // x-release-version
+export const SERVER_VERSION = '4.0.2'; // x-release-version
