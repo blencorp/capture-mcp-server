@@ -4,7 +4,7 @@
 # to start without auth: set MCP_REQUIRE_OAUTH=true, OAUTH_TOKEN_SECRET and MCP_PUBLIC_BASE_URL.
 
 # Base images are pinned by digest; Dependabot (docker ecosystem) proposes digest bumps.
-FROM node:26-trixie-slim@sha256:e6bedef217677b276c591795e169840edd9096dbf13f29df8ef8d1856b8820bc AS build
+FROM node:26-trixie-slim@sha256:abe7e5a82b61a8ef67b315b85497c9e65173387ccf2f4a029248184b8e020be5 AS build
 WORKDIR /app
 # Node 25+ no longer bundles corepack; install the pnpm that package.json "packageManager" pins.
 RUN npm install -g --ignore-scripts pnpm@12.21.0
@@ -18,7 +18,7 @@ RUN pnpm build && pnpm prune --prod
 
 # ---- Docs: the documentation site (site/, Astro Starlight), served at /docs ---------------
 # Its own pnpm root and lockfile. The build reads docs/sdk-reference.md and examples/*.json.
-FROM node:26-trixie-slim@sha256:e6bedef217677b276c591795e169840edd9096dbf13f29df8ef8d1856b8820bc AS docs
+FROM node:26-trixie-slim@sha256:abe7e5a82b61a8ef67b315b85497c9e65173387ccf2f4a029248184b8e020be5 AS docs
 WORKDIR /repo
 RUN npm install -g --ignore-scripts pnpm@12.21.0
 COPY site/package.json site/pnpm-lock.yaml site/pnpm-workspace.yaml ./site/
@@ -28,7 +28,7 @@ COPY docs/sdk-reference.md ./docs/
 COPY examples ./examples
 RUN cd site && pnpm build
 
-FROM node:26-trixie-slim@sha256:e6bedef217677b276c591795e169840edd9096dbf13f29df8ef8d1856b8820bc AS runtime
+FROM node:26-trixie-slim@sha256:abe7e5a82b61a8ef67b315b85497c9e65173387ccf2f4a029248184b8e020be5 AS runtime
 RUN apt-get update \
   && apt-get install -y --no-install-recommends dumb-init \
   && rm -rf /var/lib/apt/lists/*
