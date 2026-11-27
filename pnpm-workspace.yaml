@@ -11,3 +11,6 @@ allowBuilds:
 #   auditConfig:
 #     ignoreGhsas:
 #       - GHSA-xxxx-xxxx-xxxx # package-name: why it is safe here
+overrides:
+  '@anthropic-ai/mcpb>zod': ^4.6.7 # mcpb -> GHSA-mrhx-c7xc-m3w5 (as uspto)
+  'external-editor>tmp': ^0.2.6 # mcpb>@inquirer -> GHSA-ph9p-34f9-6g65 (as uspto)
