@@ -2,7 +2,7 @@
   "manifest_version": "0.2",
   "name": "capture-mcp-server",
   "display_name": "Capture MCP Server",
-  "version": "4.0.0",
+  "version": "4.0.1",
   "description": "Federal procurement and spending data capture",
   "long_description": "Capture MCP Server lets you query federal procurement and spending data in natural language. Seven tools work with no keys (a static FPDS reference lookup and USAspending.gov). A SAM.gov key adds 6 more tools, a Tango key adds 12, and a HigherGov key adds 9, for 34 in all.",
   "author": {

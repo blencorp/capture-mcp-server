@@ -1,6 +1,6 @@
 {
   "name": "capture-mcp-server",
-  "version": "4.0.0",
+  "version": "4.0.1",
   "description": "AI-native Model Context Protocol server for SAM.gov, USASpending.gov, and Tango federal procurement data.",
   "main": "dist/server.js",
   "scripts": {
