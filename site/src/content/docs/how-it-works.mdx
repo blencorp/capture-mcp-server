@@ -84,7 +84,8 @@ the whole server process, and calls wait their turn in order:
 - The server does not retry. A source that answers `429` fails the call with that status.
 - The HigherGov `get_*` tools cache a result for 15 minutes, for the key that asked, so a repeated
   lookup does not spend quota.
-- The server adds no limit to `/mcp`. The OAuth endpoints limit each address:
+- `/mcp` gives each client address a budget of 20 requests at once, then 5 a second, and answers the
+  excess with `429`. The OAuth endpoints limit each address:
   100 authorization requests and 50 token or revocation requests every 15 minutes, and 20 client
   registrations an hour.
 

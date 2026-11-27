@@ -21,7 +21,7 @@ Release workflow, which tags the version; this file is written by hand.
   argument) is `isError: true` with the error in `structuredContent`; an unknown tool is a JSON-RPC
   `-32602`. Responses to clients that do not send `MCP-Protocol-Version` are one SSE `message` event
   instead of a JSON body, and a malformed or oversized `/mcp` body is a JSON-RPC error, not an HTML
-  page. Cancelling a call cancels its upstream request. The OAuth endpoints (v1 SDK behaviour, same
+  page. Dropping the connection of a call cancels its upstream request (a 2025-era client's cancel message cannot reach a stateless server). The v1 SDK's undocumented `MCP_DANGEROUSLY_ALLOW_INSECURE_ISSUER_URL` no longer exists. The OAuth endpoints (v1 SDK behaviour, same
   paths, limits and bodies) now live in `src/auth/oauth-server.ts`. See `docs/migration-4.0.md`.
 - **Breaking:** the AWS Lambda deployment is removed (`infrastructure/`, the Lambda handler, S3
   API-key auth, `manage-keys`, `sync-config`). Railway is the only hosted runtime.

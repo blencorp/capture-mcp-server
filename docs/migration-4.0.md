@@ -23,11 +23,11 @@ call did fail: see D2.
 | **D2** A tool-level failure | A normal result: `{ "error": ... }`, no `isError`, unless the tool threw | `isError: true`. The error is in `structuredContent` and, as indented JSON, in the text. This covers a structured error (`bad_request`, `not_found`, ...), a plain error text (`API Error 401: ...`), a thrown error and a refused argument (unknown, missing or mistyped). |
 | **D1** An unknown tool, or one whose key the connection lacks | An `isError` result, `{ "error": "Tool \"x\" not found" }` | A JSON-RPC error, code `-32602`, message `Tool x not found`. The tool is not listed either. |
 | `tools/list` | `name`, `description`, `inputSchema` | The same three, unchanged, plus `title`, `annotations` (`readOnlyHint`, `destructiveHint: false`, `idempotentHint`, `openWorldHint`) and `outputSchema`. |
-| `structuredContent` | Present when the result was an object | Present on every result, and validated against the tool's `outputSchema` on success. The text content is unchanged: the same JSON, indented. |
+| `structuredContent` | Present when the result was an object | Present on every tool result, and validated against the tool's `outputSchema` on success. The text content is unchanged: the same JSON, indented. A result the SDK itself refuses to deliver (output that fails its schema) is an `isError` with text only. |
 | **D3** Response to a request without `MCP-Protocol-Version` | A JSON body | One SSE `message` event (`text/event-stream`). Clients that send `Accept: application/json, text/event-stream`, as the MCP transport requires, handle both. |
-| Capabilities | `{ "tools": {} }` | `{ "tools": { "listChanged": true } }` (the SDK's default for a server with tools; the tool list does not change within a request) |
+| Capabilities | `{ "tools": {} }` | `{ "tools": { "listChanged": false } }`: the tool list is fixed within a request, and the SDK would otherwise advertise `true` |
 | **D4** A malformed, oversized (over 1 MiB) or wrong-content-type `/mcp` body | An HTML error page (`400`) | A JSON-RPC error: `400` parse error, `413`, `415`. |
-| Cancellation | The upstream request ran to its end | Cancelling the call (or dropping the connection) cancels the request to SAM.gov, USAspending, Tango or HigherGov. |
+| Cancellation | The upstream request ran to its end | A client that cancels by dropping its connection (the 2026-07-28 way) cancels the request to SAM.gov, USAspending, Tango or HigherGov. A 2025-era client's `notifications/cancelled` message cannot reach a stateless server's running request; only a dropped connection cancels. |
 
 An `outputSchema` describes a successful result. List tools (`search_tango_contracts`, ...) require
 their envelope (`total`, `count_unit`, `filters`, `next_cursor` and the records); the other tools
@@ -43,5 +43,6 @@ change with them. An `isError` result is not validated against it.
   keeps its interface. Secrets and PKCE verifiers are now compared in constant time.
 - `src/mcp-handlers.ts` and `createMcpServer` are replaced by `buildMcpServer` in `src/mcp-server.ts`.
 - stdio uses `serveStdio`.
+- The v1 SDK read `MCP_DANGEROUSLY_ALLOW_INSECURE_ISSUER_URL` to accept an `http` issuer. It is gone: `MCP_PUBLIC_BASE_URL` must be `https`, except for `localhost` and `127.0.0.1`, as the CI image check uses.
 - `ToolCatalog.call` still validates arguments and still returns `{ error: { code: 'bad_request', ... } }`;
   the wire layer turns that into `isError`.

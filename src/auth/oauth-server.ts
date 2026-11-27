@@ -28,7 +28,8 @@ import {
 // The OAuth 2.1 authorization server endpoints (RFC 6749, 7009, 7591, 8414, 9728, PKCE S256) that
 // MCP clients use to obtain a bearer token. The MCP SDK removed its server-side OAuth helpers in v2,
 // so they live here, with the same behaviour as the v1 SDK's: the same paths, windows, bodies and
-// status codes. What differs is stated where it does.
+// status codes. What differs is stated where it does. The v1 handlers are MIT-licensed
+// (Copyright (c) 2024 Anthropic, PBC); NOTICE carries the notice.
 
 // ---- What the endpoints need from an authorization server --------------------------------------
 
