@@ -23,8 +23,8 @@ pnpm dev             # tsx src/server.ts (stdio); MCP_TRANSPORT=http for HTTP
   binary. Do not "simplify" the aliases away.
 - `tsconfig.json` checks sources, tests and scripts and never emits; `tsconfig.build.json` emits
   `src/` to `dist/` without tests or fixtures.
-- `pnpm-workspace.yaml` holds `allowBuilds` and the `overrides:` that pin patched transitive versions
-  (`pnpm audit`). Remove an override once its parent ships the fix.
+- `pnpm-workspace.yaml` holds `allowBuilds` and, when `pnpm audit` needs one, an `overrides:` entry that pins a
+  patched transitive version (none now). Remove an override once its parent ships the fix.
 - ESM everywhere: relative imports use the `.js` extension even in `.ts` sources. Logs go to stderr
   only (stdout is the stdio JSON-RPC stream).
 - `.github/workflows/ci.yml` runs audit (root and `site/`), typecheck, lint, build and test on

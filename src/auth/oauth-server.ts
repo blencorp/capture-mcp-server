@@ -98,6 +98,12 @@ export function oauthRouter(options: OAuthRouterOptions): Router {
   router.use('/.well-known/oauth-authorization-server', metadataEndpoint(metadata));
   router.use('/register', registrationEndpoint(options));
   router.use('/revoke', revocationEndpoint(options));
+  // An unreadable body (malformed JSON, too large, wrong charset) is a 4xx from the body parsers; answer it in the OAuth error format, not with Express's HTML page.
+  router.use((error: unknown, _req: Request, res: Response, next: NextFunction) => {
+    const status = (error as { status?: unknown } | null)?.status;
+    if (res.headersSent || typeof status !== 'number' || status < 400 || status > 499) return next(error);
+    res.status(status).json(invalidRequest('The request body could not be read').toResponseObject());
+  });
   return router;
 }
 
@@ -208,17 +214,6 @@ function metadataEndpoint(document: object): Router {
 
 // ---- /authorize --------------------------------------------------------------------------------
 
-const LOOPBACK_HOSTS = new Set(['localhost', '127.0.0.1', '[::1]']);
-
-/** Exact match, except that a loopback redirect may use any port (RFC 8252 section 7.3). */
-export function redirectUriMatches(requested: string, registered: string): boolean {
-  if (requested === registered) return true;
-  if (!URL.canParse(requested) || !URL.canParse(registered)) return false;
-  const [asked, known] = [new URL(requested), new URL(registered)];
-  if (!LOOPBACK_HOSTS.has(asked.hostname) || !LOOPBACK_HOSTS.has(known.hostname)) return false;
-  return asked.protocol === known.protocol && asked.hostname === known.hostname && asked.pathname === known.pathname && asked.search === known.search;
-}
-
 const ClientParams = z.object({
   client_id: z.string(),
   redirect_uri: z.string().optional().refine(value => value === undefined || URL.canParse(value), { message: 'redirect_uri must be a valid URL' }),
@@ -251,7 +246,7 @@ function authorizationEndpoint({ provider, rateLimit: shared }: OAuthRouterOptio
       if (!client) throw invalidClient('Invalid client_id');
       const requested = params.redirect_uri;
       if (requested !== undefined) {
-        if (!client.redirect_uris.some(registered => redirectUriMatches(requested, registered))) throw invalidRequest('Unregistered redirect_uri');
+        if (!client.redirect_uris.includes(requested)) throw invalidRequest('Unregistered redirect_uri');
         redirectUri = requested;
       } else if (client.redirect_uris.length === 1) {
         redirectUri = client.redirect_uris[0]!;
@@ -264,14 +259,15 @@ function authorizationEndpoint({ provider, rateLimit: shared }: OAuthRouterOptio
     }
 
     // After that, errors go back to the client through its redirect URI.
-    let state: string | undefined;
+    // `state` is echoed on every error that goes back to the client (RFC 6749 section 4.1.2.1), including a request whose other parameters are invalid.
+    const sent = (input as { state?: unknown } | undefined)?.state;
+    const state = typeof sent === 'string' && sent !== '' ? sent : undefined;
     try {
       const params = parse(RequestParams, input);
-      state = params.state;
       await provider.authorize(
         client,
         {
-          state,
+          state: params.state,
           scopes: params.scope === undefined ? [] : params.scope.split(' '),
           redirectUri,
           codeChallenge: params.code_challenge,

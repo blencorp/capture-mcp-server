@@ -278,8 +278,10 @@ export function createHttpApp({ auth, env = process.env, webRoot, docsRoot }: Ht
     });
 
     app.post('/oauth/authorize', express.urlencoded({ extended: false }), async (req: Request, res: Response) => {
-      const requestId = typeof req.body.request_id === 'string' ? req.body.request_id : '';
-      const { keys, checked, fieldErrors } = parseAuthorizeForm(req.body);
+      // `req.body` is undefined when the request carried no form body.
+      const form: Record<string, unknown> = req.body ?? {};
+      const requestId = typeof form.request_id === 'string' ? form.request_id : '';
+      const { keys, checked, fieldErrors } = parseAuthorizeForm(form);
       try {
         res.redirect(302, await provider.completeAuthorization(requestId, keys));
       } catch (error) {

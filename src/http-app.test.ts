@@ -327,6 +327,54 @@ test('oauth mode: the credential page carries a content security policy and is n
   }
 });
 
+test('oauth mode: /authorize only redirects to a registered URI and echoes state on errors', async () => {
+  const server = await listen({ mode: 'oauth', publicBaseUrl: BASE, tokenSecret: SECRET });
+  try {
+    const loopback = 'http://localhost:3000/cb';
+    const registered: any = await (
+      await fetch(`${server.url}/register`, {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ redirect_uris: [loopback] }),
+      })
+    ).json();
+    const challenge = createHash('sha256').update('v'.repeat(64)).digest('base64url');
+    const authorize = (params: Record<string, string>) =>
+      fetch(`${server.url}/authorize?${new URLSearchParams({ response_type: 'code', client_id: registered.client_id, code_challenge: challenge, code_challenge_method: 'S256', scope: 'mcp:tools', ...params })}`, { redirect: 'manual' });
+    // A loopback URI on another port was never registered: answered here, never redirected to.
+    const otherPort = await authorize({ redirect_uri: 'http://localhost:54321/cb', state: 's0' });
+    assert.equal(otherPort.status, 400);
+    assert.equal(otherPort.headers.get('location'), null);
+    assert.equal(((await otherPort.json()) as any).error, 'invalid_request');
+    // Invalid request parameters go back to the registered URI with the client's state.
+    const plain = await authorize({ redirect_uri: loopback, code_challenge_method: 'plain', state: 's1' });
+    assert.equal(plain.status, 302);
+    const location = new URL(plain.headers.get('location')!);
+    assert.equal(`${location.origin}${location.pathname}`, loopback);
+    assert.equal(location.searchParams.get('error'), 'invalid_request');
+    assert.equal(location.searchParams.get('state'), 's1');
+  } finally {
+    await server.close();
+  }
+});
+
+test('oauth mode: unreadable OAuth bodies get OAuth JSON errors, and an empty credential form is a 400 page', async () => {
+  const server = await listen({ mode: 'oauth', publicBaseUrl: BASE, tokenSecret: SECRET });
+  try {
+    const malformed = await fetch(`${server.url}/register`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: '{bad' });
+    assert.equal(malformed.status, 400);
+    assert.match(malformed.headers.get('content-type') ?? '', /application\/json/);
+    const body: any = await malformed.json();
+    assert.equal(body.error, 'invalid_request');
+    assert.doesNotMatch(JSON.stringify(body), /SyntaxError|at /);
+    const empty = await fetch(`${server.url}/oauth/authorize`, { method: 'POST' });
+    assert.equal(empty.status, 400);
+    assert.match(empty.headers.get('content-type') ?? '', /text\/html/);
+  } finally {
+    await server.close();
+  }
+});
+
 test('oauth mode: a provider-key header does not stand in for a bearer token', async () => {
   const server = await listen({ mode: 'oauth', publicBaseUrl: new URL('http://127.0.0.1:1/'), tokenSecret: 'test-secret' });
   try {
