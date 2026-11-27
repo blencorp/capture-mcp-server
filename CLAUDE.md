@@ -28,8 +28,12 @@ pnpm dev             # tsx src/server.ts (stdio); MCP_TRANSPORT=http for HTTP
 - ESM everywhere: relative imports use the `.js` extension even in `.ts` sources. Logs go to stderr
   only (stdout is the stdio JSON-RPC stream).
 - `.github/workflows/ci.yml` runs audit (root and `site/`), typecheck, lint, build and test on
-  Node 24 and 26, an accessibility job (`pnpm test:web`) and a Docker job. `release.yml` and
-  `deploy-railway.yml` run the same gates. Actions are pinned to commit SHAs.
+  Node 24 and 26, an accessibility job (`pnpm test:web`) and a Docker job. `release.yml` runs the same
+  gates, then builds the npm tarball (`@blen/capture-mcp-server`) and the Claude Desktop bundle
+  (`scripts/mcpb-prepare.mjs`, staged in `mcpb-build/`, which has its own `node_modules`) and publishes
+  both; `scripts/stdio-smoke.mjs` runs either over stdio in CI. `manifest.json` carries the version and is
+  kept in step with `package.json` by `src/manifest.test.ts`. Railway builds `main` from GitHub (`.railway/railway.ts`), including the release commit, so
+  `/health` reports the released `version` and `commit`. Actions are pinned to commit SHAs.
 - The server and the `Dockerfile` target Node 26; the Docker base image is pinned by digest.
 - `src/tools/` and `src/utils/` have `no-explicit-any` switched off in `eslint.config.mjs`
   (temporary: the upstream payloads are untyped).

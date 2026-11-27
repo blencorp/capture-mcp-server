@@ -1,11 +1,10 @@
 name: CI
 
 on:
-  # No push trigger: on main, release.yml and deploy-railway.yml run these gates via workflow_call
-  # before they publish.
+  # No push trigger: on main, release.yml runs these gates via workflow_call before it publishes.
   pull_request:
     branches: [main]
-  # Other workflows (release, Railway deploy) run these exact gates on the commit they publish.
+  # The release workflow runs these exact gates on the commit it publishes.
   workflow_call:
 
 permissions:
@@ -46,6 +45,46 @@ jobs:
       - run: pnpm build
       # `pnpm test` builds again, because the stdio and package specs run the compiled server.
       - run: pnpm test
+
+  package:
+    # The npm tarball and the Claude Desktop bundle, each run the way a user runs it: unpacked or
+    # installed in a clean directory, minimal environment, no API keys, no repository node_modules.
+    name: npm package + MCPB bundle
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: pnpm/action-setup@73e46992e05b19abd31f2f3c20e0e7370d762115 # v6.1.1
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: '26'
+          cache: 'pnpm'
+          cache-dependency-path: pnpm-lock.yaml
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm build
+      - name: npm package contents
+        run: |
+          npm pack --ignore-scripts --json --pack-destination "$RUNNER_TEMP" > "$RUNNER_TEMP/pack.json"
+          node -e "const f=JSON.parse(require('fs').readFileSync(process.env.RUNNER_TEMP+'/pack.json'))[0].files.map(x=>x.path);for(const p of ['LICENSE','NOTICE','README.md','dist/server.js','dist/web/THIRD_PARTY_NOTICES.txt'])if(!f.includes(p)){console.error('missing '+p);process.exit(1)};if(f.some(p=>/^(\.env|\.local|src|test|mcpb-build|site|\.github)/.test(p))){console.error('unexpected files');process.exit(1)}"
+      - name: npm package smoke (install the tarball in a clean directory)
+        run: |
+          mkdir "$RUNNER_TEMP/pkg" && cd "$RUNNER_TEMP/pkg" && npm init -y >/dev/null
+          npm install --ignore-scripts "$RUNNER_TEMP"/blen-capture-mcp-server-*.tgz
+          node "$GITHUB_WORKSPACE/scripts/stdio-smoke.mjs" "$RUNNER_TEMP/pkg" node_modules/.bin/capture-mcp-server
+      - run: pnpm mcpb:prepare && pnpm mcpb:pack
+      - name: MCPB smoke (unpack in a clean directory)
+        run: |
+          mkdir "$RUNNER_TEMP/mcpb" && cd "$RUNNER_TEMP/mcpb" && unzip -q "$GITHUB_WORKSPACE/capture-mcp-server.mcpb"
+          test -f LICENSE && test -f NOTICE && test -f dist/web/THIRD_PARTY_NOTICES.txt
+          node "$GITHUB_WORKSPACE/scripts/stdio-smoke.mjs" "$RUNNER_TEMP/mcpb" node dist/server.js
+      # The manifest also admits Node 24 (the engines floor): run the same bundle there.
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: '24'
+      - name: MCPB smoke on Node 24
+        run: node --version && node "$GITHUB_WORKSPACE/scripts/stdio-smoke.mjs" "$RUNNER_TEMP/mcpb" node dist/server.js
 
   accessibility:
     # The landing, policy and docs pages in a real browser: axe-core (WCAG 2.0-2.2 A/AA) light and

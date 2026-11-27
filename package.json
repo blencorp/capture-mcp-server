@@ -1,10 +1,26 @@
 {
-  "name": "capture-mcp-server",
+  "name": "@blen/capture-mcp-server",
   "version": "4.0.0",
   "description": "AI-native Model Context Protocol server for SAM.gov, USASpending.gov, and Tango federal procurement data.",
   "main": "dist/server.js",
+  "bin": {
+    "capture-mcp-server": "dist/server.js"
+  },
+  "files": [
+    "dist",
+    "README.md",
+    "LICENSE",
+    "NOTICE",
+    "CHANGELOG.md",
+    "SECURITY.md"
+  ],
+  "publishConfig": {
+    "access": "public",
+    "provenance": true
+  },
   "scripts": {
-    "build": "tsc -p tsconfig.build.json && pnpm build:web",
+    "build": "tsc -p tsconfig.build.json && pnpm build:web && (chmod +x dist/server.js || true)",
+    "prepack": "pnpm run build",
     "start": "node dist/server.js",
     "dev": "tsx src/server.ts",
     "capture-fixtures": "tsx scripts/capture-fixtures.ts",
@@ -19,8 +35,8 @@
     "test:web": "pnpm build:web && pnpm --dir site build && playwright test",
     "kit:check": "node scripts/portal-kit.mjs",
     "kit:update": "node scripts/portal-kit.mjs --update",
-    "package": "pnpm build && pnpm install --prod --frozen-lockfile && zip -r capture-mcp-server.mcpb dist/ node_modules/ manifest.json icon.png && pnpm install --frozen-lockfile",
-    "package:dxt": "pnpm build && zip -r capture-mcp-server.dxt dist/ manifest.json icon.png"
+    "mcpb:prepare": "node scripts/mcpb-prepare.mjs",
+    "mcpb:pack": "mcpb pack mcpb-build capture-mcp-server.mcpb"
   },
   "keywords": [
     "mcp",
@@ -54,6 +70,7 @@
     "zod": "^4.6.7"
   },
   "devDependencies": {
+    "@anthropic-ai/mcpb": "^2.1.2",
     "@axe-core/playwright": "^4.14.0",
     "@eslint/js": "^10.0.1",
     "@modelcontextprotocol/client": "2.4.0",

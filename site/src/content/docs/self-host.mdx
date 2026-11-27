@@ -3,9 +3,11 @@ title: Self-host
 description: Run the server on your computer over stdio or loopback HTTP, or host it with Docker or Railway for other people.
 ---
 
-The server is not published to npm. Run it from a checkout of the
-[repository](https://github.com/blencorp/capture-mcp-server), which needs Node.js 24.11 or later (or
-26) and [pnpm](https://pnpm.io/) 12:
+Every release is published to npm as `@blen/capture-mcp-server` (Node.js 24.11 or later, or 26) and
+attaches a Claude Desktop bundle, `capture-mcp-server.mcpb`, to its
+[GitHub release](https://github.com/blencorp/capture-mcp-server/releases/latest). The commands
+below use a checkout of the [repository](https://github.com/blencorp/capture-mcp-server), which also
+needs [pnpm](https://pnpm.io/) 12; `npx -y @blen/capture-mcp-server` runs the same server without one.
 
 ```bash
 git clone https://github.com/blencorp/capture-mcp-server.git
@@ -48,8 +50,9 @@ with the keys you have:
 ```
 
 Only the tools whose key you set are listed. With no keys, the 7 reference and USAspending tools
-work. The repository also builds a Claude Desktop bundle with `pnpm package`, which produces
-`capture-mcp-server.mcpb`. The bundle is not attached to releases.
+work. Instead of editing the configuration, you can open `capture-mcp-server.mcpb` from the latest
+release in Claude Desktop; it asks for the keys when you install it. `pnpm mcpb:prepare && pnpm mcpb:pack`
+builds the same bundle from a checkout.
 
 ## Local HTTP
 
@@ -136,6 +139,19 @@ timeout, restart on failure up to three times, one replica, and the custom domai
 changes to it with `railway config apply`. Secrets stay set in Railway, not in that file. The project
 name, domain and region in it are BLEN's production values: change them for your own deployment, or
 set the same health check, start command and restart policy in your service settings.
+
+#### Which release is running
+
+`GET /health` answers `{"status":"healthy","transport":"http","authMode":"oauth","version":"<package version>","commit":"<full SHA>"}`.
+`version` is the package version of the running build. `commit` is the full git SHA that Railway built,
+which it injects as `RAILWAY_GIT_COMMIT_SHA` for deployments from GitHub. The server reads it once at
+startup, so a request cannot change it. It is `null` when there is no such variable: a local run,
+`docker run`, the Claude Desktop bundle, or a deployment made with `railway up`.
+
+Railway deploys every push to `main`, so a release shows up as two deployments: first the merged change
+(the previous `version`, with that commit's SHA), then the release workflow's `chore(release)` commit that
+bumps the version (the new `version`, with the SHA the `v<version>` tag points to). After a release, wait
+for `version` to read the new release; `commit` should equal `git rev-parse v<version>^{commit}`.
 
 ## Rules for every deployment
 

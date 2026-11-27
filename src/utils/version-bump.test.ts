@@ -79,3 +79,12 @@ test('an explicit override wins over commit detection', () => {
   assert.equal(result.next, '2.0.0');
   assert.equal(result.bump, 'major');
 });
+
+test('a bump committed to main but never tagged derives the same version again', () => {
+  // The first run committed 4.0.0 and its tag push failed: the last tag is still v3.0.0 and the
+  // range now also holds the chore(release) commit. The re-run must land on 4.0.0 (files already
+  // match, so only the tag is created), not on 4.0.1.
+  const messages = ['feat!: new protocol', 'fix: a', 'chore(release): v4.0.0'];
+  assert.equal(nextVersion({ current: '3.0.0', messages: messages.slice(0, 2), hasExistingRelease: true }).next, '4.0.0');
+  assert.equal(nextVersion({ current: '3.0.0', messages, hasExistingRelease: true }).next, '4.0.0');
+});

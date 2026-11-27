@@ -1,14 +1,36 @@
 name: Release
 
-# Tags and publishes a GitHub release on every merge to main.
+# Tags and publishes a release on every merge to main: a GitHub release with the Claude Desktop
+# bundle and the npm tarball attached, and the package on npm.
 #
-# The version is derived from Conventional Commit prefixes since the last tag:
-# `feat:` bumps the minor, a `!` marker or `BREAKING CHANGE:` footer bumps the
-# major, anything else bumps the patch — so a merge always produces a release.
-# Run it manually from the Actions tab to force a specific level.
+# The version is derived from Conventional Commit prefixes since the last tag: `feat:` bumps the
+# minor, a `!` marker or `BREAKING CHANGE:` footer bumps the major, anything else bumps the patch,
+# so a merge always produces a release. Run it manually from the Actions tab to force a level. The
+# first run seeds the release at package.json's current version rather than bumping past it.
 #
-# The first run seeds the release at package.json's current version rather than
-# bumping past it, so a repo with no tags gets v1.0.0.
+# Three jobs, each with only the permission it needs:
+#   ci      - read-only: the full CI workflow (tests, accessibility, Docker, package + bundle smoke).
+#   release - contents: write. Installs with --ignore-scripts, stamps the version, builds, packs the
+#             tarball and the bundle, pushes the version commit and the tag in ONE atomic push, and
+#             creates the GitHub release with both attached.
+#   publish - id-token: write only. Never checks out or installs anything: it publishes the exact
+#             tarball `release` built, through npm trusted publishing (OIDC), with provenance. There
+#             is no npm token; only this workflow, in the `npm` environment, can publish.
+#
+# Integrity:
+#  - Nothing is rebased after the gates. If another commit landed on main while this run was
+#    working, the atomic push is rejected, nothing is released, and the run for the newer push
+#    releases both changes. So main is never bumped without its tag.
+#  - The version is derived from the last tag, so repeating a run is safe: a bumped main that never
+#    got its tag derives the same version, the files already match, and only the tag is created.
+#  - Publishing comes last. If it fails (or npm is not set up yet), main, the tag and the GitHub
+#    release are already consistent; "Re-run failed jobs" publishes the same tarball. If that is no
+#    longer possible, run this workflow by hand with `republish`: it rebuilds the CURRENT version
+#    from its tag, creates the GitHub release if it is missing, and publishes it. It never bumps.
+#
+# Railway builds main from GitHub (.railway/railway.ts), so the release commit is what gets
+# deployed and /health reports its version and SHA. Its subject has no `[skip ci]` for that reason;
+# a push made with GITHUB_TOKEN triggers no workflow, and the guard on `release` covers the rest.
 
 on:
   push:
@@ -20,6 +42,10 @@ on:
         type: choice
         options: [auto, patch, minor, major]
         default: auto
+      republish:
+        description: "Recovery only: publish the CURRENT version (from its tag) to npm and make sure its GitHub release exists; no bump, no new tag"
+        type: boolean
+        default: false
 
 # Serialize releases so two merges landing together can't race for the same tag.
 concurrency:
@@ -27,10 +53,9 @@ concurrency:
   cancel-in-progress: false
 
 permissions:
-  contents: write
+  contents: read
 
 jobs:
-  # The same gates as CI (audit, typecheck, lint, build, test, accessibility, Docker).
   ci:
     name: CI
     uses: ./.github/workflows/ci.yml
@@ -41,16 +66,32 @@ jobs:
     needs: ci
     name: Tag and release
     runs-on: ubuntu-latest
-    timeout-minutes: 15
-    # Belt and braces: the bump commit is pushed with GITHUB_TOKEN, which
-    # GitHub already excludes from triggering workflows, and carries [skip ci].
-    if: "!contains(github.event.head_commit.message, '[skip release]')"
+    timeout-minutes: 20
+    permissions:
+      contents: write # the version commit and tag (pushed with GITHUB_TOKEN) and the GitHub release
+    # Belt and braces: the version commit is pushed with GITHUB_TOKEN, which GitHub already
+    # excludes from triggering workflows; this keeps it from releasing if that ever changes.
+    if: "!startsWith(github.event.head_commit.message, 'chore(release):') && !contains(github.event.head_commit.message, '[skip release]')"
+    outputs:
+      version: ${{ steps.target.outputs.version }}
+    env:
+      REPUBLISH: ${{ inputs.republish && 'true' || 'false' }}
     steps:
       - name: Check out repository
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           # Full history and tags: the version decision reads both.
           fetch-depth: 0
+          # Nothing below pushes with the stored credentials; the push step passes the token itself.
+          persist-credentials: false
+
+      - name: Republish - build the tagged release, not whatever main has become
+        if: env.REPUBLISH == 'true'
+        run: |
+          version=$(node -p "require('./package.json').version")
+          git rev-parse -q --verify "refs/tags/v${version}" >/dev/null \
+            || { echo "::error::v${version} has no tag; republish only repeats a release that was tagged."; exit 1; }
+          git checkout --detach "v${version}"
 
       # pnpm version is read from the "packageManager" field in package.json.
       - uses: pnpm/action-setup@73e46992e05b19abd31f2f3c20e0e7370d762115 # v6.1.1
@@ -58,21 +99,23 @@ jobs:
       - name: Set up Node
         uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with:
-          node-version: '24'
+          node-version: '26'
           cache: pnpm
           cache-dependency-path: pnpm-lock.yaml
 
+      # No dependency lifecycle script runs in a job that can push to the repository.
       - name: Install dependencies
-        run: pnpm install --frozen-lockfile
-
-      - name: Run test suite
-        run: pnpm test
+        run: pnpm install --frozen-lockfile --ignore-scripts
 
       - name: Decide the next version
         id: version
-        run: pnpm run --silent release-version --bump=${{ inputs.bump || 'auto' }} >> "$GITHUB_OUTPUT"
+        if: env.REPUBLISH != 'true'
+        env:
+          BUMP: ${{ inputs.bump || 'auto' }}
+        run: pnpm run --silent release-version --bump="$BUMP" >> "$GITHUB_OUTPUT"
 
       - name: Summarize the decision
+        if: env.REPUBLISH != 'true'
         run: |
           {
             echo "### Release ${{ steps.version.outputs.tag }}"
@@ -86,6 +129,7 @@ jobs:
           } >> "$GITHUB_STEP_SUMMARY"
 
       - name: Fail if the tag already exists
+        if: env.REPUBLISH != 'true'
         run: |
           if git rev-parse -q --verify "refs/tags/${{ steps.version.outputs.tag }}" >/dev/null; then
             echo "::error::Tag ${{ steps.version.outputs.tag }} already exists. Nothing was released."
@@ -93,36 +137,104 @@ jobs:
           fi
 
       - name: Write the new version into package.json and the manifests
-        if: steps.version.outputs.seeded == 'false'
+        if: env.REPUBLISH != 'true' && steps.version.outputs.seeded == 'false'
         run: |
           npm pkg set version="${{ steps.version.outputs.next }}"
           pnpm run --silent release-version --write "${{ steps.version.outputs.next }}"
 
-      - name: Commit the version bump and tag the release
+      - name: Name the release
+        id: target
+        run: |
+          version=$(node -p "require('./package.json').version")
+          echo "version=${version}" >> "$GITHUB_OUTPUT"
+          echo "tag=v${version}" >> "$GITHUB_OUTPUT"
+
+      # Build AFTER stamping so dist/ carries the released version.
+      - run: pnpm build
+
+      - name: Pack the exact artifact to publish
+        env:
+          VERSION: ${{ steps.target.outputs.version }}
+        run: |
+          npm pack --ignore-scripts
+          test -f "blen-capture-mcp-server-${VERSION}.tgz"
+          # The three places that name the version agree, and the build carries it.
+          test "$(node -p "require('./manifest.json').version")" = "$VERSION"
+          grep -q "'${VERSION}'" dist/version.js || { echo "::error::dist/version.js does not carry ${VERSION}"; exit 1; }
+
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: npm-tarball
+          path: blen-capture-mcp-server-*.tgz
+          if-no-files-found: error
+
+      # From the same stamped build as the tarball, so the bundle carries the released version.
+      # mcpb:prepare installs the bundle's production dependencies with --ignore-scripts.
+      - name: Build the Claude Desktop bundle
+        run: pnpm mcpb:prepare && pnpm mcpb:pack && test -s capture-mcp-server.mcpb
+
+      - name: Commit the version and tag the release
+        if: env.REPUBLISH != 'true'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+          TAG: ${{ steps.target.outputs.tag }}
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
 
-          # Nothing to commit on a seeded first release: the files already match.
+          # Nothing to commit on a seeded first release, or when main already carries this version
+          # (a bump whose tag never landed): the files already match, so only the tag is new.
           if git diff --quiet; then
             echo "No version files changed; tagging the current commit."
           else
-            git commit -am "chore(release): ${{ steps.version.outputs.tag }} [skip ci]"
-            # Another merge may have landed while the tests ran; rebase onto it
-            # rather than failing the release on a rejected push.
-            git pull --rebase origin main
-            git push origin HEAD:main
+            git commit -am "chore(release): ${TAG}"
           fi
+          git tag -a "${TAG}" -m "Release ${TAG}"
 
-          git tag -a "${{ steps.version.outputs.tag }}" -m "Release ${{ steps.version.outputs.tag }}"
-          git push origin "${{ steps.version.outputs.tag }}"
+          # One atomic push: main and the tag land together or not at all. If main moved since the
+          # checkout, the push is rejected as a non-fast-forward and the release fails; it is not
+          # rebased onto code the gates never ran against. The token is passed as a one-off header,
+          # never stored in .git/config, and repository hooks are disabled.
+          auth=$(printf 'x-access-token:%s' "$GH_TOKEN" | base64 -w0)
+          echo "::add-mask::${auth}" # the base64 form is not covered by the token's own mask
+          git -c core.hooksPath=/dev/null -c http.https://github.com/.extraheader="AUTHORIZATION: basic ${auth}" \
+            push --atomic "https://github.com/${REPO}.git" HEAD:main "refs/tags/${TAG}"
 
-      - name: Publish the GitHub release
+      - name: Publish the GitHub release (tarball and Claude Desktop bundle attached)
         env:
           GH_TOKEN: ${{ github.token }}
+          TAG: ${{ steps.target.outputs.tag }}
         run: |
-          gh release create "${{ steps.version.outputs.tag }}" \
-            --title "${{ steps.version.outputs.tag }}" \
-            --generate-notes \
-            --verify-tag \
-            --latest
+          if gh release view "$TAG" >/dev/null 2>&1; then
+            echo "Release ${TAG} already exists."
+          else
+            gh release create "$TAG" \
+              --title "$TAG" \
+              --generate-notes \
+              --verify-tag \
+              --latest \
+              blen-capture-mcp-server-*.tgz capture-mcp-server.mcpb
+          fi
+
+  publish:
+    needs: release
+    name: Publish to npm
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    environment: npm # deployments restricted to main; the npm trusted publisher names this environment
+    permissions:
+      id-token: write # npm trusted publishing (OIDC) + provenance
+    steps:
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: '26'
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          name: npm-tarball
+      # Trusted publishing needs npm CLI >= 11.5.1. PINNED: this job holds publish rights, and an
+      # unpinned npm@latest would run with them. Bump deliberately.
+      - name: Publish to npm (trusted publishing, with provenance)
+        run: |
+          npm install -g npm@12.0.2
+          npm publish ./blen-capture-mcp-server-*.tgz --access public --provenance

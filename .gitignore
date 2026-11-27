@@ -58,3 +58,4 @@ temp/
 # Playwright
 test-results/
 playwright-report/
+mcpb-build/
