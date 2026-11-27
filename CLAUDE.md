@@ -11,7 +11,7 @@ pnpm install --frozen-lockfile
 pnpm typecheck       # tsc --noEmit for src and scripts, web/, web/e2e (the correctness gate)
 pnpm lint            # eslint: @eslint/js + typescript-eslint, type-aware promise rules and stderr-only console in src/, react-hooks in web/
 pnpm build           # tsc -p tsconfig.build.json (src to dist/) then Vite (web to dist/web)
-pnpm test            # builds, then tsx --test "src/**/*.test.ts" (node:test)
+pnpm test            # builds, then tsx --test "src/**/*.test.ts" (node:test); includes the official-client suite and the v1-to-v2 characterization
 pnpm test:web        # builds web and site, then Playwright + axe (web/e2e); needs Chromium once
 pnpm kit:check       # the shared portal kit matches web/portal-kit.json
 pnpm docs:reference  # regenerates docs/sdk-reference.md from the tool definitions
@@ -41,8 +41,10 @@ This is a Model Context Protocol (MCP) server that captures federal procurement 
 ### Core Components
 
 **Server (`src/server.ts`)**
-- MCP server using `@modelcontextprotocol/sdk` v1 (1.32.x); `src/mcp-handlers.ts` registers `tools/list` and `tools/call`
-- stdio by default; `MCP_TRANSPORT=http` serves `src/http-app.ts` (Express)
+- MCP SDK 2 (`@modelcontextprotocol/server` 2.4.0, `/node` 2.1.2; the client is a dev dependency for tests). The server speaks 2026-07-28 and, through the SDK's stateless legacy leg, older clients.
+- `src/mcp-server.ts` builds one `McpServer` per request from that request's keys (`buildMcpServer`): each tool is registered with a title, annotations and an `outputSchema` (`src/tools/tool-metadata.ts`). A result with a top-level `error`, a thrown error or a non-object result is `isError`. Argument validation stays in `ToolCatalog.call` (structured `bad_request`), so the SDK's input validation is a pass-through; output schemas are converted once per tool (the SDK caches compiled schemas without evicting).
+- stdio by default (`serveStdio`); `MCP_TRANSPORT=http` serves `src/http-app.ts` (Express), where `/mcp` is `createMcpHandler` (`legacy: 'stateless'`, 1 MiB body, `maxSubscriptions: 0`) behind the budget and bearer gate. There is no session state.
+- A request's `AbortSignal` reaches the upstream call through `src/utils/request-signal.ts` (an `AsyncLocalStorage` that `ApiClient` reads); tool modules do not see it.
 
 **Tool Architecture (`src/tools/`)**
 - Modular tool system with six categories:
@@ -113,11 +115,11 @@ The server automatically registers only the tools for which API keys are availab
 
 `MCP_TRANSPORT=http` fails closed (`httpAuthFromEnv` in `src/http-app.ts`): it needs `MCP_REQUIRE_OAUTH=true` + `OAUTH_TOKEN_SECRET`,
 or the explicit single-user `MCP_ALLOW_INSECURE_HTTP=true` (loopback only: a non-loopback `HOST` is a startup error, `listenHost`).
-- `src/auth/mcp-oauth.ts` implements an OAuth 2.1 server with PKCE, dynamic client registration, and AES-256-GCM sealed access/refresh tokens (16-byte tag and a valid envelope required). Each token carries a `keys: { sam?, tango?, highergov? }` map sealed against `OAUTH_TOKEN_SECRET`.
+- `src/auth/oauth-server.ts` is the OAuth 2.1 endpoint layer (`/authorize`, `/token`, `/register`, `/revoke`, the two `/.well-known` documents), kept in this repo because SDK 2 dropped its server-side OAuth helpers; `src/auth/mcp-oauth.ts` is the provider behind it, with PKCE, dynamic client registration, and AES-256-GCM sealed access/refresh tokens (16-byte tag and a valid envelope required). Each token carries a `keys: { sam?, tango?, highergov? }` map sealed against `OAUTH_TOKEN_SECRET`.
 - Stateless revocation: access tokens last 1 hour (`OAUTH_ACCESS_TOKEN_TTL_SECONDS`, at most 1 day); refresh tokens keep their original 90-day expiry however often they are used. `OAUTH_TOKEN_SECRET` is a key ring: new tokens are sealed with it, and `OAUTH_TOKEN_SECRET_PREVIOUS` (comma-separated, at most 3) still opens old ones. Rotating the secret without listing the old one revokes every token; `revokeToken` is best-effort (in memory, per instance).
 - Client registrations are stateless: `src/auth/client-registrations.ts` seals the registration (valid 180 days, so a retired secret must stay in `OAUTH_TOKEN_SECRET_PREVIOUS` for 180 days after its last use; every token's expiry is clamped to it, so a token never outlives its client) into the `client_id` (and derives the client secret from it) with `src/auth/key-ring.ts`, the same AES-GCM key ring as tokens, so restarts and rotation behave like tokens. Remaining in-memory OAuth state (`src/auth/expiring-map.ts`: pending authorizations, codes, revocations) has an expiry and a size ceiling that evicts the oldest entry.
 - `GET/POST /oauth/authorize` renders a multi-provider authorization page (CSP by hash, `no-store`); users pick checkboxes per provider and supply only the keys they have.
-- `POST /mcp` always requires a verified bearer token with the `mcp:tools` scope, after a per-address request budget (`src/rate-limit.ts`, `MCP_IP_RPS`/`MCP_IP_BURST`, 429 with `Retry-After`). Client address (`src/client-ip.ts`, ported from uspto): `MCP_CLIENT_IP_HEADER` (Railway: `x-real-ip`) or the TCP peer, IPv6 per /64; the SDK's OAuth endpoint limiters use the same key. There is no `trust proxy`. Provider-key headers never authenticate a caller; they only add the caller's own key for a provider.
+- `POST /mcp` always requires a verified bearer token with the `mcp:tools` scope, after a per-address request budget (`src/rate-limit.ts`, `MCP_IP_RPS`/`MCP_IP_BURST`, 429 with `Retry-After`). Client address (`src/client-ip.ts`, ported from uspto): `MCP_CLIENT_IP_HEADER` (Railway: `x-real-ip`) or the TCP peer, IPv6 per /64; the OAuth endpoint limiters use the same key. There is no `trust proxy`. Provider-key headers never authenticate a caller; they only add the caller's own key for a provider.
 - Per-request precedence: OAuth-sealed key → caller header. Never the server's env.
 - The Railway-hosted HTTP server is the only hosted runtime; the AWS Lambda deployment was retired.
 - Tools are registered per request in a `ToolCatalog` (`src/tools/index.ts`); there is no module-level registry, so concurrent requests cannot see each other's tool sets.

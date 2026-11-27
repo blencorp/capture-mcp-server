@@ -27,6 +27,10 @@ calls for common questions.
 
 ## What a call does
 
+The server keeps no session. It speaks the MCP revision 2026-07-28, and answers assistants that only
+know the 2025 revisions the same way, one request at a time. Every request carries its own access
+token, and nothing about one request is remembered for the next.
+
 1. **Lists the tools your keys unlock.** Each request builds its own tool list from the keys that
    request may use, so one person's tool list never depends on another's.
 2. **Checks the arguments.** Each tool has a strict schema. An argument it does not list, a missing
@@ -36,7 +40,8 @@ calls for common questions.
    source. No tool declares that argument, so a call that includes one is refused in step 2.
 4. **Waits its turn.** Each source has a pacing queue (see below).
 5. **Calls the source.** The server sends one request, with a 30 second limit.
-6. **Answers.** The result is JSON, as text and as structured content. A failure says why; the
+6. **Answers.** The result is JSON, as text and as structured content that matches the tool's output
+   schema. A failure is marked as an error and says why; the
    [tool reference](/reference/sdk/#results-and-errors) describes its shapes.
 
 ## What the answers say about themselves
@@ -79,7 +84,7 @@ the whole server process, and calls wait their turn in order:
 - The server does not retry. A source that answers `429` fails the call with that status.
 - The HigherGov `get_*` tools cache a result for 15 minutes, for the key that asked, so a repeated
   lookup does not spend quota.
-- The server adds no limit to `/mcp`. The MCP SDK's OAuth endpoints limit each address by default:
+- The server adds no limit to `/mcp`. The OAuth endpoints limit each address:
   100 authorization requests and 50 token or revocation requests every 15 minutes, and 20 client
   registrations an hour.
 

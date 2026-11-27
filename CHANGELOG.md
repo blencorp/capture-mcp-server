@@ -14,6 +14,15 @@ Release workflow, which tags the version; this file is written by hand.
   accessibility job and an image check; a scheduled dependency audit; Dependabot.
 
 ### Changed
+- **Breaking:** the server moves to MCP SDK 2 (`@modelcontextprotocol/server` 2.4.0) and the 2026-07-28
+  protocol revision, and serves HTTP statelessly (`createMcpHandler`, a fresh server per request;
+  clients that predate the revision get the SDK's stateless legacy leg). Every tool declares a title,
+  annotations and an `outputSchema`; a failed call (an `error` result, a thrown error, a refused
+  argument) is `isError: true` with the error in `structuredContent`; an unknown tool is a JSON-RPC
+  `-32602`. Responses to clients that do not send `MCP-Protocol-Version` are one SSE `message` event
+  instead of a JSON body, and a malformed or oversized `/mcp` body is a JSON-RPC error, not an HTML
+  page. Cancelling a call cancels its upstream request. The OAuth endpoints (v1 SDK behaviour, same
+  paths, limits and bodies) now live in `src/auth/oauth-server.ts`. See `docs/migration-4.0.md`.
 - **Breaking:** the AWS Lambda deployment is removed (`infrastructure/`, the Lambda handler, S3
   API-key auth, `manage-keys`, `sync-config`). Railway is the only hosted runtime.
 - **Breaking:** no tool takes an `api_key` argument any more; a call that includes one is rejected as
