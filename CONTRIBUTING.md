@@ -89,7 +89,9 @@ it ran, the run fails and the next push to `main` releases both changes. It atta
 the Claude Desktop bundle (`capture-mcp-server.mcpb`) to the GitHub release, then a separate job publishes
 `@blen/capture-mcp-server` to npm with trusted publishing and provenance. If only the npm step fails,
 re-run the failed job; if that is no longer possible, run the Release workflow by hand with `republish`,
-which publishes the current version from its tag and never bumps. Railway builds `main` from
+which publishes the current version from its tag and never bumps. A re-run after the push already
+succeeded resumes from the new tag by itself, and an existing release that is a draft or lacks an asset is
+completed. Only `main` releases. Railway builds `main` from
 GitHub, so the release commit is what ends up running: `/health` reports its `version` and `commit`.
 Update `CHANGELOG.md` in the pull request. Actions are pinned to commit SHAs, and Dependabot proposes
 updates for npm packages (the server and `site/`), Actions and the Docker base image. Patched

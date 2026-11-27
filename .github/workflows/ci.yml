@@ -73,6 +73,9 @@ jobs:
           mkdir "$RUNNER_TEMP/pkg" && cd "$RUNNER_TEMP/pkg" && npm init -y >/dev/null
           npm install --ignore-scripts "$RUNNER_TEMP"/blen-capture-mcp-server-*.tgz
           node "$GITHUB_WORKSPACE/scripts/stdio-smoke.mjs" "$RUNNER_TEMP/pkg" node_modules/.bin/capture-mcp-server
+          # HTTP from an unrelated directory, as npx starts it: the landing page, the policy pages and the assets ship in the package.
+          mkdir "$RUNNER_TEMP/elsewhere"
+          node "$GITHUB_WORKSPACE/scripts/http-smoke.mjs" "$RUNNER_TEMP/elsewhere" "$RUNNER_TEMP/pkg/node_modules/.bin/capture-mcp-server"
       - run: pnpm mcpb:prepare && pnpm mcpb:pack
       - name: MCPB smoke (unpack in a clean directory)
         run: |

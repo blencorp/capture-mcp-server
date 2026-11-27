@@ -3,6 +3,9 @@
 //   pnpm release-version              # print current/next/bump as key=value
 //   pnpm release-version --write 1.2.0   # write that version into the manifests
 //
+// The key=value output includes `resume_tag`, non-empty when HEAD is already contained in the
+// latest tag (a re-run after the release was pushed).
+//
 // Decision logic lives in src/utils/version-bump.ts (unit tested); this script
 // only supplies git history and file I/O.
 
@@ -26,6 +29,21 @@ function latestReleaseTag(): string | null {
     const tags = git(['tag', '--list', `${TAG_PREFIX}*`, '--sort=-v:refname']);
     const newest = tags.split('\n').map(t => t.trim()).filter(Boolean)[0];
     return newest ?? null;
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * The tag that already contains HEAD, when the last release was cut from this commit or a later
+ * one. A re-run of a release whose atomic push succeeded checks out its original event commit,
+ * which is now behind the new tag: deriving a bump from it would diverge from the released main.
+ */
+function releasedTagContainingHead(tag: string | null): string | null {
+  if (!tag) return null;
+  try {
+    execFileSync('git', ['merge-base', '--is-ancestor', 'HEAD', tag], { stdio: 'ignore' });
+    return tag;
   } catch {
     return null;
   }
@@ -125,6 +143,8 @@ function main(): void {
   console.log(`seeded=${result.seeded}`);
   console.log(`previous_tag=${tag ?? ''}`);
   console.log(`commit_count=${messages.length}`);
+  // Set when HEAD is already released: the workflow then resumes from this tag instead of bumping.
+  console.log(`resume_tag=${releasedTagContainingHead(tag) ?? ''}`);
 }
 
 main();

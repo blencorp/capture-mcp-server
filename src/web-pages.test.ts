@@ -104,3 +104,20 @@ test('oauth mode: /mcp still needs a bearer token and the OAuth metadata is stil
     await server.close();
   }
 });
+
+test('the default web root is the package\'s own, not the working directory\'s', async () => {
+  // Needs `pnpm build` (the test script builds first). An installed package or `npx` starts the
+  // server from whatever directory the user is in.
+  const before = process.cwd();
+  process.chdir(mkdtempSync(join(tmpdir(), 'capture-cwd-')));
+  const server: HttpServer = await new Promise(resolve => {
+    const s = createHttpApp({ auth: { mode: 'insecure' }, env: {} }).listen(0, '127.0.0.1', () => resolve(s));
+  });
+  try {
+    const { port } = server.address() as AddressInfo;
+    for (const path of ['/', '/privacy-policy']) assert.equal((await fetch(`http://127.0.0.1:${port}${path}`)).status, 200, path);
+  } finally {
+    process.chdir(before);
+    await new Promise<void>(resolve => server.close(() => resolve()));
+  }
+});

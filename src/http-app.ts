@@ -66,7 +66,7 @@ export type HttpAuth =
 export type HttpAppOptions = {
   auth: HttpAuth;
   env?: NodeJS.ProcessEnv;
-  /** The built landing and policy pages (`pnpm build:web`). Default: `dist/web` in the working directory. */
+  /** The built landing and policy pages (`pnpm build:web`). Default: `dist/web` of this package, wherever the process was started. */
   webRoot?: string;
   /** The built documentation site (`pnpm --dir site build`). Default: `docs-site/`, a sibling of `dist/`. */
   docsRoot?: string;
@@ -204,7 +204,7 @@ export function createHttpApp({ auth, env = process.env, webRoot, docsRoot, buil
 
   // The landing page, the policy pages and the documentation site are public and static. They
   // come before the OAuth and MCP routes and share nothing with them.
-  const web = webRoot ?? resolve('dist/web');
+  const web = webRoot ?? fileURLToPath(new URL('../dist/web/', import.meta.url));
   app.use('/assets', express.static(resolve(web, 'assets'), { immutable: true, maxAge: '1y', index: false }));
   const docs = docsHandler(docsRoot ?? fileURLToPath(new URL('../docs-site/', import.meta.url)));
   if (docs) {

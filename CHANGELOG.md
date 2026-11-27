@@ -68,6 +68,8 @@ Release workflow, which tags the version; this file is written by hand.
 ## [1.0.2] - 2026-08-27
 
 ### Fixed
+- The landing page, policy pages and assets are found relative to the installed package, not the directory the
+  server was started from, so `npx @blen/capture-mcp-server` in HTTP mode no longer answers 503 for them.
 - Resolve bare PIIDs by award group in `get_award_detail` and `aggregate_contracts` (USAspending).
 
 ## [1.0.1] - 2026-08-24

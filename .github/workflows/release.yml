@@ -23,6 +23,11 @@ name: Release
 #    releases both changes. So main is never bumped without its tag.
 #  - The version is derived from the last tag, so repeating a run is safe: a bumped main that never
 #    got its tag derives the same version, the files already match, and only the tag is created.
+#  - A re-run after the push succeeded finds HEAD already inside the new tag (release-version prints
+#    `resume_tag`) and builds, attaches and publishes that tag instead of deriving another bump.
+#    Artifact upload overwrites, and an existing GitHub release is completed (missing assets
+#    uploaded, a draft published) rather than assumed done.
+#  - Only main releases: both jobs require github.ref to be refs/heads/main.
 #  - Publishing comes last. If it fails (or npm is not set up yet), main, the tag and the GitHub
 #    release are already consistent; "Re-run failed jobs" publishes the same tarball. If that is no
 #    longer possible, run this workflow by hand with `republish`: it rebuilds the CURRENT version
@@ -71,11 +76,10 @@ jobs:
       contents: write # the version commit and tag (pushed with GITHUB_TOKEN) and the GitHub release
     # Belt and braces: the version commit is pushed with GITHUB_TOKEN, which GitHub already
     # excludes from triggering workflows; this keeps it from releasing if that ever changes.
-    if: "!startsWith(github.event.head_commit.message, 'chore(release):') && !contains(github.event.head_commit.message, '[skip release]')"
+    # Releases come from main only: a manual run on another branch must not push it to main.
+    if: "github.ref == 'refs/heads/main' && !startsWith(github.event.head_commit.message, 'chore(release):') && !contains(github.event.head_commit.message, '[skip release]')"
     outputs:
       version: ${{ steps.target.outputs.version }}
-    env:
-      REPUBLISH: ${{ inputs.republish && 'true' || 'false' }}
     steps:
       - name: Check out repository
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -85,13 +89,16 @@ jobs:
           # Nothing below pushes with the stored credentials; the push step passes the token itself.
           persist-credentials: false
 
+      # From here on TAGGED=true means "this version is already tagged on main: build and publish
+      # it from its tag, never bump, commit or push".
       - name: Republish - build the tagged release, not whatever main has become
-        if: env.REPUBLISH == 'true'
+        if: inputs.republish
         run: |
           version=$(node -p "require('./package.json').version")
           git rev-parse -q --verify "refs/tags/v${version}" >/dev/null \
             || { echo "::error::v${version} has no tag; republish only repeats a release that was tagged."; exit 1; }
           git checkout --detach "v${version}"
+          echo "TAGGED=true" >> "$GITHUB_ENV"
 
       # pnpm version is read from the "packageManager" field in package.json.
       - uses: pnpm/action-setup@73e46992e05b19abd31f2f3c20e0e7370d762115 # v6.1.1
@@ -109,13 +116,22 @@ jobs:
 
       - name: Decide the next version
         id: version
-        if: env.REPUBLISH != 'true'
+        if: env.TAGGED != 'true'
         env:
           BUMP: ${{ inputs.bump || 'auto' }}
         run: pnpm run --silent release-version --bump="$BUMP" >> "$GITHUB_OUTPUT"
 
+      # A re-run after the atomic push checks out the original event commit, which is now behind
+      # the new tag. Resume from that tag; deriving another bump would diverge from the released main.
+      - name: Resume a commit that is already released
+        if: env.TAGGED != 'true' && steps.version.outputs.resume_tag != ''
+        run: |
+          echo "::notice::HEAD is already released as ${{ steps.version.outputs.resume_tag }}; resuming from that tag."
+          git checkout --detach "${{ steps.version.outputs.resume_tag }}"
+          echo "TAGGED=true" >> "$GITHUB_ENV"
+
       - name: Summarize the decision
-        if: env.REPUBLISH != 'true'
+        if: env.TAGGED != 'true'
         run: |
           {
             echo "### Release ${{ steps.version.outputs.tag }}"
@@ -129,7 +145,7 @@ jobs:
           } >> "$GITHUB_STEP_SUMMARY"
 
       - name: Fail if the tag already exists
-        if: env.REPUBLISH != 'true'
+        if: env.TAGGED != 'true'
         run: |
           if git rev-parse -q --verify "refs/tags/${{ steps.version.outputs.tag }}" >/dev/null; then
             echo "::error::Tag ${{ steps.version.outputs.tag }} already exists. Nothing was released."
@@ -137,7 +153,7 @@ jobs:
           fi
 
       - name: Write the new version into package.json and the manifests
-        if: env.REPUBLISH != 'true' && steps.version.outputs.seeded == 'false'
+        if: env.TAGGED != 'true' && steps.version.outputs.seeded == 'false'
         run: |
           npm pkg set version="${{ steps.version.outputs.next }}"
           pnpm run --silent release-version --write "${{ steps.version.outputs.next }}"
@@ -164,6 +180,7 @@ jobs:
 
       - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
+          overwrite: true # a re-run of this job uploads the artifact again
           name: npm-tarball
           path: blen-capture-mcp-server-*.tgz
           if-no-files-found: error
@@ -174,7 +191,7 @@ jobs:
         run: pnpm mcpb:prepare && pnpm mcpb:pack && test -s capture-mcp-server.mcpb
 
       - name: Commit the version and tag the release
-        if: env.REPUBLISH != 'true'
+        if: env.TAGGED != 'true'
         env:
           GH_TOKEN: ${{ github.token }}
           REPO: ${{ github.repository }}
@@ -206,20 +223,29 @@ jobs:
           GH_TOKEN: ${{ github.token }}
           TAG: ${{ steps.target.outputs.tag }}
         run: |
-          if gh release view "$TAG" >/dev/null 2>&1; then
-            echo "Release ${TAG} already exists."
-          else
+          if ! gh release view "$TAG" >/dev/null 2>&1; then
             gh release create "$TAG" \
               --title "$TAG" \
               --generate-notes \
               --verify-tag \
               --latest \
               blen-capture-mcp-server-*.tgz capture-mcp-server.mcpb
+          else
+            # An earlier run may have stopped between creating the draft, uploading the assets and
+            # publishing it: add what is missing, then publish.
+            have=$(gh release view "$TAG" --json assets --jq '.assets[].name')
+            for file in blen-capture-mcp-server-*.tgz capture-mcp-server.mcpb; do
+              printf '%s\n' "$have" | grep -qxF "$file" || gh release upload "$TAG" "$file" --clobber
+            done
+            if [ "$(gh release view "$TAG" --json isDraft --jq .isDraft)" = "true" ]; then
+              gh release edit "$TAG" --draft=false --latest
+            fi
           fi
 
   publish:
     needs: release
     name: Publish to npm
+    if: github.ref == 'refs/heads/main'
     runs-on: ubuntu-latest
     timeout-minutes: 10
     environment: npm # deployments restricted to main; the npm trusted publisher names this environment
